@@ -226,7 +226,8 @@
     return null;
   }
   // ---- 아래 시트 ----
-  function closeSheet(){ sheet.classList.remove('open'); tapped = null; }
+  // 쓰는 쪽이 시트가 닫히기 직전에 할 일을 둘 수 있다(폰 리더: 쓰던 메모 저장 — beforeSheetClose)
+  function closeSheet(){ if (typeof beforeSheetClose === 'function') beforeSheetClose(); sheet.classList.remove('open'); tapped = null; }
   function openSheet(label, nodes, acts){
     shLabel.textContent = label; shText.innerHTML = ''; shActs.innerHTML = '';
     nodes.forEach(function(n){ shText.appendChild(n); });
@@ -360,6 +361,9 @@
   }
 
   doc.addEventListener('click', function(e){
+    // 시트 단추가 시트 내용을 갈아 끼우면(예: '메모 달기' → 입력칸) 눌린 단추는 문서에서 떨어져 나간 뒤 여기 닿는다 —
+    // 그걸 '시트 바깥을 눌렀다'로 보면 방금 연 시트를 곧바로 닫아 버린다
+    if (!e.target.isConnected) return;
     var a = e.target.closest ? e.target.closest('a[href]') : null;
     if (a){ if (!sheet.contains(a)) onLink(a, e); return; }
     if (sheet.contains(e.target) || e.target.closest('.top')) return;
@@ -383,10 +387,10 @@
   function setText(id, s){ var el = doc.getElementById(id); if (el) el.textContent = s; }
   function labels(){
     doc.documentElement.lang = md4Lang;
-    setText('lbl-ko', md4T('번역')); setText('lbl-en', md4T('원문')); setText('lbl-both', md4T('대조'));
+    langLabel();
     setText('fs-dn', md4T('가') + '−'); setText('fs-up', md4T('가') + '+'); setText('fs-btn', md4T('가'));
     doc.getElementById('fs-btn').setAttribute('aria-label', md4T('글자 크기'));
-    doc.getElementById('toc-btn').setAttribute('aria-label', md4T('목차'));
+    doc.getElementById('top-title').setAttribute('aria-label', md4T('목차'));
     doc.getElementById('fab').setAttribute('aria-label', md4T('이 논문에 대해 묻기'));
     setText('lnk-about', md4T('Narani 소개')); setText('lnk-privacy', md4T('개인정보처리방침'));
     doc.getElementById('fs-dn').setAttribute('aria-label', md4T('글자 작게'));
@@ -996,16 +1000,23 @@
     if (it) buttons.push(button(md4T('지우기'), function(){ record({op: 'del', id: it.id}); clearSent(); closeSheet(); }));
     return {nodes: nodes, buttons: buttons};
   }
+  // 쓰는 중인 메모 — 시트가 어떻게 닫히든('저장'·'닫기'·바깥 누르기) 바뀐 글은 저장한다. 폰에서는 키보드가
+  // 시트 아래쪽을 가려 '저장'을 못 누르고 바깥을 눌러 닫는 일이 흔하다 — 그때 쓴 글을 잃지 않게.
+  var noteDraft = null;
+  function beforeSheetClose(){
+    var d = noteDraft; noteDraft = null;
+    if (!d) return;
+    var note = d.ta.value.replace(/\s+$/, '');
+    if (note === d.orig) return;
+    if (d.it) record({op: 'put', item: Object.assign({}, d.it, {note: note})});
+    else if (note) record({op: 'put', item: d.fresh('yellow', note)});
+  }
   function editNote(it, fresh){
     var ta = el('textarea', 'anno-ta');
     ta.value = (it && it.note) || ''; ta.rows = 4; ta.placeholder = md4T('메모를 적으세요');
-    var save = button(md4T('저장'), function(){
-      var note = ta.value.replace(/\s+$/, '');
-      if (it) record({op: 'put', item: Object.assign({}, it, {note: note})});
-      else if (note) record({op: 'put', item: fresh('yellow', note)});
-      clearSent(); closeSheet();
-    });
+    var save = button(md4T('저장'), function(){ clearSent(); closeSheet(); });   // 저장은 beforeSheetClose가
     openSheet(md4T('메모'), [ta], [save]);
+    noteDraft = {it: it, fresh: fresh, ta: ta, orig: (it && it.note) || ''};
     setTimeout(function(){ ta.focus(); }, 50);
   }
 
@@ -1061,7 +1072,30 @@
     tocd.classList.add('open'); scrim.classList.add('open');
     var h = list.querySelector('.here'); if (h) h.scrollIntoView({block: 'center'});
   }
-  doc.getElementById('toc-btn').onclick = function(e){ e.stopPropagation(); openToc(); };
+  topTitle.onclick = function(e){ if (!cur) return; e.stopPropagation(); openToc(); };
+
+  // ---- 번역 ⇄ 원문 토글 (대조는 화면에서 뺐다 — 문장을 누르면 짝 문장이 뜬다) ----
+  if (doc.getElementById('m-both').checked){ doc.getElementById('m-ko').checked = true; store('mode', 'ko'); }
+  function langLabel(){
+    var en = doc.getElementById('m-en').checked;
+    setText('lang-btn', (en ? md4T('원문') : md4T('번역')) + ' ⇄');
+    doc.getElementById('lang-btn').setAttribute('aria-label', en ? md4T('번역으로 보기') : md4T('원문으로 보기'));
+  }
+  doc.getElementById('lang-btn').onclick = function(e){
+    e.stopPropagation();
+    modeAnchor = topRow();   // 바꾸기 전 화면 맨 위 문단 — 바꾼 뒤 그 문단으로 (CORE_JS의 change 처리)
+    var to = doc.getElementById('m-en').checked ? 'm-ko' : 'm-en', r = doc.getElementById(to);
+    r.checked = true; r.dispatchEvent(new Event('change'));
+    langLabel();
+  };
+
+  // ---- 키보드 높이 — iOS는 키보드가 올라와도 아래에 붙은 창을 밀어 올리지 않는다 ----
+  function fitKeyboard(){
+    var vv = window.visualViewport; if (!vv) return;
+    var kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    doc.documentElement.style.setProperty('--kb', kb + 'px');
+  }
+  if (window.visualViewport){ visualViewport.addEventListener('resize', fitKeyboard); visualViewport.addEventListener('scroll', fitKeyboard); }
 
   // ---- 에이전트 ----
   var AG = {key: null, lang: 'ko', title: '', msgs: null, busy: false, mode: 'chat'};
