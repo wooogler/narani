@@ -758,7 +758,19 @@ JS = r"""
     return api('GET', '/agent/sessions').then(function(j){ sessList = j.sessions || []; return sessList; });
   }
   function openSession(id){
-    return api('GET', '/agent/sessions/' + encodeURIComponent(id)).then(setSession);
+    return api('GET', '/agent/sessions/' + encodeURIComponent(id)).then(function(d){
+      setSession(d);
+      if (hasDefaultTitle(d)) autoTitle(d.id);   // 예전 세션(질문 앞머리 제목)도 열 때 한 번 지어 준다
+    });
+  }
+  // 제목이 아직 첫 질문 앞머리 그대로인가 — 서버 sessions.default_title과 같은 규칙(공백 정리, 40자)
+  var TITLE_CHARS = 40;
+  function hasDefaultTitle(d){
+    var u = (d.turns || []).filter(function(t){ return t.role === 'user' && (t.text || '').trim(); })[0];
+    if (!u || !d.title) return false;
+    var q = u.text.split(/\s+/).join(' ').trim();
+    var def = q.length <= TITLE_CHARS ? q : q.slice(0, TITLE_CHARS).replace(/\s+$/, '') + '…';
+    return d.title === def;
   }
   function newSession(){
     if (busy) return Promise.resolve();

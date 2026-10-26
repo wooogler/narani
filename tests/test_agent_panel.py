@@ -639,3 +639,11 @@ def test_first_turn_asks_server_to_name_the_session():
     assert "if (L.q && nUser === 1) autoTitle(at);" in snd
     at = _js_block(JS, "function autoTitle(")
     assert "'/title'" in at and "sess.title = m.title" in at and ".catch(function(){})" in at
+
+
+def test_old_sessions_with_question_titles_get_named_on_open():
+    from narani.ui.agent import sessions
+
+    assert f"var TITLE_CHARS = {sessions.TITLE_CHARS};" in JS
+    op = _js_block(JS, "function openSession(")
+    assert "if (hasDefaultTitle(d)) autoTitle(d.id);" in op

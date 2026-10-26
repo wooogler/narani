@@ -56,3 +56,17 @@ def test_failure_keeps_question_title():
 def test_clean_title_strips_wrapping_and_caps_length():
     assert clean_title("\n\n**Title: Cognitive offloading overview.**\nmore") == "Cognitive offloading overview"
     assert len(clean_title("가" * 80)) <= sessions.TITLE_CHARS + 1
+
+
+def test_title_call_leaves_room_for_reasoning_models():
+    """추론 모델은 답 예산을 생각하는 데 먼저 쓴다 — 40으로 두면 빈 답이 와 제목이 안 바뀌었다(실측)."""
+    from narani.ui.agent import routes
+
+    seen = {}
+
+    class P(FakeProvider):
+        def complete(self, system, user, *, max_tokens=4096):
+            seen["max"] = max_tokens
+            return "짧은 제목"
+    assert suggest_title(_session(), lambda: P()) == "짧은 제목"
+    assert seen["max"] == routes.TITLE_MAX_TOKENS >= 512
