@@ -382,6 +382,7 @@ JS = r"""
     if (!g) return;
     var unit = ev.deltaMode === 1 ? 16 : (ev.deltaMode === 2 ? g.clientHeight : 1);
     g.scrollTop += ev.deltaY * unit;
+    if (land) land.touched = true;     // 알약 위에서 굴려도 착지를 읽은 것이다
     ev.preventDefault();
   }, {passive: false});
   // 착지에 손을 댔나 — 휠·터치·스크롤바·읽기 키. 손댄 착지는 '읽던 자리'라 다음 이동이 쌓는다.
