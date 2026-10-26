@@ -1005,6 +1005,54 @@ class UIController:
                 out[s.id] = lo = hit
         return out
 
+    def section_anchors(self) -> dict[str, tuple[int, float]]:
+        """섹션 id → (쪽 0-based, 쪽 안 높이 0~1 — 위가 0). PDF 싱크가 제목이 있는 '그 자리'로 PDF를 옮길 때 쓴다.
+
+        높이는 추출 기록(headings.json)의 제목 윗변(PDF 좌표는 아래가 0)에서, 거기 없는 섹션(run-in
+        소제목 등)은 원본 PDF에서 제목 글을 찾아서. 둘 다 없으면 쪽 맨 위(0). 결과는 열려 있는 동안 기억한다.
+        """
+        import re
+
+        pages = self.section_pages()
+        key = tuple(sorted(pages.items()))
+        cached = getattr(self, "_anchors", None)
+        if cached and cached[0] == key:
+            return cached[1]
+        sizes = self.pdf_page_sizes()
+
+        def norm(s: str) -> str:
+            return re.sub(r"[^0-9a-z]+", "", re.sub(r"<[^>]+>", "", s).lower())
+
+        recorded: dict[tuple[str, int], float] = {}
+        try:
+            for it in json.loads(self.wd.headings_json.read_text(encoding="utf-8")):
+                if it.get("text") and it.get("page") and it.get("top") is not None:
+                    recorded.setdefault((norm(it["text"]), int(it["page"])), float(it["top"]))
+        except (OSError, ValueError, TypeError):
+            pass
+        out: dict[str, tuple[int, float]] = {}
+        missing: list[tuple[str, int, str]] = []
+        for s in self.manifest.sections:
+            page = pages.get(s.id)
+            if not page or page > len(sizes):
+                continue
+            height = sizes[page - 1][1] or 1.0
+            top = recorded.get((norm(s.text), page))
+            if top is not None:
+                out[s.id] = (page - 1, min(1.0, max(0.0, 1 - top / height)))
+            else:
+                out[s.id] = (page - 1, 0.0)
+                missing.append((s.id, page - 1, re.sub(r"<[^>]+>", "", s.text)))
+        if missing and (pdf := self.source_pdf()):
+            from narani import pdfio
+
+            tops = pdfio.find_text_tops(pdf, [(p, t) for _sid, p, t in missing])
+            for (sid, p, _t), top in zip(missing, tops):
+                if top is not None:
+                    out[sid] = (p, min(1.0, max(0.0, top / (sizes[p][1] or 1.0))))
+        self._anchors = (key, out)
+        return out
+
     def pdf_page_sizes(self) -> list[tuple[float, float]]:
         """페이지별 (폭, 높이) pt — 그림이 뜨기 전에도 PDF 패널의 쪽 높이를 잡아 두는 데 쓴다."""
         pdf = self.source_pdf()

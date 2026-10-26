@@ -1000,3 +1000,35 @@ def test_opening_paper_drops_duplicate_captions_keeps_manual_edits(tmp_path):
     UIController(wd2)
     out = wd2.en_md.read_text(encoding="utf-8")
     assert "Body two, edited." in out and out.count("hot") == 1
+
+
+def test_section_anchors_place_headings_inside_their_page(tmp_path):
+    """PDF 싱크가 쪽 맨 위가 아니라 제목 자리로 맞추도록 — 추출 기록의 높이, 없으면 PDF에서 찾은 자리."""
+    import json
+
+    from test_figure_translate import _pdf  # 300×400pt 1쪽, 글자 레이어 있음
+
+    from narani.assemble import render
+    from narani.review import manifest as manifest_io
+    from narani.structure import build
+
+    wd = WorkDir(tmp_path / "p.md4")
+    wd.ensure()
+    pdf = tmp_path / "s.pdf"
+    _pdf(pdf, [(30, 300, 14, "1 Intro"), (30, 100, 14, "Results here")])
+    wd.meta_json.write_text(json.dumps({"source": str(pdf)}), encoding="utf-8")
+    raw = "# 1 Intro\n\nBody.\n\n# Results here\n\nMore.\n"
+    wd.raw_md.write_text(raw, encoding="utf-8")
+    m = build.build(raw, wd)
+    for s in m.sections:
+        s.page = 1
+    manifest_io.save(m, wd)
+    render.assemble(raw, m, wd)
+    # 추출 기록엔 '1 Intro'만 자리(윗변 y=314, 아래 원점)가 있다 → 'Results here'는 PDF에서 찾는다
+    wd.headings_json.write_text(json.dumps([{"text": "1 Intro", "page": 1, "top": 314}]), encoding="utf-8")
+
+    c = UIController(wd)
+    got = {s.text: c.section_anchors()[s.id] for s in c.manifest.sections}
+    assert got["1 Intro"] == (0, pytest.approx(1 - 314 / 400))
+    page, y = got["Results here"]
+    assert page == 0 and 0.70 < y < 0.75  # 기준선 100pt → 글자 윗변 ≈ 110pt, 위에서 ≈ 290/400

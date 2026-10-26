@@ -67,6 +67,30 @@ def full_text(src) -> str:  # noqa: ANN001
         return " ".join(doc[p].get_textpage().get_text_range() for p in range(len(doc)))
 
 
+def find_text_tops(src, wanted: list[tuple[int, str]]) -> list[float | None]:  # noqa: ANN001
+    """(0-based 쪽, 글) 목록 → 그 쪽에서 글이 처음 나오는 자리의 윗변(쪽 위에서 잰 pt). 못 찾으면 None.
+
+    헤더 추출 기록에 자리가 없는 섹션(run-in 소제목 등)을 PDF 싱크가 쪽 안 높이로 맞출 때 쓴다.
+    글은 앞 40자만 찾는다 — 긴 제목은 줄바꿈·하이픈에서 PDF 텍스트와 어긋나기 쉽다.
+    """
+    out: list[float | None] = []
+    try:
+        with open_document(src) as doc:
+            for page, text in wanted:
+                top = None
+                needle = " ".join(text.split())[:40]
+                if needle and 0 <= page < len(doc):
+                    pg = doc[page]
+                    tp = pg.get_textpage()
+                    hit = tp.search(needle, match_case=False).get_next()
+                    if hit:
+                        top = pg.get_height() - tp.get_charbox(hit[0])[3]
+                out.append(top)
+    except Exception:  # noqa: BLE001 — 자리는 덤이다 (없으면 쪽 맨 위)
+        return [None] * len(wanted)
+    return out
+
+
 def page_texts(src) -> list[str]:  # noqa: ANN001
     """페이지별 텍스트. 열기 실패면 빈 목록."""
     try:

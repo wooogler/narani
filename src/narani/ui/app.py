@@ -3406,8 +3406,11 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         page_by_id = ctrl.section_pages()
         row_sid = row_sections(rows, smap)  # 헤더 행 → 섹션 id (제목으로 순서대로 맞춤)
         row_page0 = {k: page_by_id[sid] - 1 for k, sid in row_sid.items() if page_by_id.get(sid)}
+        anchors = ctrl.section_anchors() if row_page0 else {}
+        # 쪽 안 제목 높이(0~1) — PDF 싱크가 쪽 맨 위가 아니라 제목 자리로 맞춘다
+        row_py = {k: anchors[sid][1] for k, sid in row_sid.items() if k in row_page0 and sid in anchors}
         v = {"en": en, "ko": ko, "rows": rows, "aligned": aligned, "smap": smap,
-             "page_by_id": page_by_id, "row_sid": row_sid, "row_page0": row_page0,
+             "page_by_id": page_by_id, "row_sid": row_sid, "row_page0": row_page0, "row_py": row_py,
              "sid_row": {sid: k for k, sid in row_sid.items()}}
         _rows_memo.update(key=key, v=v)
         return v
@@ -3609,42 +3612,76 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         ui.element("div").classes("vbody-handle").props('data-side=left').tooltip(tip)
         ui.element("div").classes("vbody-handle").props('data-side=right').tooltip(tip)
 
-    # 텍스트 스크롤 → PDF 따라오기(섹션 단위). scroll_sel 컨테이너 안의 최상단 [data-page]로 PDF를 스크롤.
+    # 텍스트 스크롤 → PDF 따라오기. 사람이 읽는 흐름에 맞춘다:
+    #  - 읽는 선(텍스트 칸 위에서 33%)을 섹션 제목이 넘으면 그 섹션으로 — 제목이 칸 맨 위에 닿을 때까지
+    #    기다리면 이미 읽기 시작한 섹션인데 PDF는 앞 섹션에 남아 있었다.
+    #  - 쪽 맨 위가 아니라 제목이 있는 자리(data-py, 쪽 안 높이 0~1)를 PDF 칸의 같은 읽는 선에 놓는다.
+    #  - 섹션 안에서는 다음 제목까지 읽은 비율만큼 PDF도 내려간다 — 긴 섹션에서 첫 쪽에 머물던 것.
+    #    다음 제목이 더 위에 있으면(2단의 오른쪽 열 맨 위) 섹션 시작에 머문다.
+    #  - 그 자리가 이미 PDF 칸에 보이면 움직이지 않고, PDF를 손으로 스크롤했으면 4초 동안 따라오지 않는다.
     # 컨테이너는 재렌더마다 새 요소라 리스너가 쌓이지 않는다(요소당 1회).
     def _pdf_sync_js(scroll_sel: str) -> str:
         return ("""
         (function bind(attempt){
           // 재렌더와 같은 메시지로 오므로 새 패널이 DOM에 붙기 전에 돌 수 있다 — 그때 그냥 돌아가면
           // PDF를 켜도 싱크가 영영 안 붙어 1쪽에 머문다. 생길 때까지 잠깐씩 다시 시도한다(~3초).
-          var sc=document.querySelector('%s'), pv=document.querySelector('.vpdf');
+          var sc=document.querySelector('%s');
           var cells=sc ? [].slice.call(sc.querySelectorAll('[data-page]')) : [];
-          if(!sc || !pv || !cells.length){
+          if(!sc || !document.querySelector('.vpdf') || !cells.length){
             if(attempt<60) setTimeout(function(){ bind(attempt+1); }, 50);
             return;
           }
-          if(sc.dataset.pdfsync) return;
+          if(sc.dataset.pdfsync){
+            // 재렌더 메시지가 새 칸보다 먼저 오면 아직 붙어 있는 옛 칸(이미 묶임)을 본다 — 잠깐 더 기다린다
+            if(attempt<20) setTimeout(function(){ bind(attempt+1); }, 50);
+            return;
+          }
           sc.dataset.pdfsync='1';
-          var last=-1, tick=false, tries=0;
-          // PDF를 막 연 직후엔 패널이 아직 자리를 안 잡아 scrollTop이 0에 묶인다 — 한 번 옮기고 '맞췄다'로
-          // 치면 보던 쪽 대신 1쪽에 멈춘다. 그 쪽이 실제로 패널 맨 위에 올 때까지 잠깐씩 다시 맞춘다(~3초).
-          function aligned(img){
-            // 패널 폭이 0인 순간엔 모든 쪽 그림이 높이 0으로 맨 위에 겹쳐 '이미 맞음'처럼 보인다
-            if(!pv.clientHeight || !img.getBoundingClientRect().height) return false;
-            var d=img.getBoundingClientRect().top - pv.getBoundingClientRect().top;
-            return Math.abs(d)<=2 || (d>0 && pv.scrollTop>=pv.scrollHeight-pv.clientHeight-1);
+          var READ=0.33, LO=0.06, HI=0.86, HOLD=4000;
+          // PDF 칸은 그때그때 찾는다 — 화면을 다시 그리면 칸이 바뀌는데, 붙잡아 둔 옛 칸을 움직이면 아무 일도 안 일어난다
+          function P(){ return document.querySelector('.vpdf'); }
+          var ours=0, manualUntil=0, tick=false;
+          // PDF 칸 안의 절대 높이(스크롤 포함) — (쪽, 쪽 안 높이) 자리. 그림 높이가 아직 0이면 null
+          function pdfY(page, py){
+            var pv=P(), img=document.getElementById('pdfpage-'+page); if(!pv || !img) return null;
+            var r=img.getBoundingClientRect(); if(!r.height) return null;
+            return pv.scrollTop + (r.top - pv.getBoundingClientRect().top) + (py||0)*r.height;
           }
-          function settle(){
-            var img=document.getElementById('pdfpage-'+last); if(!img) return;
-            if(!aligned(img)) pv.scrollTop += img.getBoundingClientRect().top - pv.getBoundingClientRect().top;
-            if(!aligned(img) && ++tries<100) setTimeout(settle, 30);  // rAF는 가려진 창에서 느려진다
+          function target(){
+            var sr=sc.getBoundingClientRect(), line=sr.top + sc.clientHeight*READ, k=-1;
+            for(var i=0;i<cells.length;i++){ if(cells[i].getBoundingClientRect().top<=line) k=i; else break; }
+            if(k<0) return pdfY(+cells[0].dataset.page, 0);  // 첫 제목 앞(제목·저자) — 그 쪽 맨 위
+            var a=cells[k], b=cells[k+1], t0=a.getBoundingClientRect().top, t1, y1;
+            var y0=pdfY(+a.dataset.page, +a.dataset.py); if(y0===null) return null;
+            if(b){ t1=b.getBoundingClientRect().top; y1=pdfY(+b.dataset.page, +b.dataset.py); }
+            else { t1=sr.top + sc.scrollHeight - sc.scrollTop; y1=P().scrollHeight; }  // 끝 섹션 ↔ PDF 끝
+            if(y1===null || y1<=y0 || t1<=t0) return y0;
+            return y0 + Math.min(1, Math.max(0, (line-t0)/(t1-t0)))*(y1-y0);
           }
-          function sync(){ tick=false;
-            var top=sc.getBoundingClientRect().top+6, pg=+cells[0].dataset.page;
-            for(var i=0;i<cells.length;i++){ if(cells[i].getBoundingClientRect().top<=top) pg=+cells[i].dataset.page; else break; }
-            if(pg!==last && !isNaN(pg)){ last=pg; tries=0; settle(); }
+          // force = 처음 맞출 때(보여도 읽는 선에 놓는다). 패널이 막 생겨 높이가 0이거나 스크롤이 아직
+          // 안 먹으면 '맞췄다'로 치지 않고 잠깐씩 다시 맞춘다(~3초) — 안 그러면 보던 쪽 대신 1쪽에 멈춘다.
+          function move(force, tries){
+            if(!sc.isConnected) return;  // 이 텍스트 칸은 이미 화면에서 내려갔다 (새 칸이 따로 붙는다)
+            var pv=P(), y=pv ? target() : null, h=pv ? pv.clientHeight : 0;
+            if(y===null || !h){ if((tries||0)<100) setTimeout(function(){ move(force, (tries||0)+1); }, 30); return; }
+            var rel=y-pv.scrollTop;
+            if(!force && rel>=h*LO && rel<=h*HI) return;  // 이미 보인다 → 그대로
+            var want=Math.max(0, Math.min(y-h*READ, pv.scrollHeight-h));
+            ours=Date.now(); pv.scrollTop=want;
+            if(force && Math.abs(pv.scrollTop-want)>2 && (tries||0)<100)
+              setTimeout(function(){ move(true, (tries||0)+1); }, 30);
           }
-          sc.addEventListener('scroll', function(){ if(!tick){ tick=true; setTimeout(sync, 16); } });
-          sync();
+          // 손으로 PDF를 굴렸는지 — scroll은 거품이 안 올라오므로 문서에서 capture로 듣는다
+          if(!window.__md4PdfManual){ window.__md4PdfManual=true;
+            document.addEventListener('scroll', function(e){
+              var t=e.target; if(t && t.classList && t.classList.contains('vpdf') && window.__md4PdfHand)
+                window.__md4PdfHand(); }, true); }
+          window.__md4PdfHand=function(){ if(Date.now()-ours>250) manualUntil=Date.now()+HOLD; };
+          sc.addEventListener('scroll', function(){
+            if(tick) return; tick=true;
+            setTimeout(function(){ tick=false; if(Date.now()>=manualUntil) move(false); }, 16);
+          });
+          move(true);
         })(0);
         """ % scroll_sel)
 
@@ -3877,7 +3914,8 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                             sep = " sbs-row-sep" if (head and k > 0) else ""
                             # data-row는 두 셀 모두에 — 목차 스크롤(첫 셀)과 호버 짝 표시(둘 다)에 쓴다.
                             # data-page(PDF 싱크)는 행마다 하나여야 하므로 첫 표시 셀에만.
-                            page_prop = f" data-page={row_page0[k]}" if k in row_page0 else ""
+                            page_prop = (f" data-page={row_page0[k]} data-py={info['row_py'].get(k, 0):.4f}"
+                                         if k in row_page0 else "")
                             anchored = False
                             if show_en:
                                 div = " sbs-cell-div" if two else ""
