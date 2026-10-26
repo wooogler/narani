@@ -1041,5 +1041,13 @@
  "아주 크게": "Muy grande",
  "모델": "Modelo",
  "번역 설정과 별개": "aparte de la traducción",
- "에이전트가 쓸 모델": "Modelo que usa el agente"
+ "에이전트가 쓸 모델": "Modelo que usa el agente",
+ "굵게": "Negrita",
+ "코드": "Código",
+ "취소선": "Tachado",
+ "링크": "Enlace",
+ "제목 1–6 (한 번 더 누르면 해제)": "Encabezado 1–6 (pulsa otra vez para quitarlo)",
+ "글머리 목록": "Lista con viñetas",
+ "번호 목록": "Lista numerada",
+ "인용": "Cita"
 }

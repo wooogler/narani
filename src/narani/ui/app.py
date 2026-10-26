@@ -10,6 +10,7 @@ import asyncio
 import functools
 import json
 import re
+import sys
 import time
 from html import escape
 from pathlib import Path
@@ -20,7 +21,7 @@ from narani import notes as notes_io
 from narani.ir import Flavor, GlossaryEntry
 from narani.ui import (
     agent_panel, annotations, desktop, figrefs, figure_crop, figure_ko, find_bar, formula_pop, jobs,
-    jump_back, live_preview, split_view, mdrender, pdf_zoom, reanchor,
+    jump_back, live_preview, md_keys, split_view, mdrender, pdf_zoom, reanchor,
     scroll_memory, sentpair, spa, tabstore, term_examples, translate_job, update_banner,
 )
 from narani.ui.controller import LEVEL_OPTIONS, RUNIN_LEVEL_OPTIONS, UIController
@@ -3408,6 +3409,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         edit_state["editor"] = editor
         # 코드 편집기처럼 보이지 않게 — 글자는 그대로 두고 기호를 숨겨 문서처럼 보인다(§ui/live_preview.py)
         ui.run_javascript(live_preview.live_preview_js(editor.id, tok, edit_state["lp"]))
+        ui.run_javascript(md_keys.md_keys_js(editor.id))  # ⌘B 굵게·⌘K 링크·⌘⌥2 제목 … (§ui/md_keys.py)
 
         def revert() -> None:
             edit_state["pending"] = None  # 되돌리면 기다리던 편집은 버린다
@@ -3421,6 +3423,9 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                 t("자동 저장 — 입력을 멈추면 저장됩니다") if is_en else
                 t("자동 저장 — 번역을 다시 실행하면 덮어써지고, 헤더 수를 바꾸면 원문과 나란히 정렬되지 않을 수 있어요")
             ).classes("text-xs text-gray-500")
+            with ui.icon("keyboard", size="18px").classes("text-gray-400 cursor-help"):
+                ui.tooltip(md_keys.shortcut_help(sys.platform == "darwin")) \
+                    .classes("text-sm").style("white-space: pre; max-width: none")
             if is_en:  # 번역문에는 '원본'이 없다 — 되돌리려면 번역을 다시 실행한다
                 ui.button(t("되돌리기(원본 다시 렌더)"), icon="restore", on_click=revert).props("outline dense")
 

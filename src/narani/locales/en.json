@@ -1041,5 +1041,13 @@
  "아주 크게": "Larger",
  "모델": "Model",
  "번역 설정과 별개": "separate from translation",
- "에이전트가 쓸 모델": "Model the agent uses"
+ "에이전트가 쓸 모델": "Model the agent uses",
+ "굵게": "Bold",
+ "코드": "Code",
+ "취소선": "Strikethrough",
+ "링크": "Link",
+ "제목 1–6 (한 번 더 누르면 해제)": "Heading 1–6 (press again to remove)",
+ "글머리 목록": "Bulleted list",
+ "번호 목록": "Numbered list",
+ "인용": "Quote"
 }
