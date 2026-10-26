@@ -69,7 +69,12 @@ def test_highlights_paint_in_both_panes():
 
 def test_find_bar_searches_only_leading_pane_and_scroll_memory_skips_clone():
     assert "g !== sp.activeGrid()" in Path(find_bar.__file__).read_text(encoding="utf-8")
-    assert ".sbs-grid:not(.sbs-clone)" in scroll_memory.SELECTORS
+    # 열쇠(sel#i)가 바뀌면 이미 저장된 읽던 자리(창 안·앱 재시작 뒤 모두)를 잃는다 — 셀렉터는 그대로 두고
+    # boxes()에서 복제를 건너뛴다(복제는 원본 뒤라 원본은 늘 #0)
+    assert ".sbs-grid" in scroll_memory.SELECTORS
+    assert not any("sbs-clone" in sel for sel in scroll_memory.SELECTORS)
+    assert "classList.contains('sbs-clone')) continue;" in scroll_memory._JS
+    assert "key: sel + '#' + n++" in scroll_memory._JS
 
 
 def test_toolbar_toggle_and_state_memory():
@@ -86,3 +91,13 @@ def test_toolbar_toggle_and_state_memory():
 def test_column_handle_applies_to_both_grids():
     enko = APP[APP.index("    _ENKO_DRAG_JS = "):APP.index("    _BODY_DRAG_JS = ")]
     assert "querySelectorAll('.sbs-grid.sbs-two')" in enko
+
+
+def test_closing_split_drops_lower_pane_return_spots():
+    """아래 칸에 쌓인 자리는 칸을 닫으면 돌아갈 곳이 없다 — 남겨 두면 알약이 숨은 채 ⌥←가 먹통이 된다."""
+    from narani.ui import jump_back
+
+    td = _js_block(JS, "function teardown(")
+    assert "!on && window.__mdJumpBack" in td and "dropPane('b')" in td
+    assert "close: function(){ on = false;" in JS          # 닫을 때만 — 재렌더로 다시 복제할 땐 남긴다
+    assert "dropPane: function(pane){" in jump_back.JS and "p.pane !== pane" in jump_back.JS

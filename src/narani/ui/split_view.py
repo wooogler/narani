@@ -128,8 +128,11 @@ JS = r"""
     if (bar) bar.remove();
     if (wrap) wrap.classList.remove('vsplit-on');
     if (orig) orig.classList.remove('vlead');
+    var had = !!clone;
     clone = bar = null;
     document.body.classList.remove('md4-split-on');
+    // 아래 칸에 쌓인 읽던 자리는 돌아갈 칸이 없다 — 알약에서 뺀다 (다시 복제하는 재렌더 땐 남는다)
+    if (had && !on && window.__mdJumpBack && window.__mdJumpBack.dropPane) window.__mdJumpBack.dropPane('b');
   }
   function setLead(x, force){
     if (!clone) x = 'a';

@@ -26,7 +26,7 @@ import json
 SELECTORS = (
     ".conv-md",     # 캔버스 편집 모드의 프리뷰
     ".cm-scroller", # 캔버스 편집 모드의 편집기 — 실제로 스크롤되는 건 CodeMirror 안쪽 상자다
-    ".sbs-grid:not(.sbs-clone)",  # 캔버스 정렬 그리드 (원문·번역). 아래 칸(복제)은 split_view가 따로 기억한다
+    ".sbs-grid",    # 캔버스 정렬 그리드 (원문·번역). 아래 칸(복제)은 boxes()가 건너뛴다
     ".vpane",       # 캔버스 단일 패널 (정렬 불가 시)
     ".vpdf",        # 캔버스 PDF
     ".md4-scroll",  # 그 외 우리가 표시해 둔 스크롤 열 (왼쪽 작업 패널·설정 열·논문 목록 등)
@@ -57,7 +57,12 @@ _JS = """
     var out = [];
     SELS.forEach(function(sel){
       var list = document.querySelectorAll(sel);
-      for (var i = 0; i < list.length; i++) out.push({key: sel + '#' + i, el: list[i]});
+      // 위아래 두 뷰어의 아래 칸(복제, §ui/split_view.py)은 건너뛴다 — 그 자리는 split_view가 따로 기억한다.
+      // 셀렉터를 바꾸지 않고 여기서 거르는 것은 열쇠(sel#i)가 그대로여야 이미 저장된 자리가 살아서다.
+      for (var i = 0, n = 0; i < list.length; i++){
+        if (list[i].classList.contains('sbs-clone')) continue;
+        out.push({key: sel + '#' + n++, el: list[i]});
+      }
     });
     return out;
   }

@@ -455,7 +455,14 @@ JS = r"""
     mark: jbMark, go: jbGo, back: jbBack, dismiss: jbDismiss, split: jbSplit,
     state: function(){ return stack.length ? stack[stack.length - 1] : null; },
     depth: function(){ return stack.length; },
-    setPaper: function(tok){ if (tok !== jbPaper){ jbPaper = tok; jbDismiss(); } }
+    setPaper: function(tok){ if (tok !== jbPaper){ jbPaper = tok; jbDismiss(); } },
+    // 아래 칸이 닫혔다 — 그 칸에 쌓인 자리는 돌아갈 곳이 없다 (§ui/split_view.py teardown)
+    dropPane: function(pane){
+      stack = stack.filter(function(p){ return p.pane !== pane; });
+      if (!stack.length) return jbDismiss();
+      jbLabel(paneGrid('a'), (paneGrid('a') || {}).scrollTop || 0);
+      if (!jbRaf) jbRaf = requestAnimationFrame(jbTick);
+    }
   };
 })();
 """
