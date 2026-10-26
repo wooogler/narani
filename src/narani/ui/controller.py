@@ -162,6 +162,9 @@ class UIController:
                 if patched is not None:
                     self._write_atomic(wd.ko_md, patched)
         self._drop_duplicate_captions()
+        # 번역본 표기가 지금 설정과 다른 옛 논문(이 기능 전에 설정을 바꿨던 것) — 설정이 바뀌었을 때만 한 번
+        if wd.ko_md.exists() and wd.load_status().get("ko_display") != self._display_sig():
+            self.sync_ko_display()
 
     def _drop_duplicate_captions(self) -> int:
         """옛 추출이 그림 앞뒤로 두 번 남긴 캡션을 다시 변환 없이 지운다(열 때 한 번, 없으면 아무것도 안 함).
@@ -363,7 +366,7 @@ class UIController:
             delta = new_block.count("\n") - old_block.count("\n")
             if delta:
                 self._shift_line_anchors(raw.count("\n", 0, at), delta, new_raw)
-            return True
+            return True  # 번역본 저자 문단은 이어지는 재조립의 sync_ko_display가 맞춘다
         return False  # 원본 블록을 못 찾음(수동 편집 등) → 매니페스트만 갱신
 
     def _shift_line_anchors(self, after_line: int, delta: int, new_raw: str) -> None:
@@ -633,6 +636,7 @@ class UIController:
         pipeline.run_assemble(self.wd, force=True)
         if mine is None:
             self.clear_manual_edit()
+            self.sync_ko_display()
             return {"kept": False, "conflicts": 0, "dropped": 0, "backup": None}
         theirs = self.en_markdown()
         res = merge.merge3(base, mine, theirs)
@@ -645,6 +649,7 @@ class UIController:
         self._follow_merged_lines(theirs, res.text)
         if res.text == theirs:  # 남은 편집이 없다(구조가 다 지웠거나 원래 같았다)
             self.clear_manual_edit()
+        self.sync_ko_display()
         return {"kept": res.text != theirs, "conflicts": res.conflicts, "dropped": res.dropped,
                 "backup": backup}
 
@@ -676,6 +681,7 @@ class UIController:
         render.assemble(raw, self.manifest, self.wd)
         self.reapply_citations()
         self.clear_manual_edit()
+        self.sync_ko_display()
 
     def section_map(self) -> list[dict]:
         """sections.map.json — 렌더된 헤더의 id·레벨·출력 라인 (프리뷰 앵커·스크롤용)."""
@@ -700,6 +706,64 @@ class UIController:
             reference_links=self.manifest.reference_links,
             force=True,
         )
+
+    def sync_ko_display(self) -> int:
+        """번역본에 원문의 표기(인용 묶음·참고문헌 항목·캡션)를 따라 입힌다 — 재번역 없이(§translate/display_sync).
+
+        원문을 다시 만드는 길(재조립·라이브 렌더)마다 부른다. 설정을 바꿔도 번역본만 옛 표기로 남아, 원문|번역을
+        나란히 보거나 번역 zip을 내보내면 예전 표기가 나왔다. 바꾼 곳 수를 돌려준다(없으면 파일을 안 쓴다).
+        """
+        from narani.translate import display_sync
+
+        ko = self.ko_markdown()
+        if not ko or not self.wd.en_md.exists():
+            return 0
+        en = self.en_markdown()
+        m = self.manifest
+        text, n = ko, 0
+        text, k = display_sync.relabel_citations(text, en, m.citation_parts)
+        n += k
+        text, k = display_sync.sync_reference_entries(text, en)
+        n += k
+        text, k = display_sync.restyle_captions(text, en, m.caption_style)
+        n += k
+        if n:
+            self._write_atomic(self.wd.ko_md, text)
+        n += self._sync_ko_authors(m.author_parts)
+        status = self.wd.load_status()
+        if status.get("ko_display") != self._display_sig():
+            status["ko_display"] = self._display_sig()
+            self.wd.save_status(status)
+        return n
+
+    def _sync_ko_authors(self, parts: list[str]) -> int:
+        """번역본 저자 문단을 지금 표기로. 번역된 소속 줄은 translate/ko_authors.json에 남겨 다시 켤 때 쓴다."""
+        from narani.ir import AuthorEntry
+        from narani.translate import display_sync
+
+        ko = self.ko_markdown()
+        if not ko or not self.wd.authors_json.exists():
+            return 0
+        try:
+            entries = [AuthorEntry(**d) for d in json.loads(self.wd.authors_json.read_text(encoding="utf-8"))]
+        except (OSError, ValueError, TypeError):
+            return 0
+        path = self.wd.translate / "ko_authors.json"
+        try:
+            kept = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        except (OSError, ValueError):
+            kept = {}
+        text, n = display_sync.sync_author_blocks(ko, entries, parts, kept)
+        if kept:
+            self.wd.translate.mkdir(parents=True, exist_ok=True)
+            path.write_text(json.dumps(kept, ensure_ascii=False, indent=2), encoding="utf-8")
+        if n:
+            self._write_atomic(self.wd.ko_md, text)
+        return n
+
+    def _display_sig(self) -> str:
+        m = self.manifest
+        return f"{','.join(m.citation_parts)}|{m.reference_links}|{m.caption_style}|{','.join(m.author_parts)}"
 
     def reapply_citations(self) -> dict:
         """이미 파싱된 참고문헌으로 인용 표기만 다시 적용 (LLM 없이, 무료).

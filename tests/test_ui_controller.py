@@ -1032,3 +1032,20 @@ def test_section_anchors_place_headings_inside_their_page(tmp_path):
     assert got["1 Intro"] == (0, pytest.approx(1 - 314 / 400))
     page, y = got["Results here"]
     assert page == 0 and 0.70 < y < 0.75  # 기준선 100pt → 글자 윗변 ≈ 110pt, 위에서 ≈ 290/400
+
+
+def test_display_settings_follow_into_translation(tmp_path):
+    """캡션 표기를 바꾸면 번역본 캡션도 재번역 없이 같은 표기로 — 원문|번역 나란히 보기·번역 내보내기."""
+    wd = _dup_caption_paper(tmp_path)
+    c = UIController(wd)  # (중복 캡션 정리까지 끝난 상태)
+    en = wd.en_md.read_text(encoding="utf-8")
+    cap = next(ln for ln in en.splitlines() if "Figure 1:" in ln and not ln.startswith("!["))
+    ko = en.replace("Body one.", "본문 하나.").replace(cap, cap.replace("view", "보기"))
+    wd.ko_md.write_text(ko, encoding="utf-8")
+
+    c.set_setting("caption_style", "italic")
+    c.save_and_reassemble()
+    ko_after = wd.ko_md.read_text(encoding="utf-8")
+    assert "*Figure 1: The hot\\_degree 보기.*" in ko_after or "*Figure 1: The hot_degree 보기.*" in ko_after
+    assert "본문 하나." in ko_after  # 번역문은 그대로
+    assert c.sync_ko_display() == 0  # 이미 맞음
