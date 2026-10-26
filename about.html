@@ -20,16 +20,16 @@ footer { margin-top: 48px; font-size: .85em; color: var(--muted); }
 <h1>Narani</h1>
 <p class="lead">Read English research papers side by side with a translation in your own language — on your
 computer and on your phone. <span class="lang">한국어 안내는 아래에 있습니다.</span></p>
-<div class="nav"><a href="./">Open the phone reader</a><a href="privacy.html">Privacy Policy</a>
+<div class="nav"><a href="./">Open the mobile reader</a><a href="privacy.html">Privacy Policy</a>
 <a href="https://github.com/wooogler/narani">Source code &amp; documentation</a></div>
 
 <h2>What it does</h2>
 <p>Narani is a free, open-source desktop app (macOS, Windows, Linux). It converts a paper PDF into clean Markdown,
 translates it into your language with the AI service and API key you choose, and shows the original and the
 translation paragraph by paragraph. You can highlight sentences, write notes, and ask questions about the paper.</p>
-<p>The <strong>phone reader</strong> on this site lets you keep reading on your phone: the desktop app sends the
+<p>The <strong>mobile reader</strong> on this site lets you keep reading on your phone or tablet: the desktop app sends the
 papers you pick to a <code>Narani</code> folder in <em>your own</em> Google Drive, and this web app reads them from
-there. Highlights and notes you make on the phone go back to the desktop the same way. Downloaded papers stay
+there. Highlights and notes you make on mobile go back to the desktop the same way. Downloaded papers stay
 readable offline.</p>
 
 <h2>Install</h2>
@@ -37,7 +37,7 @@ readable offline.</p>
 <pre>curl -LsSf https://raw.githubusercontent.com/wooogler/narani/main/install.sh | sh</pre>
 <p>Windows (PowerShell):</p>
 <pre>irm https://raw.githubusercontent.com/wooogler/narani/main/install.ps1 | iex</pre>
-<p>Then, in the app, tick papers on Home and press <strong>Send to phone</strong>. On your phone, open this site,
+<p>Then, in the app, tick papers on Home and press <strong>Send to mobile</strong>. On your phone, open this site,
 add it to your home screen, and tap <strong>Connect Google Drive</strong> with the same Google account.</p>
 
 <h2>How Narani uses your Google account</h2>
@@ -54,10 +54,10 @@ this site is a static web app hosted on GitHub Pages.</li>
 <p><strong>Narani(나란히)</strong>는 영어 논문을 내 언어 번역과 나란히 읽게 해 주는 무료 오픈소스 데스크톱 앱입니다.
 논문 PDF를 마크다운으로 바꾸고, 사용자가 고른 AI 서비스와 API 키로 번역해 원문과 문단별로 나란히 보여 줍니다.
 문장 하이라이트·메모·질문하기도 됩니다.</p>
-<p>이 사이트의 <strong>폰 리더</strong>로 폰에서도 이어 읽습니다. 데스크톱 앱이 고른 논문을 <em>내</em> Google Drive의
-<code>Narani</code> 폴더에 올리고, 이 웹앱이 거기서 읽습니다. 폰에서 단 하이라이트·메모도 같은 길로 데스크톱에 돌아갑니다.
+<p>이 사이트의 <strong>모바일 리더</strong>로 폰·태블릿에서도 이어 읽습니다. 데스크톱 앱이 고른 논문을 <em>내</em> Google Drive의
+<code>Narani</code> 폴더에 올리고, 이 웹앱이 거기서 읽습니다. 모바일에서 단 하이라이트·메모도 같은 길로 데스크톱에 돌아갑니다.
 받아 둔 논문은 오프라인에서도 읽힙니다.</p>
-<p>설치는 위의 명령 한 줄. 앱 홈에서 논문을 체크하고 <strong>폰으로 보내기</strong>를 누른 뒤, 폰에서 이 사이트를 열어
+<p>설치는 위의 명령 한 줄. 앱 홈에서 논문을 체크하고 <strong>모바일로 보내기</strong>를 누른 뒤, 폰에서 이 사이트를 열어
 홈 화면에 추가하고 같은 계정으로 <strong>Google Drive 연결</strong>을 누르면 됩니다.</p>
 <p>권한은 <code>drive.file</code>(Narani가 만든 파일만) 하나라 Drive의 다른 파일은 보지 못합니다. 서버도 계정 체계도 없고,
 모든 데이터는 내 Drive와 내 기기에만 있습니다. 자세한 내용은 <a href="privacy.html">개인정보처리방침</a>에 있습니다.</p>

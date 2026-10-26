@@ -384,7 +384,10 @@
   function labels(){
     doc.documentElement.lang = md4Lang;
     setText('lbl-ko', md4T('번역')); setText('lbl-en', md4T('원문')); setText('lbl-both', md4T('대조'));
-    setText('fs-dn', md4T('가') + '−'); setText('fs-up', md4T('가') + '+');
+    setText('fs-dn', md4T('가') + '−'); setText('fs-up', md4T('가') + '+'); setText('fs-btn', md4T('가'));
+    doc.getElementById('fs-btn').setAttribute('aria-label', md4T('글자 크기'));
+    doc.getElementById('toc-btn').setAttribute('aria-label', md4T('목차'));
+    doc.getElementById('fab').setAttribute('aria-label', md4T('이 논문에 대해 묻기'));
     setText('lnk-about', md4T('Narani 소개')); setText('lnk-privacy', md4T('개인정보처리방침'));
     doc.getElementById('fs-dn').setAttribute('aria-label', md4T('글자 작게'));
     doc.getElementById('fs-up').setAttribute('aria-label', md4T('글자 크게'));
@@ -522,7 +525,7 @@
       return {text: first ? md4T('Google Drive에 연결해 데스크톱에서 보낸 논문을 받아요.') : md4T('Google Drive 연결이 만료됐어요.'),
               button: first ? md4T('Google Drive 연결') : md4T('다시 연결'), act: function(){ gSignIn(); }};
     }
-    if (kind === 'nofolder') return {text: md4T('Drive에 Narani 폴더가 없어요. 데스크톱 앱에서 먼저 폰으로 보내 주세요.')};
+    if (kind === 'nofolder') return {text: md4T('Drive에 Narani 폴더가 없어요. 데스크톱 앱에서 먼저 모바일로 보내 주세요.')};
     return {text: md4T('목록을 불러오지 못했어요. 인터넷 연결을 확인하세요.')};
   }
 
@@ -545,9 +548,19 @@
   }
   function pruneCache(ix){
     // 목록에서 빠진 논문의 캐시는 지운다 (폰 저장 공간)
-    var keep = {}, m = haveMap(), k;
-    ix.papers.forEach(function(e){ keep[e.file] = 1; });
+    var keep = {}, keys = {}, m = haveMap(), k;
+    ix.papers.forEach(function(e){ keep[e.file] = 1; keys[e.key] = 1; });
     for (k in m) if (!keep[k]) setHave(k, null);
+    // 데스크톱이 모바일에서 뺀 논문 — 그 논문의 폰 기록도 지운다(다시 올리면 Drive에 주인 없는 파일이 남는다).
+    // 데스크톱은 빼기 전에 올라와 있던 폰 기록을 합쳐 두었다.
+    try {
+      var ok = JSON.parse(localStorage.getItem('narani:opskeys') || '{}') || {}, changed = false;
+      for (k in ok) if (!keys[k]){
+        delete ok[k]; changed = true;
+        localStorage.removeItem('narani:ops:' + k); localStorage.removeItem('narani:opsup:' + k);
+      }
+      if (changed) localStorage.setItem('narani:opskeys', JSON.stringify(ok));
+    } catch (e) {}
     if (!window.caches) return;
     caches.open(DC).then(function(c){
       return c.keys().then(function(reqs){
@@ -596,7 +609,7 @@
       meta.appendChild(el('span', 'badge', e.has_ko ? md4T('번역') : md4T('원문만')));
       a.appendChild(meta); li.appendChild(a); libList.appendChild(li);
     });
-    if (INDEX && !INDEX.papers.length) libList.appendChild(el('li', 'empty', md4T('올린 논문이 없어요. 데스크톱 앱에서 폰으로 보내 주세요.')));
+    if (INDEX && !INDEX.papers.length) libList.appendChild(el('li', 'empty', md4T('올린 논문이 없어요. 데스크톱 앱에서 모바일로 보내 주세요.')));
     libBar.innerHTML = '';
     var info = [];
     if (INDEX && INDEX.updated) info.push(md4T('{date}에 올린 목록', {date: fmtDate(INDEX.updated)}));
@@ -653,7 +666,7 @@
   // ---- 목록 ↔ 논문 ----
   function unmount(){ if (cur){ cur.parentNode.removeChild(cur); cur = null; } }
   function showLib(push){
-    loadSeq++; unmount(); loading.style.display = 'none';
+    loadSeq++; unmount(); loading.style.display = 'none'; readerClosed();
     lib.classList.remove('off'); topTitle.textContent = APP;
     closeSheet(); window.scrollTo(0, 0);
     if (push) history.pushState(null, '', '#!lib');
@@ -662,6 +675,7 @@
     main.insertAdjacentHTML('beforeend', b.html);
     cur = doc.getElementById(PID); cur.classList.add('on');
     DATA[PID] = {key: b.key, title: b.title_ko || b.title, cites: b.cites || {}, fns: b.fns || {}};
+    readerOpened(b);
     var t = target ? doc.getElementById(target) : null, off = 0;
     if (!t){
       var saved = load('pos:' + b.key, '').split(':');
@@ -674,7 +688,7 @@
     var e = entryOf(id);
     if (!e) return false;
     var seq = ++loadSeq;
-    unmount(); closeSheet();
+    unmount(); closeSheet(); readerClosed();
     lib.classList.add('off'); topTitle.textContent = e.title_ko || e.title;
     loading.style.display = ''; loading.textContent = md4T('불러오는 중…');
     window.scrollTo(0, 0);
@@ -994,4 +1008,267 @@
     openSheet(md4T('메모'), [ta], [save]);
     setTimeout(function(){ ta.focus(); }, 50);
   }
+
+  // ---- 글자 크기 팝오버 ----
+  var fsPop = doc.getElementById('fs-pop');
+  doc.getElementById('fs-btn').onclick = function(e){ e.stopPropagation(); fsPop.classList.toggle('open'); };
+  doc.addEventListener('click', function(e){
+    if (!e.target.closest || !e.target.closest('#fs-pop, #fs-btn')) fsPop.classList.remove('open');
+  }, true);
+
+  // ---- 서랍 공통 ----
+  var scrim = doc.getElementById('scrim'), tocd = doc.getElementById('tocd'), agent = doc.getElementById('agent');
+  function closeDrawers(){
+    tocd.classList.remove('open'); agent.classList.remove('open'); scrim.classList.remove('open');
+    try { doc.getElementById('ag-in').blur(); } catch (e) {}
+  }
+  scrim.onclick = closeDrawers;
+  doc.getElementById('tocd-x').onclick = closeDrawers;
+  doc.getElementById('ag-x').onclick = closeDrawers;
+  [tocd, agent].forEach(function(d){ d.addEventListener('click', function(e){ e.stopPropagation(); }); });
+  function readerOpened(b){ body.classList.add('reading'); AG.key = b.key; AG.lang = b.lang || 'ko'; AG.title = b.title_ko || b.title; AG.msgs = null; }
+  function readerClosed(){ body.classList.remove('reading'); closeDrawers(); }
+  function flashRow(row){
+    if (!row) return;
+    row.scrollIntoView({block: 'start'});
+    row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash');
+  }
+
+  // ---- 목차 서랍 — 논문 머리의 목차를 그대로, 지금 읽는 절을 표시 ----
+  function currentSection(){
+    var r = topRow(); if (!r || !cur) return null;
+    var rows = [].slice.call(cur.querySelectorAll('.row')), idx = rows.indexOf(r), best = null;
+    [].forEach.call(cur.querySelectorAll('.toc a'), function(a){
+      var id = (a.getAttribute('href') || '').slice(1), t = doc.getElementById(id);
+      if (t && rows.indexOf(t) <= idx) best = id;
+    });
+    return best;
+  }
+  function openToc(){
+    if (!cur) return;
+    var list = doc.getElementById('tocd-list'), here = currentSection();
+    list.innerHTML = '';
+    doc.getElementById('tocd-title').textContent = (DATA[PID] || {}).title || md4T('목차');
+    [].forEach.call(cur.querySelectorAll('.toc li'), function(li){
+      var a = li.querySelector('a'); if (!a) return;
+      var id = (a.getAttribute('href') || '').slice(1), item = el('li', li.className), b = el('a', '', a.textContent);
+      b.href = '#';
+      if (id === here) item.classList.add('here');
+      b.onclick = function(ev){ ev.preventDefault(); closeDrawers(); flashRow(doc.getElementById(id)); };
+      item.appendChild(b); list.appendChild(item);
+    });
+    if (!list.children.length) list.appendChild(el('li', 'empty', md4T('목차가 없는 논문이에요.')));
+    tocd.classList.add('open'); scrim.classList.add('open');
+    var h = list.querySelector('.here'); if (h) h.scrollIntoView({block: 'center'});
+  }
+  doc.getElementById('toc-btn').onclick = function(e){ e.stopPropagation(); openToc(); };
+
+  // ---- 에이전트 ----
+  var AG = {key: null, lang: 'ko', title: '', msgs: null, busy: false, mode: 'chat'};
+  var agBody = doc.getElementById('ag-body'), agIn = doc.getElementById('ag-in'), agSend = doc.getElementById('ag-send');
+  var PNAME = {openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Google Gemini'};
+  function aiCfg(){
+    var c = lsGet('narani:ai', null) || {}, d = (INDEX && INDEX.agent) || {}, tiers = CFG.ai_models || {};
+    c.keys = c.keys || {}; c.models = c.models || {};
+    c.provider = c.provider || d.provider || 'openai';
+    c.model = c.models[c.provider] || (d.provider === c.provider && d.model) || (tiers[c.provider] || [])[0] || '';
+    return c;
+  }
+  function chat(){
+    if (!AG.msgs) AG.msgs = lsGet('narani:chat:' + AG.key, []) || [];
+    return AG.msgs;
+  }
+  function saveChat(){ lsSet('narani:chat:' + AG.key, chat().slice(-30)); }
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
+  function md(text){   // 답 — 굵게·코드·목록·문단, [r12]·[r12, r15] 근거 링크
+    var h = esc(text).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    h = h.replace(/\[((?:r\d+\s*,?\s*)+)\]/g, function(m, ids){
+      return ids.split(/\s*,\s*/).filter(Boolean).map(function(r){
+        return '<a href="#" class="rr" data-row="' + r.replace(/\D/g, '') + '">[' + r + ']</a>';
+      }).join(' ');
+    });
+    var out = [], list = false;
+    h.split('\n').forEach(function(line){
+      var m = /^\s*(?:[-*•]|\d+[.)])\s+(.*)$/.exec(line);
+      if (m){ if (!list){ out.push('<ul>'); list = true; } out.push('<li>' + m[1] + '</li>'); return; }
+      if (list){ out.push('</ul>'); list = false; }
+      if (line.trim()) out.push('<p>' + line + '</p>');
+    });
+    if (list) out.push('</ul>');
+    return out.join('');
+  }
+  agBody.addEventListener('click', function(e){
+    var a = e.target.closest ? e.target.closest('a.rr') : null;
+    if (!a) return;
+    e.preventDefault(); closeDrawers();
+    flashRow(doc.getElementById(PID + '-r' + a.getAttribute('data-row')));
+  });
+  function msgEl(m){
+    var d = el('div', 'm ' + (m.role === 'user' ? 'u' : (m.err ? 'a err' : 'a')));
+    if (m.role === 'user' || m.err) d.textContent = m.content; else d.innerHTML = md(m.content);
+    return d;
+  }
+  function showChat(){
+    AG.mode = 'chat'; agBody.innerHTML = '';
+    doc.getElementById('ag-form').style.display = '';
+    var c = aiCfg();
+    if (!c.keys[c.provider]){ showSettings(md4T('질문하려면 이 기기에 AI 서비스와 API 키를 한 번 넣어 주세요.')); return; }
+    var msgs = chat();
+    if (!msgs.length) agBody.appendChild(el('p', 'hint', md4T('이 논문에 대해 무엇이든 물어보세요 — 답의 [r12] 같은 표시를 누르면 그 문단으로 갑니다. ({p} · {m})', {p: PNAME[c.provider] || c.provider, m: c.model})));
+    msgs.forEach(function(m){ agBody.appendChild(msgEl(m)); });
+    agBody.scrollTop = agBody.scrollHeight;
+  }
+  function showSettings(note){
+    AG.mode = 'settings'; agBody.innerHTML = '';
+    doc.getElementById('ag-form').style.display = 'none';
+    var c = aiCfg(), tiers = CFG.ai_models || {};
+    if (note) agBody.appendChild(el('p', 'hint', note));
+    agBody.appendChild(el('label', '', md4T('AI 서비스')));
+    var sel = el('select'); Object.keys(PNAME).forEach(function(p){ var o = el('option', '', PNAME[p]); o.value = p; if (p === c.provider) o.selected = true; sel.appendChild(o); });
+    agBody.appendChild(sel);
+    agBody.appendChild(el('label', '', md4T('모델')));
+    var model = el('input'); model.setAttribute('list', 'ag-models'); model.value = c.model; agBody.appendChild(model);
+    var dl = el('datalist'); dl.id = 'ag-models'; agBody.appendChild(dl);
+    function fillModels(){ dl.innerHTML = ''; (tiers[sel.value] || []).forEach(function(m){ var o = el('option'); o.value = m; dl.appendChild(o); }); }
+    fillModels();
+    agBody.appendChild(el('label', '', md4T('API 키')));
+    var key = el('input'); key.type = 'password'; key.autocomplete = 'off'; key.spellcheck = false; agBody.appendChild(key);
+    function keyHint(){ key.value = ''; key.placeholder = c.keys[sel.value] ? md4T('저장됨 — 바꾸려면 새로 입력') : md4T('키를 붙여 넣으세요'); }
+    keyHint();
+    sel.onchange = function(){ fillModels(); model.value = c.models[sel.value] || ((INDEX && INDEX.agent && INDEX.agent.provider === sel.value) ? INDEX.agent.model : (tiers[sel.value] || [])[0] || ''); keyHint(); };
+    agBody.appendChild(el('p', 'hint', md4T('키는 이 기기의 브라우저에만 저장됩니다. 질문하면 이 논문의 본문과 내 하이라이트·메모, 대화가 고른 AI 서비스로 직접 보내집니다. 요금은 그 키의 계정에 청구됩니다.')));
+    var acts = el('div', 'acts'), save = el('button', 'pri', md4T('저장')), del = el('button', '', md4T('이 서비스 키 지우기'));
+    save.onclick = function(){
+      c.provider = sel.value; c.models[c.provider] = model.value.trim();
+      if (key.value.trim()) c.keys[c.provider] = key.value.trim();
+      lsSet('narani:ai', {provider: c.provider, models: c.models, keys: c.keys});
+      try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+      showChat();
+    };
+    del.onclick = function(){ delete c.keys[sel.value]; lsSet('narani:ai', {provider: c.provider, models: c.models, keys: c.keys}); keyHint(); };
+    acts.appendChild(save); if (c.keys[c.provider]) acts.appendChild(del);
+    if (c.keys[c.provider]){ var back = el('button', '', md4T('취소')); back.onclick = showChat; acts.appendChild(back); }
+    agBody.appendChild(acts);
+  }
+  doc.getElementById('ag-set').onclick = function(){ if (AG.mode === 'settings') showChat(); else showSettings(); };
+  doc.getElementById('ag-clear').onclick = function(){ AG.msgs = []; saveChat(); showChat(); };
+  doc.getElementById('fab').onclick = function(e){
+    e.stopPropagation();
+    closeSheet(); setText('ag-title', md4T('질문하기') + ' — ' + AG.title);
+    setText('ag-clear', '⟲'); doc.getElementById('ag-clear').setAttribute('aria-label', md4T('대화 지우기'));
+    agIn.placeholder = md4T('이 논문에 대해 물어보세요');
+    agent.classList.add('open'); scrim.classList.add('open');
+    showChat();
+  };
+
+  function paperText(){
+    var out = [], n = 0;
+    [].forEach.call(cur.querySelectorAll('.row'), function(r){
+      var k = r.id.replace(/^p\d+-r/, ''), c = r.querySelector('.cell.en') || r.querySelector('.cell.same') || r.querySelector('.cell.ko');
+      var t = c ? c.textContent.replace(/\s+/g, ' ').trim() : '';
+      if (t && n < 300000){ out.push('[r' + k + '] ' + t); n += t.length; }
+    });
+    return out.join('\n');
+  }
+  function notesText(){
+    if (NOTE.key !== AG.key) return '';
+    return items().map(function(it){
+      var a = (it.anchors || [])[0] || {};
+      return '- [r' + a.row + '] "' + String(a.quote || '').slice(0, 300) + '"' + (it.note ? ' — ' + it.note : '');
+    }).join('\n');
+  }
+  function systemPrompt(){
+    var notes = notesText();
+    return 'You are the reading assistant inside Narani, on the user\'s phone. The user is reading the paper below. ' +
+      'Reply in the language whose BCP-47 code is "' + AG.lang + '". Be concise and concrete. Base every claim on the paper ' +
+      'and cite the paragraphs you used with their ids, like [r12] or [r12, r15]. If the paper does not say, say so first; ' +
+      'you may then add general knowledge, clearly marked as such.\n\nTITLE: ' + AG.title +
+      (notes ? '\n\nTHE USER\'S HIGHLIGHTS AND NOTES:\n' + notes : '') +
+      '\n\nPAPER (original text; one paragraph per line, each starting with its id):\n' + paperText();
+  }
+  function sse(resp, onData){
+    var reader = resp.body.getReader(), dec = new TextDecoder(), buf = '';
+    function pump(){
+      return reader.read().then(function(r){
+        if (r.done) return;
+        buf += dec.decode(r.value, {stream: true});
+        var lines = buf.split('\n'); buf = lines.pop();
+        lines.forEach(function(l){
+          l = l.trim();
+          if (l.indexOf('data:') !== 0) return;
+          var d = l.slice(5).trim();
+          if (d && d !== '[DONE]'){ try { onData(JSON.parse(d)); } catch (e) {} }
+        });
+        return pump();
+      });
+    }
+    return pump();
+  }
+  function failed(resp){
+    return resp.text().then(function(t){
+      var m = t; try { var j = JSON.parse(t); m = (j.error && (j.error.message || j.error)) || t; } catch (e) {}
+      throw new Error('HTTP ' + resp.status + ': ' + String(m).slice(0, 300));
+    });
+  }
+  function askAI(c, system, msgs, onText){
+    var key = c.keys[c.provider], req;
+    if (c.provider === 'anthropic'){
+      req = fetch('https://api.anthropic.com/v1/messages', {method: 'POST', headers: {'x-api-key': key,
+        'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true', 'content-type': 'application/json'},
+        body: JSON.stringify({model: c.model, max_tokens: 2048, stream: true, system: system, messages: msgs})});
+      return req.then(function(r){ if (!r.ok) return failed(r);
+        return sse(r, function(d){ if (d.type === 'content_block_delta' && d.delta && d.delta.text) onText(d.delta.text); }); });
+    }
+    if (c.provider === 'gemini'){
+      req = fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(c.model) +
+        ':streamGenerateContent?alt=sse', {method: 'POST', headers: {'x-goog-api-key': key, 'content-type': 'application/json'},
+        body: JSON.stringify({systemInstruction: {parts: [{text: system}]}, contents: msgs.map(function(m){
+          return {role: m.role === 'assistant' ? 'model' : 'user', parts: [{text: m.content}]}; })})});
+      return req.then(function(r){ if (!r.ok) return failed(r);
+        return sse(r, function(d){
+          var p = d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts;
+          if (p) onText(p.map(function(x){ return x.text || ''; }).join(''));
+        }); });
+    }
+    req = fetch('https://api.openai.com/v1/chat/completions', {method: 'POST',
+      headers: {'Authorization': 'Bearer ' + key, 'content-type': 'application/json'},
+      body: JSON.stringify({model: c.model, stream: true, messages: [{role: 'system', content: system}].concat(msgs)})});
+    return req.then(function(r){ if (!r.ok) return failed(r);
+      return sse(r, function(d){ var t = d.choices && d.choices[0] && d.choices[0].delta && d.choices[0].delta.content; if (t) onText(t); }); });
+  }
+  function send(){
+    var q = agIn.value.trim(), c = aiCfg();
+    if (!q || AG.busy || !cur) return;
+    if (!c.keys[c.provider]){ showSettings(); return; }
+    if (navigator.onLine === false){ agBody.appendChild(msgEl({role: 'assistant', err: true, content: md4T('오프라인이라 질문할 수 없어요.')})); return; }
+    var msgs = chat();
+    msgs.push({role: 'user', content: q});
+    agIn.value = ''; agIn.style.height = '';
+    showChat();
+    var ans = {role: 'assistant', content: ''}, box = msgEl(ans);
+    box.innerHTML = '<p class="hint">' + esc(md4T('읽는 중…')) + '</p>';
+    agBody.appendChild(box); agBody.scrollTop = agBody.scrollHeight;
+    AG.busy = true; agSend.disabled = true;
+    var hist = msgs.slice(-12).map(function(m){ return {role: m.role, content: m.content}; });
+    askAI(c, systemPrompt(), hist, function(t){
+      ans.content += t; box.innerHTML = md(ans.content);
+      var near = agBody.scrollHeight - agBody.scrollTop - agBody.clientHeight < 120;
+      if (near) agBody.scrollTop = agBody.scrollHeight;
+    }).then(function(){
+      if (!ans.content) throw new Error(md4T('빈 답이 왔어요'));
+      msgs.push(ans);
+    }).catch(function(e){
+      msgs.push({role: 'assistant', err: true, content: md4T('답을 받지 못했어요: {e}', {e: e.message || e})});
+      msgs.splice(msgs.length - 2, 1);   // 실패한 질문은 대화에서 빼고(다시 물을 수 있게) 오류만 남긴다
+      agIn.value = q;
+    }).then(function(){
+      AG.busy = false; agSend.disabled = false;
+      AG.msgs = msgs.filter(function(m){ return !m.err; }); saveChat();
+      var shown = msgs.slice(); showChat(); if (shown.length && shown[shown.length - 1].err) agBody.appendChild(msgEl(shown[shown.length - 1]));
+      agBody.scrollTop = agBody.scrollHeight;
+    });
+  }
+  doc.getElementById('ag-form').addEventListener('submit', function(e){ e.preventDefault(); send(); });
+  agIn.addEventListener('input', function(){ agIn.style.height = ''; agIn.style.height = Math.min(agIn.scrollHeight, 200) + 'px'; });
+  agIn.addEventListener('keydown', function(e){ if (e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); send(); } });
 })();
