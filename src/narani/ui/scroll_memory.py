@@ -26,7 +26,7 @@ import json
 SELECTORS = (
     ".conv-md",     # 캔버스 편집 모드의 프리뷰
     ".cm-scroller", # 캔버스 편집 모드의 편집기 — 실제로 스크롤되는 건 CodeMirror 안쪽 상자다
-    ".sbs-grid",    # 캔버스 정렬 그리드 (원문·번역)
+    ".sbs-grid:not(.sbs-clone)",  # 캔버스 정렬 그리드 (원문·번역). 아래 칸(복제)은 split_view가 따로 기억한다
     ".vpane",       # 캔버스 단일 패널 (정렬 불가 시)
     ".vpdf",        # 캔버스 PDF
     ".md4-scroll",  # 그 외 우리가 표시해 둔 스크롤 열 (왼쪽 작업 패널·설정 열·논문 목록 등)

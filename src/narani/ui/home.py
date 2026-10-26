@@ -41,7 +41,7 @@ from narani.i18n import N_, t
 from narani import config, langs, library, projects
 from narani.ui import (
     agent_panel, batch_translate_dialog, collection_glossary_dialog, desktop, find_bar, jobs, jump_back,
-    scroll_memory, settings_dialog, spa, tabstore, translate_job, update_banner,
+    scroll_memory, settings_dialog, spa, split_view, tabstore, translate_job, update_banner,
 )
 from narani.workdir import WorkDir
 
@@ -556,6 +556,7 @@ def build_home(state: dict) -> None:
     spa.add_body_html(_COLGRIP_HTML)
     spa.add_body_html(f"<script>{agent_panel.init_js(None)}</script>")  # 에이전트 창: 지금 연 논문 없음
     spa.add_body_html(f"<script>{jump_back.init_js(None)}</script>")  # 논문의 읽던 자리는 홈에서 비운다
+    spa.add_body_html(f"<script>{split_view.init_js(None)}</script>")  # 두 뷰어도 홈에서는 닫는다
     # 논문 화면에서 열어 둔 서랍·툴팁(본문 밖 오버레이라 화면을 갈아 끼워도 남는다)은 홈에서 닫는다
     # (에이전트 창은 닫지 않는다 — 논문을 가로지르는 대화라 홈에서도 이어 쓴다)
     ui.run_javascript("document.querySelectorAll('#md-anno-panel.open')"

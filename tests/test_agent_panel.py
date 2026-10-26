@@ -243,11 +243,13 @@ def test_escape_yields_to_other_overlays_then_pin_then_drawer():
 
 def test_chip_jumps_stack_reading_place_before_scrolling():
     """쌓기가 스크롤 뒤로 가면 애니메이션 중간값을 집어 앵커가 목적지 쪽으로 끌려간다."""
+    # 칩은 직접 스크롤하지 않고 알약의 입구(go: 쌓기 → 두 뷰어면 아래 칸으로 → 스크롤)를 거친다
     for head in ("function gotoRow(", "function gotoNote("):
         piece = _js_block(JS, head)
-        assert piece.index("jbMark(") < piece.index("scrollIntoView(")
+        assert "jbGo(" in piece and "scrollIntoView(" not in piece
     # 단독 창(/agent)에는 알약이 없다 — 칩 코드가 그 부재를 견뎌야 한다
-    assert "var jb = window.__mdJumpBack;" in _js_block(JS, "function jbMark(")
+    go = _js_block(JS, "function jbGo(")
+    assert "var jb = window.__mdJumpBack;" in go and go.index("jb.go(") < go.index("scrollIntoView(")
     assert 'id="md-jump-back"' not in HTML
 
 

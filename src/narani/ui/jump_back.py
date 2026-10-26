@@ -56,6 +56,11 @@ body:has(.q-dialog) #md-jump-back { z-index: 5990; }   /* 대화상자 밑으로
   border-radius: 9px; background: #fff; color: #2383e2; font-size: 11px; font-weight: 700;
   line-height: 18px; text-align: center; }
 #md-jump-back .mjb-n:empty { display: none; }
+/* 같이 보기 — 나눔이 꺼져 있을 때만(can-split, JS가 붙인다). 알약 안 두 번째 동작 */
+#md-jump-back .mjb-split { display: none; font-weight: 600; padding-left: 11px; padding-right: 12px;
+  border-left: 1px solid rgba(255,255,255,.28); }
+#md-jump-back.can-split .mjb-split { display: inline-flex; align-items: center; gap: 4px; }
+#md-jump-back .mjb-split:hover { background: #1b74cf; }
 #md-jump-back .mjb-x { font-size: 12px; padding: 8px 12px 8px 10px; color: rgba(255,255,255,.85);
   border-left: 1px solid rgba(255,255,255,.28); }
 #md-jump-back .mjb-x:hover { background: #1b74cf; color: #fff; }
@@ -73,7 +78,7 @@ body:has(.q-dialog) #md-jump-back { z-index: 5990; }   /* 대화상자 밑으로
 @media (prefers-color-scheme: dark) {
   :root { --mjb-ring: #a9a69f; }
   #md-jump-back { background: #2f7fd6; color: #fff; box-shadow: 0 8px 24px rgba(0,0,0,.55); }
-  #md-jump-back .mjb-go:hover, #md-jump-back .mjb-x:hover { background: #2a71bf; }
+  #md-jump-back .mjb-go:hover, #md-jump-back .mjb-x:hover, #md-jump-back .mjb-split:hover { background: #2a71bf; }
   #md-jump-back .mjb-n { background: #e8f1fc; color: #1f63b0; }
 }
 """
@@ -84,6 +89,9 @@ HTML = """
     title="⦃이동하기 전 읽던 자리로 돌아갑니다⦄"><span class="mjb-i"
     aria-hidden="true">&#8593;</span><span>⦃읽던 자리로⦄</span><span class="mjb-w"></span><span
     class="mjb-n"></span></button>
+  <button type="button" class="mjb-split" aria-label="⦃같이 보기 — 아래 칸에 이 자리, 위 칸은 읽던 자리⦄"
+    title="⦃같이 보기 — 아래 칸에 지금 본 곳을 띄우고 위 칸은 읽던 자리로⦄"><span
+    aria-hidden="true">&#8693;</span> ⦃같이 보기⦄</button>
   <button type="button" class="mjb-x" aria-label="⦃되돌아가기 버튼 닫기⦄"
     title="⦃닫기 (Esc)⦄">&#10005;</button>
 </div>
@@ -110,12 +118,11 @@ JS = r"""
   function jbScroller(from){
     if (from && from.closest){
       var c = from.closest('.sbs-grid, .vpane');     // 실측: computed overflow 조상 탐색과 동일
-      if (c){ jbG = c; return c; }
-      return null;                                   // 본문 밖(편집기·왼쪽 패널)으로 가는 이동
+      return c || null;                              // 본문 밖(편집기·왼쪽 패널)으로 가는 이동은 null
     }
     if (jbG && jbG.isConnected && jbG.clientHeight > 0) return jbG;  // 재렌더까지는 그대로 쓴다
     jbG = null;
-    var all = document.querySelectorAll('.sbs-grid, .vpane');
+    var all = document.querySelectorAll('.sbs-grid:not(.sbs-clone), .vpane');
     for (var i = 0; i < all.length; i++){
       var r = all[i].getBoundingClientRect();
       if (r.width < 40 || r.height < 40) continue;
@@ -127,6 +134,13 @@ JS = r"""
     }
     return jbG;
   }
+  // 자리가 든 칸의 스크롤 상자 — 위아래 두 뷰어(§ui/split_view.py)면 아래 칸('b')일 수 있다
+  function paneGrid(pane){
+    var sp = window.__md4Split;
+    if (pane === 'b') return (sp && sp.grid('b')) || null;
+    return jbScroller(null);
+  }
+  function topGrid(){ var p = stack[stack.length - 1]; return paneGrid(p ? p.pane : 'a'); }
   function jbNorm(s){ return (s || '').replace(/\s+/g, ' ').trim(); }
   function jbCells(g, row){
     var sel = '[data-row="' + row + '"]';
@@ -185,7 +199,7 @@ JS = r"""
     var rf = span > 0 ? Math.max(0, Math.min(1, (edge - band.t) / span)) : 0;
     var row = parseInt(band.row, 10) || 0;
     var pv = document.querySelector('.vpdf');
-    return {row: row, side: cell.getAttribute('data-side') || '', bi: bi, bf: bf, rf: rf,
+    return {pane: g.classList.contains('sbs-clone') ? 'b' : 'a', row: row, side: cell.getAttribute('data-side') || '', bi: bi, bf: bf, rf: rf,
             ratio: max > 0 ? g.scrollTop / max : 0,   // app.py 복원과 같은 통화 (최후 폴백)
             head: head, sec: headingOf(g, row), at: Date.now(), y: g.scrollTop,
             pdf: pv ? pv.scrollTop : null, pdfH: pv ? pv.scrollHeight : null};
@@ -226,6 +240,10 @@ JS = r"""
     if (!jbRaf) jbRaf = requestAnimationFrame(jbTick);
     return true;
   }
+  function canSplit(p){
+    var sp = window.__md4Split;
+    return !!(p && sp && !sp.isOn() && sp.available() && p.pane !== 'b');
+  }
   function jbArrow(dir){                 // 읽던 자리가 위인지 아래인지
     if (dir === jbDir) return;
     jbDir = dir;
@@ -238,6 +256,9 @@ JS = r"""
     var go = jbEl.querySelector('.mjb-go');
     jbEl.querySelector('.mjb-w').textContent = p.sec ? '· ' + p.sec.slice(0, 34) : '';
     jbEl.querySelector('.mjb-n').textContent = stack.length > 1 ? String(stack.length) : '';
+    // '같이 보기' — 나눔이 꺼져 있고 위 칸의 자리일 때만: 아래 칸에 지금 본 곳, 위 칸은 읽던 자리로
+    var sp = window.__md4Split;
+    jbEl.classList.toggle('can-split', canSplit(p));
     var key = MAC ? '⌥←' : 'Alt+←';
     go.title = md4T('이동하기 전 읽던 자리로 돌아갑니다') + ' (' + key + ')'
       + (p.sec ? '\n' + p.sec : '') + (p.head ? '\n“' + p.head.slice(0, 60) + '”' : '')
@@ -283,7 +304,7 @@ JS = r"""
     return Math.max(0, Math.min(max, y));
   }
   function jbPlace(){
-    var g = jbScroller(null), r = g && g.getBoundingClientRect();
+    var g = topGrid(), r = g && g.getBoundingClientRect();
     if (!g || !r || r.width < 160 || r.height < 120){ jbEl.classList.remove('on'); return null; }
     // 컨테이너 rect를 재기 때문에 서랍 폭·본문 padding·목차 너비·텍스트|PDF 분할을 하나도 몰라도
     // 언제나 '지금 읽는 칸'의 아래 가운데에 온다.
@@ -294,6 +315,8 @@ JS = r"""
       vr = Math.min(vr, ag.getBoundingClientRect().left);
     jbEl.style.maxWidth = Math.max(200, Math.min(420, vr - r.left - 28)) + 'px';
     if (!jbEl.classList.contains('on')) jbEl.classList.add('on');
+    var cs = canSplit(stack[stack.length - 1]);        // 툴바에서 나눔을 켜고 껐을 수 있다
+    if (cs !== jbEl.classList.contains('can-split')){ jbEl.classList.toggle('can-split', cs); jbKey = ''; }
     var w = jbEl.offsetWidth;
     var left = Math.max(r.left + 8, Math.min(vr - w - 8, (r.left + vr) / 2 - w / 2));
     var bottom = Math.max(14, window.innerHeight - r.bottom + 22);
@@ -341,7 +364,7 @@ JS = r"""
     });
   }
   function jbBack(){
-    var p = stack[stack.length - 1], g = jbScroller(null);
+    var p = stack[stack.length - 1], g = p ? paneGrid(p.pane) : null;
     if (!p) return;
     if (!g) return;                    // 본문이 없다(다른 탭·PDF 전용) → 아무것도 하지 않고 자리를 지킨다
     stack.pop();
@@ -368,6 +391,24 @@ JS = r"""
     if (!stack.length) return jbDismiss();
     jbLabel(g, y);
   }
+  // 본문을 옮기는 모든 길의 입구 — 나눔 중이면 아래 칸의 같은 요소로 바꿔(위 칸은 읽던 자리 그대로)
+  // 자리를 쌓고 그리로 스크롤한다. 실제로 옮긴 요소를 돌려준다(깜빡임을 그 칸에 주려고).
+  function jbGo(el, block, behavior){
+    if (!el) return null;
+    var sp = window.__md4Split;
+    if (sp) el = sp.route(el);
+    jbMark(el, block || 'center');
+    if (sp) sp.touched(el);              // 옮긴 칸이 이끈다(PDF가 그 칸의 쪽으로)
+    el.scrollIntoView({behavior: behavior || 'smooth', block: block || 'center'});
+    return el;
+  }
+  // '같이 보기' — 아래 칸이 지금 본 곳(이동한 곳)을 띄우고 위 칸은 읽던 자리로 돌아간다
+  function jbSplit(){
+    var sp = window.__md4Split, p = stack[stack.length - 1], g = paneGrid('a');
+    if (!sp || !p || !g) return;
+    if (!sp.open({top: g.scrollTop, lead: 'b'})) return;
+    jbBack();
+  }
   function jbDismiss(){
     stack = []; land = null; jbKey = ''; jbFrames = 0; jbDir = '';
     jbEl.classList.remove('on');
@@ -376,10 +417,11 @@ JS = r"""
   }
   jbEl.querySelector('.mjb-go').addEventListener('click', jbBack);
   jbEl.querySelector('.mjb-x').addEventListener('click', jbDismiss);
+  jbEl.querySelector('.mjb-split').addEventListener('click', jbSplit);
   // fixed 알약 위에서 굴리면 밑의 그리드가 안 움직인다(가장 가까운 스크롤 조상이 body다).
   // 넘겨주지 않으면 "읽다가 알약 위에서 휠이 먹통"이라는 새 짜증을 만든다.
   jbEl.addEventListener('wheel', function(ev){
-    var g = jbScroller(null);
+    var g = topGrid();
     if (!g) return;
     var unit = ev.deltaMode === 1 ? 16 : (ev.deltaMode === 2 ? g.clientHeight : 1);
     g.scrollTop += ev.deltaY * unit;
@@ -389,8 +431,8 @@ JS = r"""
   // 착지에 손을 댔나 — 휠·터치·스크롤바·읽기 키. 손댄 착지는 '읽던 자리'라 다음 이동이 쌓는다.
   function touched(ev){
     if (!land || land.touched) return;
-    var g = jbScroller(null);
-    if (g && ev.target && ev.target.nodeType === 1 && g.contains(ev.target)) land.touched = true;
+    var t = ev.target;
+    if (t && t.nodeType === 1 && t.closest && t.closest('.sbs-grid, .vpane')) land.touched = true;
   }
   ['wheel', 'touchmove', 'mousedown'].forEach(function(n){
     window.addEventListener(n, touched, {capture: true, passive: true});
@@ -410,7 +452,7 @@ JS = r"""
   // mark(el, block)은 **프로그래매틱 스크롤을 시작하기 직전**에 부른다. block = 그 스크롤의
   // scrollIntoView block('start'|'center'). 반환값 = 자리를 쌓았거나 연장으로 이었나.
   window.__mdJumpBack = {
-    mark: jbMark, back: jbBack, dismiss: jbDismiss,
+    mark: jbMark, go: jbGo, back: jbBack, dismiss: jbDismiss, split: jbSplit,
     state: function(){ return stack.length ? stack[stack.length - 1] : null; },
     depth: function(){ return stack.length; },
     setPaper: function(tok){ if (tok !== jbPaper){ jbPaper = tok; jbDismiss(); } }
@@ -422,6 +464,14 @@ JS = r"""
 def mark_js(el_expr: str, block: str = "center") -> str:
     """본문을 옮기는 JS 앞에 붙이는 한 줄 — `el_expr`(요소 식)로 가기 전 읽던 자리를 쌓는다."""
     return f"window.{JUMP_BACK_API}&&window.{JUMP_BACK_API}.mark({el_expr},{json.dumps(block)});"
+
+
+def go_js(el_expr: str, block: str = "center", behavior: str = "smooth") -> str:
+    """`el_expr`(요소 식)로 옮기는 JS 식 — 자리 쌓기·나눔 중 아래 칸으로 보내기를 다 거친다.
+    알약이 없는 화면이면 그냥 그 요소로 스크롤한다. 값은 실제로 옮긴 요소(없으면 null)."""
+    b, h = json.dumps(block), json.dumps(behavior)
+    return (f"(function(e){{if(!e)return null;var J=window.{JUMP_BACK_API};if(J)return J.go(e,{b},{h});"
+            f"e.scrollIntoView({{behavior:{h},block:{b}}});return e;}})({el_expr})")
 
 
 def init_js(paper_key: str | None) -> str:

@@ -1019,5 +1019,11 @@
  "메모 탭": "Pestañas de notas",
  "다른 논문": "Otros artículos",
  "맥락 빼기": "Quitar contexto",
- "맞는 맥락이 없습니다": "No hay contexto que coincida"
+ "맞는 맥락이 없습니다": "No hay contexto que coincida",
+ "위아래 두 뷰어 — 아래 칸에서 다른 곳을 보며 위 칸은 읽던 자리 그대로": "Dos visores, arriba y abajo — mira otra parte abajo mientras arriba conservas tu lugar",
+ "같이 보기 — 아래 칸에 이 자리, 위 칸은 읽던 자리": "Ver juntos — este lugar abajo, tu lectura arriba",
+ "같이 보기 — 아래 칸에 지금 본 곳을 띄우고 위 칸은 읽던 자리로": "Ver juntos — muestra este lugar en un visor inferior y devuelve el de arriba a tu lectura",
+ "같이 보기": "Ver juntos",
+ "끌어서 위아래 칸 높이 조절 · 더블클릭하면 반반": "Arrastra para ajustar la altura de arriba y abajo · doble clic para mitad y mitad",
+ "아래 칸 닫기": "Cerrar visor inferior"
 }

@@ -59,8 +59,9 @@ def test_dark_mode_override():
 
 
 def test_buttons_are_real_and_labelled():
-    assert HTML.count('type="button"') == 2
-    assert HTML.count("aria-label=") == 2 and HTML.count('aria-hidden="true"') == 1
+    """돌아가기 · 같이 보기(두 뷰어로) · 닫기 — 셋 다 진짜 단추에 이름이 있다."""
+    assert HTML.count('type="button"') == 3
+    assert HTML.count("aria-label=") == 3 and HTML.count('aria-hidden="true"') == 2
     assert 'role="status"' in HTML
 
 
@@ -68,8 +69,9 @@ def test_container_lookup_is_gated():
     """단독 `.sbs-grid`는 번역 탭 결과 그리드까지 잡는다 — [data-row]로 뷰어 것만 가려낸다.
     요소를 받으면 그 요소가 본문 안일 때만 — 편집기·왼쪽 패널로 가는 이동은 쌓지 않는다."""
     sc = _js_block(JS, "function jbScroller(")
-    assert "'.sbs-grid, .vpane'" in sc and "matches('[data-row]')" in sc
-    assert "return null;" in sc.split("if (c){", 1)[1].split("}", 2)[1]
+    assert "closest('.sbs-grid, .vpane')" in sc and "return c || null;" in sc
+    # 요소 없이 찾을 때는 위 칸(복제가 아닌 그리드)만 — 아래 칸 자리는 paneGrid('b')로 따로 찾는다
+    assert "'.sbs-grid:not(.sbs-clone), .vpane'" in sc and "matches('[data-row]')" in sc
 
 
 def test_thresholds_have_hysteresis_grace_and_hop():
@@ -128,27 +130,49 @@ def test_helpers_are_guarded_for_pages_without_the_pill():
     assert "setPaper: function(tok){ if (tok !== jbPaper){ jbPaper = tok; jbDismiss(); } }" in JS
 
 
-@pytest.mark.parametrize("src, head, scroll", [
-    (figrefs.__file__, "  function jump(h){", "scrollIntoView("),
-    (find_bar.__file__, "  function scrollToCur(){", "e.scrollTop +="),
+def test_go_marks_then_routes_then_scrolls():
+    """모든 이동의 입구 — 두 뷰어면 아래 칸의 같은 요소로 바꾸고, 그 칸에서 자리를 쌓은 뒤 스크롤한다."""
+    go = _js_block(JS, "function jbGo(")
+    assert go.index("sp.route(el)") < go.index("jbMark(el") < go.index("scrollIntoView(")
+    assert "sp.touched(el)" in go and "return el;" in go
+    assert "go: jbGo" in JS and "split: jbSplit" in JS
+    cap = _js_block(JS, "function jbCapture(")
+    assert "pane: g.classList.contains('sbs-clone') ? 'b' : 'a'" in cap
+    assert "paneGrid(p.pane)" in _js_block(JS, "function jbBack(")
+
+
+def test_split_button_opens_lower_pane_then_returns_top():
+    """'같이 보기' — 아래 칸이 지금 본 곳(top: 위 칸의 지금 scrollTop)을 띄운 **뒤** 위 칸이 읽던 자리로."""
+    sp = _js_block(JS, "function jbSplit(")
+    assert sp.index("sp.open({top: g.scrollTop, lead: 'b'})") < sp.index("jbBack()")
+    can = _js_block(JS, "function canSplit(")
+    assert "!sp.isOn()" in can and "p.pane !== 'b'" in can
+    assert "#md-jump-back.can-split .mjb-split" in CSS
+
+
+@pytest.mark.parametrize("src, head, needle", [
+    (figrefs.__file__, "  function jump(h){", "window.__mdJumpBack.go(h, 'start', 'smooth')"),
+    (find_bar.__file__, "  function scrollToCur(){", "window.__mdJumpBack.mark(el, 'center')"),
 ])
-def test_other_jumps_stack_before_scrolling(src, head, scroll):
-    """쌓기가 스크롤 뒤로 가면 애니메이션 중간값을 집어 앵커가 목적지 쪽으로 끌려간다."""
+def test_other_jumps_go_through_the_pill(src, head, needle):
+    """그림·섹션 참조는 go(두 뷰어면 아래 칸으로), 찾기 바는 이끄는 칸 안에서만 찾으므로 mark만."""
     from pathlib import Path
 
-    text = Path(src).read_text(encoding="utf-8")
-    piece = _js_block(text, head)
-    assert piece.index("__mdJumpBack.mark(") < piece.index(scroll)
+    piece = _js_block(Path(src).read_text(encoding="utf-8"), head)
+    assert needle in piece
+    if "mark(" in needle:
+        assert piece.index(needle) < piece.index("e.scrollTop +=")
 
 
-def test_viewer_jumps_stack_before_scrolling():
-    """섹션 트리·목차·하이라이트 목록·용어 예문 — app.py가 만드는 이동도 같은 규칙을 탄다."""
+def test_viewer_jumps_go_through_the_pill():
+    """섹션 트리·목차·하이라이트 목록·용어 예문 — app.py가 만드는 이동도 같은 입구를 탄다."""
     from pathlib import Path
 
     from narani.ui import app
 
     js = app._jump_js("document.getElementById('sec-x')", "instant")
-    assert js.index(".mark(e,\"start\")") < js.index("scrollIntoView(")
+    assert "J.go(e,\"start\",\"instant\")" in js
+    assert js.index("J.go(") < js.index("scrollIntoView(")   # 알약이 없는 화면(홈)에서만 직접 스크롤
     text = Path(app.__file__).read_text(encoding="utf-8")
     for head in ("def _row_scroll_js(", "def _sec_scroll_js("):
         body = text[text.index(head):].split("\n\n", 1)[0]
@@ -156,9 +180,9 @@ def test_viewer_jumps_stack_before_scrolling():
     goto = text[text.index("    async def goto_md("):text.index("    # ---------- 왼쪽 작업 패널")]
     assert "_row_scroll_js(k, \"instant\")" in goto and ".sbs-grid [data-row" not in goto
     ex = text[text.index("    def goto_example_row("):text.index("    def example_toggle(")]
-    assert ex.index("jump_back.mark_js(") < ex.index("scrollIntoView(")
+    assert "jump_back.go_js(" in ex and "scrollIntoView" not in ex
     anno = text[text.index("    if (!ms.length){ openPop(id); return; }"):]
-    assert anno.index("__mdJumpBack.mark(") < anno.index("scrollIntoView(")
+    assert anno.index("__mdJumpBack.go(ms[0]") < anno.index("scrollIntoView(")
 
 
 def test_agent_button_lives_at_header_right_only():

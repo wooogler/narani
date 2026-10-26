@@ -516,7 +516,8 @@ JS = r"""
     return ((t && t.textContent) || document.title || '').trim().slice(0, 200);
   }
   function visibleRows(){
-    var g = gridNow(), out = [];
+    var sp = window.__md4Split;              // 두 뷰어면 이끄는 칸(마지막으로 손댄 칸)이 '보이는 행'
+    var g = (sp && sp.isOn() && sp.activeGrid()) || gridNow(), out = [];
     if (!g) return out;
     var gr = g.getBoundingClientRect();
     var els = g.querySelectorAll('.sbs-cell[data-row]');
@@ -604,8 +605,7 @@ JS = r"""
   function gotoRow(row){
     var els = cellsOf(row);
     if (!els.length) return false;
-    jbMark(els[0]);        // 스크롤을 시작하기 **전에** 읽던 자리를 쌓는다(중간값을 집으면 밀린다)
-    els[0].scrollIntoView({behavior: 'smooth', block: 'center'});
+    jbGo(els[0]);          // 읽던 자리를 쌓고 옮긴다 — 두 뷰어면 아래 칸으로 (§ui/jump_back.py)
     flash(els, 'chat-cite-flash');
     return true;
   }
@@ -620,8 +620,7 @@ JS = r"""
   function gotoNote(id, row){
     var ms = marksOf(id);
     if (!ms.length) return gotoRow(row);      // 아직 안 칠해졌거나 위치를 못 찾은 메모
-    jbMark(ms[0]);                            // gotoRow로 빠진 경우엔 거기서 쌓는다(이중으로 쌓지 않음)
-    ms[0].scrollIntoView({behavior: 'smooth', block: 'center'});
+    jbGo(ms[0]);                              // gotoRow로 빠진 경우엔 거기서 쌓는다(이중으로 쌓지 않음)
     flash(ms, 'md-anno-flash');
     return true;
   }
@@ -634,9 +633,11 @@ JS = r"""
     }
     return null;
   }
-  function jbMark(el){                   // 읽던 자리 쌓기 — 단독 창(/agent)에는 알약이 없다
+  function jbGo(el){                     // 읽던 자리 쌓고 옮기기 — 단독 창(/agent)에는 알약이 없다
     var jb = window.__mdJumpBack;
-    return !!(jb && jb.mark(el, 'center'));
+    if (jb) return jb.go(el, 'center', 'smooth');
+    el.scrollIntoView({behavior: 'smooth', block: 'center'});
+    return el;
   }
   // 다른 논문의 행 — 그 논문을 연 뒤 도착한 뷰어(setPaper)가 이어서 간다
   function gotoElsewhere(tok, row, id, url, gesture){

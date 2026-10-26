@@ -1019,5 +1019,11 @@
  "메모 탭": "Note tabs",
  "다른 논문": "Other papers",
  "맥락 빼기": "Remove context",
- "맞는 맥락이 없습니다": "No matching context"
+ "맞는 맥락이 없습니다": "No matching context",
+ "위아래 두 뷰어 — 아래 칸에서 다른 곳을 보며 위 칸은 읽던 자리 그대로": "Two viewers, top and bottom — look elsewhere below while the top keeps your place",
+ "같이 보기 — 아래 칸에 이 자리, 위 칸은 읽던 자리": "Side by side — this spot below, your reading spot above",
+ "같이 보기 — 아래 칸에 지금 본 곳을 띄우고 위 칸은 읽던 자리로": "Side by side — show this spot in a bottom viewer and return the top to where you were reading",
+ "같이 보기": "Side by side",
+ "끌어서 위아래 칸 높이 조절 · 더블클릭하면 반반": "Drag to resize the top and bottom viewers · double-click for half and half",
+ "아래 칸 닫기": "Close bottom viewer"
 }
