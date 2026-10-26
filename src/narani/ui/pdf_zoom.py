@@ -9,8 +9,9 @@ PDF 칸(`.vpdf`)은 쪽마다 PNG를 칸 폭에 맞춰 그린다. 작은 글씨�
   남도록 스크롤을 함께 옮긴다 — 안 그러면 확대할 때마다 보던 곳이 화면 밖으로 밀려난다.
 - 쪽 그림은 기본 2배(144dpi)로 그려 확대하면 흐려진다. 1.4배를 넘으면 그 칸의 쪽을 4배 그림
   (`/pdfpage/…?s=4`)으로 바꾼다(이미 받은 쪽만 다시 받고, 나머지는 원래대로 lazy).
-- 배율은 칸마다 따로다. 화면을 다시 그리면(토글 등) 새 칸은 100%부터. 확대 중에는 칸 오른쪽 위에
-  배율 알약이 떠서 누르면 100%로 돌아간다(⌘/Ctrl+0도 PDF 칸 위에서는 같은 동작).
+- 배율은 칸마다 따로다. 화면을 다시 그리면(토글 등) 새 칸은 100%부터.
+- 칸 오른쪽 위에 늘 `− 100% +` 막대가 있다 — 핀치가 없는 마우스로도 확대하고, 배율을 누르면 100%로.
+  평소엔 옅게, 칸에 마우스를 올리면 또렷하게. ⌘/Ctrl + `+`/`-`/`0`도 PDF 칸 위에서는 같은 동작.
 """
 
 from __future__ import annotations
@@ -21,29 +22,57 @@ CSS = """
 .vpdf img { max-width: calc(var(--md4-maxw, 900px) * var(--pdf-zoom, 1)) !important; }
 .vpdf .md4-pdfzoom { position: sticky; top: 0; left: 0; height: 0; z-index: 6; display: flex;
   justify-content: flex-end; align-items: flex-start; overflow: visible; pointer-events: none; }
-.vpdf .md4-pdfzoom button { pointer-events: auto; margin: 2px 2px 0 0; padding: 2px 9px; border: 0;
-  border-radius: 999px; font: 12px/1.6 system-ui, sans-serif; color: #fff; background: rgba(40,40,40,.72);
-  cursor: pointer; }
-.vpdf .md4-pdfzoom button:hover { background: rgba(35,131,226,.9); }
+.vpdf .md4-pdfzoom .bar { pointer-events: auto; margin: 4px 4px 0 0; display: flex; align-items: center;
+  border-radius: 999px; background: rgba(40,40,40,.72); opacity: .7; transition: opacity .15s ease; }
+.vpdf:hover .md4-pdfzoom .bar, .vpdf .md4-pdfzoom .bar.zoomed { opacity: 1; }
+.vpdf .md4-pdfzoom button { border: 0; background: transparent; color: #fff; cursor: pointer;
+  font: 13px/1 system-ui, sans-serif; padding: 5px 9px; border-radius: 999px; }
+.vpdf .md4-pdfzoom button.pct { min-width: 46px; padding: 5px 2px; font-variant-numeric: tabular-nums; }
+.vpdf .md4-pdfzoom button:hover:not(:disabled) { background: rgba(35,131,226,.9); }
+.vpdf .md4-pdfzoom button:disabled { opacity: .35; cursor: default; }
 """
 
 JS = r"""
 (function(){
   if (window.__md4PdfZoom) return; window.__md4PdfZoom = true;
   var MIN = 1, MAX = 5, HI = 1.4;
+  var STEPS = [1, 1.25, 1.5, 2, 2.5, 3, 4, 5];  // −/+ 단추가 오가는 배율
+  function stepFrom(z, dir){
+    if (dir > 0){ for (var i = 0; i < STEPS.length; i++) if (STEPS[i] > z + 0.01) return STEPS[i]; return MAX; }
+    for (var j = STEPS.length - 1; j >= 0; j--) if (STEPS[j] < z - 0.01) return STEPS[j]; return MIN;
+  }
   function paneOf(t){ return t && t.closest ? t.closest('.vpdf') : null; }
   function zoomOf(pv){ return parseFloat(pv.dataset.zoom || '1') || 1; }
-  function pill(pv, z){
+  // 칸 오른쪽 위 배율 막대 [− 100% +] — 칸이 생길 때마다 하나(아래 MutationObserver)
+  function bar(pv){
     var p = pv.querySelector(':scope > .md4-pdfzoom');
-    if (z <= 1.001){ if (p) p.remove(); return; }
     if (!p){
       p = document.createElement('div'); p.className = 'md4-pdfzoom';
-      p.innerHTML = '<button type="button" title="100%로 — ⌘/Ctrl+0"></button>';
-      p.firstChild.addEventListener('click', function(e){ e.stopPropagation(); setZoom(pv, 1); });
+      p.innerHTML = '<div class="bar"><button type="button" class="out">−</button>'
+        + '<button type="button" class="pct"></button><button type="button" class="in">+</button></div>';
+      var b = p.querySelectorAll('button');
+      b[0].title = md4T('축소') + ' — ⌘/Ctrl −';
+      b[1].title = md4T('100%로 — ⌘/Ctrl+0');
+      b[2].title = md4T('확대 — 핀치·⌘/Ctrl+휠도 됩니다');
+      b[0].addEventListener('click', function(e){ e.stopPropagation(); setZoom(pv, stepFrom(zoomOf(pv), -1)); });
+      b[1].addEventListener('click', function(e){ e.stopPropagation(); setZoom(pv, 1); });
+      b[2].addEventListener('click', function(e){ e.stopPropagation(); setZoom(pv, stepFrom(zoomOf(pv), 1)); });
       pv.insertBefore(p, pv.firstChild);
     }
-    p.firstChild.textContent = Math.round(z * 100) + '% · 맞춤';
+    var z = zoomOf(pv), btn = p.querySelectorAll('button');
+    btn[1].textContent = Math.round(z * 100) + '%';
+    btn[0].disabled = z <= MIN + 0.001; btn[2].disabled = z >= MAX - 0.001;
+    p.firstChild.classList.toggle('zoomed', z > 1.001);
   }
+  function bars(root){
+    if (!root || !root.querySelectorAll) return;
+    if (root.classList && root.classList.contains('vpdf')) bar(root);
+    [].forEach.call(root.querySelectorAll('.vpdf'), bar);
+  }
+  new MutationObserver(function(muts){
+    muts.forEach(function(m){ [].forEach.call(m.addedNodes, function(n){ if (n.nodeType === 1) bars(n); }); });
+  }).observe(document.body, { childList: true, subtree: true });
+  bars(document.body);
   function sharpen(pv){
     if (pv.dataset.hi) return; pv.dataset.hi = '1';
     [].forEach.call(pv.querySelectorAll('img[id^="pdfpage-"]'), function(img){
@@ -61,7 +90,7 @@ JS = r"""
     pv.dataset.zoom = String(nz);
     pv.style.setProperty('--pdf-zoom', String(nz));
     pv.scrollLeft = Math.max(0, x * k - ox); pv.scrollTop = Math.max(0, y * k - oy);
-    pill(pv, nz);
+    bar(pv);
     if (nz > HI) sharpen(pv);
   }
   window.__md4PdfSetZoom = setZoom;
@@ -99,13 +128,17 @@ JS = r"""
     setZoom(t.pv, t.z0 * dist(a, b) / (t.d0 || 1), (a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2);
   }, { passive: false, capture: true });
   document.addEventListener('touchend', function(e){ if (e.touches.length < 2) t = null; }, { capture: true });
-  // ⌘/Ctrl+0: 마우스가 PDF 칸 위면 그 칸만 100%로 (아니면 웹뷰 기본 동작 그대로)
+  // ⌘/Ctrl + 0 / + / −: 마우스가 PDF 칸 위면 그 칸만 (아니면 웹뷰 기본 동작 그대로)
   var hover = null;
   document.addEventListener('mousemove', function(e){ hover = paneOf(e.target); }, { passive: true });
   document.addEventListener('keydown', function(e){
-    if ((e.metaKey || e.ctrlKey) && e.key === '0' && hover && zoomOf(hover) !== 1){
-      e.preventDefault(); setZoom(hover, 1);
-    }
+    if (!(e.metaKey || e.ctrlKey) || !hover || !hover.isConnected) return;
+    var z = zoomOf(hover), nz = null;
+    if (e.key === '0') nz = 1;
+    else if (e.key === '=' || e.key === '+') nz = stepFrom(z, 1);
+    else if (e.key === '-' || e.key === '_') nz = stepFrom(z, -1);
+    if (nz === null) return;
+    e.preventDefault(); setZoom(hover, nz);
   });
 })();
 """

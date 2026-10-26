@@ -997,5 +997,7 @@
  "올릴 기록 {n}개": "{n} cambios por sincronizar",
  "(본문에서 위치를 찾지 못했어요)": "(no se encontró su lugar en el texto)",
  "메모 고치기": "Editar nota",
- "메모를 적으세요": "Escribe una nota"
+ "메모를 적으세요": "Escribe una nota",
+ "100%로 — ⌘/Ctrl+0": "Volver al 100% — ⌘/Ctrl+0",
+ "확대 — 핀치·⌘/Ctrl+휠도 됩니다": "Ampliar — también con pellizco o ⌘/Ctrl+rueda"
 }
