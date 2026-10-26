@@ -3615,10 +3615,11 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     # 텍스트 스크롤 → PDF 따라오기. 사람이 읽는 흐름에 맞춘다:
     #  - 읽는 선(텍스트 칸 위에서 33%)을 섹션 제목이 넘으면 그 섹션으로 — 제목이 칸 맨 위에 닿을 때까지
     #    기다리면 이미 읽기 시작한 섹션인데 PDF는 앞 섹션에 남아 있었다.
-    #  - 쪽 맨 위가 아니라 제목이 있는 자리(data-py, 쪽 안 높이 0~1)를 PDF 칸의 같은 읽는 선에 놓는다.
-    #  - 섹션 안에서는 다음 제목까지 읽은 비율만큼 PDF도 내려간다 — 긴 섹션에서 첫 쪽에 머물던 것.
-    #    다음 제목이 더 위에 있으면(2단의 오른쪽 열 맨 위) 섹션 시작에 머문다.
-    #  - 그 자리가 이미 PDF 칸에 보이면 움직이지 않고, PDF를 손으로 스크롤했으면 4초 동안 따라오지 않는다.
+    #  - **쪽 단위**로 맞춘다: 읽는 자리가 든 쪽을 PDF 칸 맨 위에 놓는다. 쪽 안 높이까지 따라가 봐야 2단
+    #    논문은 읽는 자리가 쪽 안에서 위아래로 오가서(왼쪽 열 끝 → 오른쪽 열 위) 의미가 없었다.
+    #  - 어느 쪽인지는 제목 자리(data-page + data-py, 쪽 안 높이 0~1)로 셈한다 — 쪽 아래쪽에서 시작하는
+    #    섹션도 그 쪽을 보여 주고, 섹션 안에서는 다음 제목까지 읽은 비율만큼 '쪽 수'를 나눠 넘긴다(긴 섹션).
+    #  - 그 쪽이 이미 PDF 칸에 통째로 보이면 움직이지 않고, PDF를 손으로 스크롤했으면 4초 동안 따라오지 않는다.
     # 컨테이너는 재렌더마다 새 요소라 리스너가 쌓이지 않는다(요소당 1회).
     def _pdf_sync_js(scroll_sel: str) -> str:
         return ("""
@@ -3637,36 +3638,36 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             return;
           }
           sc.dataset.pdfsync='1';
-          var READ=0.33, LO=0.06, HI=0.86, HOLD=4000;
+          var READ=0.33, HOLD=4000;
           // PDF 칸은 그때그때 찾는다 — 화면을 다시 그리면 칸이 바뀌는데, 붙잡아 둔 옛 칸을 움직이면 아무 일도 안 일어난다
           function P(){ return document.querySelector('.vpdf'); }
           var ours=0, manualUntil=0, tick=false;
-          // PDF 칸 안의 절대 높이(스크롤 포함) — (쪽, 쪽 안 높이) 자리. 그림 높이가 아직 0이면 null
-          function pdfY(page, py){
-            var pv=P(), img=document.getElementById('pdfpage-'+page); if(!pv || !img) return null;
-            var r=img.getBoundingClientRect(); if(!r.height) return null;
-            return pv.scrollTop + (r.top - pv.getBoundingClientRect().top) + (py||0)*r.height;
-          }
-          function target(){
+          // 제목 자리 → '쪽 단위 좌표'(쪽 + 쪽 안 높이). 3.6 = 4쪽(0-based 3)의 6할 지점
+          function at(c){ return +c.dataset.page + Math.min(0.999, +c.dataset.py || 0); }
+          function nPages(){ var pv=P(); return pv ? pv.querySelectorAll('img[id^="pdfpage-"]').length : 0; }
+          // 읽는 자리가 든 쪽 (0-based)
+          function targetPage(){
             var sr=sc.getBoundingClientRect(), line=sr.top + sc.clientHeight*READ, k=-1;
             for(var i=0;i<cells.length;i++){ if(cells[i].getBoundingClientRect().top<=line) k=i; else break; }
-            if(k<0) return pdfY(+cells[0].dataset.page, 0);  // 첫 제목 앞(제목·저자) — 그 쪽 맨 위
-            var a=cells[k], b=cells[k+1], t0=a.getBoundingClientRect().top, t1, y1;
-            var y0=pdfY(+a.dataset.page, +a.dataset.py); if(y0===null) return null;
-            if(b){ t1=b.getBoundingClientRect().top; y1=pdfY(+b.dataset.page, +b.dataset.py); }
-            else { t1=sr.top + sc.scrollHeight - sc.scrollTop; y1=P().scrollHeight; }  // 끝 섹션 ↔ PDF 끝
-            if(y1===null || y1<=y0 || t1<=t0) return y0;
-            return y0 + Math.min(1, Math.max(0, (line-t0)/(t1-t0)))*(y1-y0);
+            if(k<0) return +cells[0].dataset.page;  // 첫 제목 앞(제목·저자) — 그 쪽
+            var a=cells[k], b=cells[k+1], t0=a.getBoundingClientRect().top, t1, u1, u0=at(a);
+            if(b){ t1=b.getBoundingClientRect().top; u1=at(b); }
+            else { t1=sr.top + sc.scrollHeight - sc.scrollTop; u1=nPages(); }  // 끝 섹션 ↔ 마지막 쪽 끝
+            var u=(u1<=u0 || t1<=t0) ? u0 : u0 + Math.min(1, Math.max(0, (line-t0)/(t1-t0)))*(u1-u0);
+            return Math.max(0, Math.min(Math.floor(u), Math.max(0, nPages()-1)));
           }
-          // force = 처음 맞출 때(보여도 읽는 선에 놓는다). 패널이 막 생겨 높이가 0이거나 스크롤이 아직
+          // force = 처음 맞출 때(보여도 쪽 맨 위에 놓는다). 패널이 막 생겨 높이가 0이거나 스크롤이 아직
           // 안 먹으면 '맞췄다'로 치지 않고 잠깐씩 다시 맞춘다(~3초) — 안 그러면 보던 쪽 대신 1쪽에 멈춘다.
           function move(force, tries){
             if(!sc.isConnected) return;  // 이 텍스트 칸은 이미 화면에서 내려갔다 (새 칸이 따로 붙는다)
-            var pv=P(), y=pv ? target() : null, h=pv ? pv.clientHeight : 0;
-            if(y===null || !h){ if((tries||0)<100) setTimeout(function(){ move(force, (tries||0)+1); }, 30); return; }
-            var rel=y-pv.scrollTop;
-            if(!force && rel>=h*LO && rel<=h*HI) return;  // 이미 보인다 → 그대로
-            var want=Math.max(0, Math.min(y-h*READ, pv.scrollHeight-h));
+            var pv=P(), h=pv ? pv.clientHeight : 0;
+            var img=pv ? document.getElementById('pdfpage-'+targetPage()) : null;
+            var r=img ? img.getBoundingClientRect() : null;
+            if(!r || !r.height || !h){ if((tries||0)<100) setTimeout(function(){ move(force, (tries||0)+1); }, 30); return; }
+            var pr=pv.getBoundingClientRect(), top=r.top-pr.top, bottom=r.bottom-pr.top;
+            // 이미 보인다 → 그대로: 쪽이 통째로 칸 안에 있거나, 칸보다 큰 쪽(확대 등)이면 그 쪽이 칸을 채우고 있을 때
+            if(!force && ((top>=-2 && bottom<=h+2) || (r.height>h && top<=2 && bottom>=h-2))) return;
+            var want=Math.max(0, Math.min(pv.scrollTop+top-6, pv.scrollHeight-h));
             ours=Date.now(); pv.scrollTop=want;
             if(force && Math.abs(pv.scrollTop-want)>2 && (tries||0)<100)
               setTimeout(function(){ move(true, (tries||0)+1); }, 30);
