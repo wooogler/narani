@@ -1295,29 +1295,6 @@ def _md4_dirs(path: Path) -> list[Path]:
     return sorted(p for p in path.glob("*.md4") if p.is_dir())
 
 
-@cli.command("mobile")
-@click.argument("workdirs", nargs=-1, type=click.Path(exists=True, file_okay=False, path_type=Path))
-@click.option("--collection", "--project", "project_ref", default=None, help="이 컬렉션의 논문 전부 ('none' = 미분류)")
-@click.option("-o", "--out", "out_path", type=click.Path(dir_okay=False, path_type=Path), default=None,
-              help="저장할 HTML 파일 (기본: 현재 폴더의 narani-mobile-N편-날짜.html)")
-def mobile_cmd(workdirs: tuple[Path, ...], project_ref: str | None, out_path: Path | None) -> None:
-    """논문들을 폰에서 읽는 HTML 한 장으로 — 원문·번역·문단 대조, 서버 없이 오프라인으로 열린다.
-
-    iCloud Drive·구글 드라이브 같은 동기화 폴더에 저장하면 밖에서도 폰으로 열 수 있다.
-    """
-    from narani.ui import mobile
-
-    roots = [r for w in workdirs for r in _md4_dirs(w)]
-    if project_ref is not None:
-        roots += _project_roots("" if _is_none_ref(project_ref) else _find_project(project_ref)["id"])
-    roots = list(dict.fromkeys(roots))  # 순서는 지키고 중복만 뺀다
-    if not roots:
-        raise click.ClickException("논문을 고르세요 — 작업 디렉토리(.md4)를 넘기거나 --collection을 쓰세요.")
-    target = out_path or Path(mobile.file_name(len(roots)))
-    target.write_text(mobile.build(roots), encoding="utf-8")
-    click.echo(f"{len(roots)}편 → {target} ({target.stat().st_size / 1e6:.1f}MB)")
-
-
 def _phone_dir() -> Path:
     """로컬 저장소(시험·미리보기용) 기본 폴더."""
     return config.CONFIG_DIR / "phone"

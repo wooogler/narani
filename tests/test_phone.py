@@ -168,9 +168,6 @@ def test_preview_server_accepts_phone_records_only(tmp_path):
         srv.server_close()
 
 
-def test_phone_app_has_notes_and_mobile_html_does_not():
+def test_phone_app_has_notes():
     js = web.site_files(local=True)["app.js"][0].decode()
     assert "function sentenceActs" in js and "function notesOpen" in js
-    from narani.ui import mobile
-
-    assert "function sentenceActs" not in mobile._JS  # 한 장 HTML은 저장할 곳이 없어 하이라이트를 받지 않는다

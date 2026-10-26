@@ -87,3 +87,27 @@ def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dic
         on_progress(len(roots), len(roots), "")
     return {"uploaded": uploaded, "skipped": skipped, "removed": removed, "bytes": sent, "papers": len(entries),
             "merged": merged, "notes": notes_sent}
+
+
+def sync_notes(store: Store, roots: Iterable[Path]) -> dict:
+    """본문은 건드리지 않고 하이라이트·메모만 주고받는다 — 목록(index.json)에 있는 논문 중 roots에 있는 것.
+
+    앱을 켤 때 뒤에서 돈다: 폰 기록을 annotations.json에 합치고, 바뀐 notes/만 올리고, 목록의 notes_hash를
+    고친다(폰이 새 메모 파일을 받아 가게). 반환: {merged, notes}.
+    """
+    index = read_index(store)
+    by_key = {Path(r).stem: Path(r) for r in roots}
+    merged = notes_sent = 0
+    for e in index["papers"]:
+        root = by_key.get(e.get("key")) if isinstance(e, dict) else None
+        if root is None or not root.is_dir():
+            continue
+        ns = nmod.sync_paper(store, root, e.get("notes_hash", ""))
+        merged += ns["merged"]
+        if ns["wrote"]:
+            notes_sent += 1
+            e["notes_hash"] = ns["notes_hash"]
+    if notes_sent:
+        index["updated"] = time.time()
+        store.write(INDEX, bmod.dumps(index))
+    return {"merged": merged, "notes": notes_sent}
