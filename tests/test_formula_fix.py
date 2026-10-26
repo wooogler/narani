@@ -250,9 +250,50 @@ def test_apply_marks_stale_when_translation_lacks_block(ctrl):
 
 # --- 인라인 수식 ---
 
-def test_inline_spans_follow_markdown2_and_skip_code():
+def test_inline_spans_skip_code():
     md = "Let $x_i$ be `$not$` and\n\n```\n$no$\n```\n\n$$y$$ then $z$."
     assert [t for _s, _e, t in formula_fix.inline_spans(md)] == ["$x_i$", "$z$"]
+
+
+# 금액은 수식이 아니다 — 편집 프리뷰·폰(dollarmath allow_digits/space=False)과 같은 규칙 (실측 문장들)
+MONEY = [
+    'She types "Find me apartments in New York under $2,500" and receives a card-grid. '
+    'Noticing it, she types "Affordable means under $1,800 and within 20 minutes."',  # Maru 4.1
+    "The cost was $0.08 per Find, $1.41 to shorten under our pay model.",
+    "Participants received $50 for faculty members and $40 for students.",
+    "We paid $10 for an estimated 40-minute session ( ∼ $15/hour).",
+]
+MATH = ["Significant ($p<.001$).", "Scores ($M=5.58,SD=1.62$) and $SD=2.09$.",
+        r"With $\Delta=+0.25$ and $2^n$ items, $x$ grows."]
+
+
+def test_inline_spans_skip_money():
+    for md in MONEY:
+        assert formula_fix.inline_spans(md) == [], md
+    got = [[t for _s, _e, t in formula_fix.inline_spans(md)] for md in MATH]
+    assert got == [["$p<.001$"], ["$M=5.58,SD=1.62$", "$SD=2.09$"], [r"$\Delta=+0.25$", "$2^n$", "$x$"]]
+    # 첫 닫는 `$`가 안 맞아도 그 뒤 진짜 수식은 잡는다
+    assert [t for _s, _e, t in formula_fix.inline_spans("costs $5 and $x$ more")] == ["$x$"]
+    assert formula_fix.inline_spans(r"escaped \$x$ here") == []
+
+
+def test_literal_dollars_keeps_money_out_of_markdown2_latex():
+    from nicegui.elements.markdown import prepare_content
+
+    for md in MONEY:
+        html = prepare_content(formula_fix.literal_dollars(md), "fenced-code-blocks tables latex")
+        assert "<math" not in html and html.count("$") + html.count("&#36;") == md.count("$"), html
+    html = prepare_content(formula_fix.literal_dollars(MONEY[1] + " Also $x_i$ and `$c$`."),
+                           "fenced-code-blocks tables latex")
+    assert html.count("<math") == 1 and "<code>$c$</code>" in html
+    assert formula_fix.literal_dollars(r"a \$5 fee") == "a &#36;5 fee"
+    assert formula_fix.literal_dollars("$$y$$ and $x$") == "$$y$$ and $x$"
+
+
+def test_inline_text_keeps_dollars_literal():
+    assert formula_fix.inline_text("$WHOLE$", "text") == r"\$WHOLE\$"
+    assert formula_fix.inline_spans(formula_fix.inline_text("$WHOLE$", "text")) == []
+    assert formula_fix.inline_text("x_i", "inline") == "$x_i$"
 
 
 def test_tag_inline_shares_ids_between_en_and_ko():

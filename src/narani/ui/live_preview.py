@@ -309,7 +309,7 @@ _JS = r"""
 
   // --- 인라인: 화면에 보이는 범위만 문법 트리를 훑는다 ---
   var CODEISH = /^(InlineCode|FencedCode|CodeBlock|CodeText|URL|HTMLBlock|Comment)$/;
-  var INLINE_MATH = /(^|[^\\\d$])\$(?![\s$\d])([^$\n]*?[^\s\\$])\$(?![\d$])/g;
+  var INLINE_MATH = /(^|[^\\\d$])\$(?![\s$])([^$\n]*?[^\s\\$])\$(?![\d$])/g;
   function inline(v){
     // 기호는 편집기에 포커스가 있을 때만 커서 줄에서 드러낸다 — 막 열었을 때 첫 줄 '#'이 보이지 않게
     var st = v.state, act = v.hasFocus ? touched(st) : new Set(), tree = CM.syntaxTree(st), out = [];
@@ -355,7 +355,7 @@ _JS = r"""
             return false;
         }
       }});
-      // 인라인 수식 $…$ — 문법 트리가 모르므로 줄을 훑는다(코드·URL 안은 건너뜀, 금액 $10 같은 건 안 잡힘)
+      // 인라인 수식 $…$ — 문법 트리가 모르므로 줄을 훑는다(코드·URL 안은 건너뜀, 규칙은 formula_fix._scan과 같다 — 금액 $10 같은 건 안 잡힘)
       for (var p = vr.from; p <= vr.to;){
         var l = st.doc.lineAt(p); p = l.to + 1;
         if (act.has(l.number) || l.text.trim().slice(0, 2) === '$$' || l.text.indexOf('$') < 0) continue;

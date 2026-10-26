@@ -3849,6 +3849,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             ui.label(t("영어 마크다운이 없습니다 — 먼저 변환하세요.")).classes("text-sm text-gray-500")
             return
         _md = ["fenced-code-blocks", "tables", "latex"]
+        _lit = formula_fix.literal_dollars  # markdown2 latex가 금액 `$…$`를 수식으로 만들지 않게
         rows, aligned, row_page0 = info["rows"], info["aligned"], info["row_page0"]
         has_ko = bool(info["ko"])
         has_pdf = ctrl.pdf_page_count() > 0
@@ -3882,16 +3883,16 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                                 div = " sbs-cell-div" if two else ""
                                 with ui.element("div").classes(f"sbs-cell anno-scope{div}{sep}").props(
                                         f"data-row={k} data-side=en{page_prop}"):
-                                    ui.markdown(enb, extras=_md).classes("md-preview sbs-md")
+                                    ui.markdown(_lit(enb), extras=_md).classes("md-preview sbs-md")
                                 anchored = True
                             if show_ko and aligned:
                                 with ui.element("div").classes(f"sbs-cell anno-scope{sep}").props(
                                         f"data-row={k} data-side=ko" + ("" if anchored else page_prop)):
-                                    ui.markdown(kob or "", extras=_md).classes("md-preview sbs-md")
+                                    ui.markdown(_lit(kob or ""), extras=_md).classes("md-preview sbs-md")
                             if ghost:  # anno-scope·data-page 없이 — 메모·찾기·PDF 싱크가 이 셀을 모른다
                                 with ui.element("div").classes("sbs-cell sbs-ghost").props(
                                         f"data-row={k} data-side={'ko' if show_en else 'en'}"):
-                                    ui.markdown((kob or "") if show_en else enb, extras=_md).classes("md-preview sbs-md")
+                                    ui.markdown(_lit((kob or "") if show_en else enb), extras=_md).classes("md-preview sbs-md")
                     if two:
                         ui.element("div").classes("vcol-handle")
                     elif handles:
@@ -3906,7 +3907,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                     with ui.element("div").classes("vpane anno-scope").style(
                             "padding:1px 22px 8px").props("data-row=0 data-side=ko"):
                         with ui.element("div").classes("vpane-in md-preview"):
-                            ui.markdown(info["ko"], extras=_md)
+                            ui.markdown(_lit(info["ko"]), extras=_md)
                     if solo:
                         _body_handles()
                 if solo:

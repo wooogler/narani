@@ -91,21 +91,77 @@ def assign(md: str, records: list[dict]) -> dict[str, str]:
     return {found[b][2]: recs[i]["id"] for b, i in enumerate(hit) if i is not None}
 
 
-# 문장 속 인라인 수식 — markdown2 latex 확장과 같은 규칙으로 센다(캔버스가 그 렌더러다).
+# 문장 속 인라인 수식 — 편집 프리뷰·폰(mdrender: dollarmath allow_digits/space=False)·편집기 라이브
+# 프리뷰와 같은 규칙(pandoc과 같다): 여는 `$` 바로 뒤가 공백이 아니고 앞이 숫자가 아니며, 닫는 `$` 바로
+# 앞이 공백이 아니고 뒤가 숫자가 아니어야 수식이다. 첫 닫는 `$`가 규칙에 안 맞으면 그 `$`는 그냥 글자다.
+# markdown2 latex 확장(캔버스 렌더러)은 `$`가 두 번이면 무조건 수식으로 봐서 "under $2,500 … under $1,800"
+# 사이 문장을 통째로 수식으로 만들었다(코퍼스 15편 31곳, 모두 금액) — 그래서 캔버스에는 이 규칙에 안 맞는
+# `$`를 엔티티로 바꿔 넘긴다(§literal_dollars).
 # 코드(펜스·백틱)와 $$…$$ 안은 수식이 아니므로 먼저 가린다 — 가린 자리도 길이는 그대로 둬 오프셋이 맞게.
-_SINGLE_RE = re.compile(r"(?<!\$)\$(?!\$)(.*?)\$")
 _MASK_RES = (re.compile(r"```.*?```", re.DOTALL), re.compile(r"(?<!`)(`)(.*?)(?<!`)\1(?!`)"),
              _DISPLAY_RE)
 INLINE_PREFIX = "inline-"
 
 
-def inline_spans(md: str) -> list[tuple[int, int, str]]:
-    """본문의 `$…$` 자리 (시작, 끝, 원문) — 문서 순서. 번호가 곧 인라인 수식의 id다."""
+def _escaped(s: str, i: int) -> bool:
+    k = i
+    while k > 0 and s[k - 1] == "\\":
+        k -= 1
+    return (i - k) % 2 == 1
+
+
+def _scan(md: str) -> tuple[list[tuple[int, int]], list[int]]:
+    """(인라인 수식 자리들, 글자로 남는 `$` 자리들) — 코드·$$…$$ 안은 어느 쪽에도 넣지 않는다."""
     masked = md
     for rx in _MASK_RES:
         masked = rx.sub(lambda m: "\0" * len(m.group(0)), masked)
-    return [(m.start(), m.end(), md[m.start():m.end()]) for m in _SINGLE_RE.finditer(masked)
-            if m.group(1).strip()]
+    spans: list[tuple[int, int]] = []
+    loose: list[int] = []
+    i = masked.find("$")
+    while i >= 0:
+        nxt = masked[i + 1:i + 2]
+        if nxt == "$":  # 닫히지 않은 `$$` — 인라인 수식은 아니고, markdown2도 짝이 없으면 손대지 않는다
+            i = masked.find("$", i + 2)
+            continue
+        end = -1
+        if nxt and not nxt.isspace() and not (i and masked[i - 1].isdigit()) and not _escaped(masked, i):
+            end = masked.find("$", i + 1)
+            while end >= 0 and _escaped(masked, end):
+                end = masked.find("$", end + 1)
+            if (end < 0 or "\n" in masked[i:end] or masked[end - 1].isspace()
+                    or masked[end + 1:end + 2].isdigit() or masked[end + 1:end + 2] == "$"):
+                end = -1
+        if end < 0:
+            loose.append(i)
+            i = masked.find("$", i + 1)
+            continue
+        spans.append((i, end + 1))
+        i = masked.find("$", end + 1)
+    return spans, loose
+
+
+def inline_spans(md: str) -> list[tuple[int, int, str]]:
+    """본문의 `$…$` 자리 (시작, 끝, 원문) — 문서 순서. 번호가 곧 인라인 수식의 id다."""
+    return [(s, e, md[s:e]) for s, e in _scan(md)[0]]
+
+
+def literal_dollars(md: str) -> str:
+    """캔버스(markdown2 latex)에 넘기기 전 — 수식이 아닌 `$`(금액, `\\$`)를 `&#36;`로 바꿔 수식이 못 되게.
+
+    브라우저는 `$`로 그리므로 화면 글자는 그대로다(하이라이트 오프셋도 그대로). 파일에는 쓰지 않는다.
+    """
+    loose = _scan(md)[1]
+    if not loose:
+        return md
+    out: list[str] = []
+    pos = 0
+    for i in loose:
+        cut = i - 1 if _escaped(md, i) else i  # `\$`는 역슬래시까지 — markdown2는 `\$`를 풀지 않는다
+        out.append(md[pos:cut])
+        out.append("&#36;")
+        pos = i + 1
+    out.append(md[pos:])
+    return "".join(out)
 
 
 def _ranked(spans: list[tuple[int, int, str]]) -> list[tuple[str, int]]:
@@ -332,7 +388,8 @@ def regenerate(wd: WorkDir, fid: str, provider, page: int | None = None,  # noqa
 
 
 def inline_text(latex: str, kind: str) -> str:
-    return latex if kind == "text" else f"${latex}$"
+    """문장 속 자리에 넣을 글 — 평문이면 `$`를 `\\$`로 둬 금액 같은 글자가 다시 수식으로 잡히지 않게."""
+    return re.sub(r"(?<!\\)\$", r"\\$", latex) if kind == "text" else f"${latex}$"
 
 
 def line_position(md: str, old: str) -> int | None:

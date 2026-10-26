@@ -30,7 +30,9 @@ def preview_html(block: str) -> str:
     """후보 블록을 캔버스와 같은 렌더러(markdown2 latex)로 — 팝오버 미리보기용."""
     from nicegui.elements.markdown import prepare_content
 
-    return prepare_content(block, _MD_EXTRAS)
+    from narani import formula_fix
+
+    return prepare_content(formula_fix.literal_dollars(block), _MD_EXTRAS)
 
 
 def register_routes(fastapi_app, wd_for: Callable[[str], object],  # noqa: ANN001
