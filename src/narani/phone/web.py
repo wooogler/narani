@@ -767,26 +767,17 @@ def _catalogs() -> dict[str, dict[str, str]]:
     return out
 
 
+ICON = Path(__file__).resolve().parents[1] / "ui" / "assets" / "icon-maskable.png"  # tools/make_icon.py
+
+
 def _icon_png(size: int) -> bytes:
-    """원문|번역 두 쪽 — 단순한 아이콘 (PIL이 없으면 1×1)."""
+    """앱 아이콘의 꽉 찬 사각형판(maskable·apple-touch-icon)을 size로 줄인 PNG (PIL이 없으면 원본)."""
     try:
-        from PIL import Image, ImageDraw
+        from PIL import Image
     except ImportError:  # pragma: no cover — 데스크톱 의존성에 늘 있다
-        return bytes.fromhex("89504e470d0a1a0a0000000d4948445200000001000000010806000000"
-                             "1f15c4890000000d49444154789c6360f8cf00000301010018dd8db00000000049454e44ae426082")
-    im = Image.new("RGB", (size, size), (47, 111, 208))
-    d = ImageDraw.Draw(im)
-    pad, gap, r = size * 0.22, size * 0.05, size * 0.05
-    w = (size - 2 * pad - gap) / 2
-    for i, fill in enumerate(((255, 255, 255), (222, 233, 252))):
-        x0 = pad + i * (w + gap)
-        d.rounded_rectangle((x0, pad, x0 + w, size - pad), radius=r, fill=fill)
-        for k in range(4):  # 글줄
-            y = pad + size * 0.1 + k * size * 0.1
-            d.rounded_rectangle((x0 + w * 0.15, y, x0 + w * (0.85 if k < 3 else 0.55), y + size * 0.035),
-                                radius=size * 0.015, fill=(47, 111, 208) if i == 0 else (90, 140, 220))
+        return ICON.read_bytes()
     buf = io.BytesIO()
-    im.save(buf, "PNG", optimize=True)
+    Image.open(ICON).convert("RGB").resize((size, size), Image.LANCZOS).save(buf, "PNG", optimize=True)
     return buf.getvalue()
 
 
