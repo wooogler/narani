@@ -625,10 +625,10 @@ def test_at_picker_owns_keys_while_open_and_sends_pointers():
     q = _js_block(JS, "function atQuery(")
     assert "!/\\s/.test(pre[i - 1])" in q                 # 메일 주소 속 @는 목록을 열지 않는다
     snd = _js_block(JS, "function send(")
-    assert "atPicked = []; atClose(); paintCtx();" in snd                    # 보내면 비운다
+    assert "atPicked = []; autoOff = ''; atClose(); paintCtx();" in snd   # 보내면 비운다
     assert "atPicked = gone.slice(); paintCtx();" in snd                    # 스트림 전 거절이면 되돌린다
     assert "body.context.mentions = keepAt" in snd                           # 비용 상한 재시도도 같은 맥락
-    assert "mentions: atPicked.slice()" in _js_block(JS, "function ctxNow(")
+    assert "mentions: ctxMentions()" in _js_block(JS, "function ctxNow(")
     assert "ctxChips(t.mentions, false)" in _js_block(JS, "function turnNode(")
     assert 'class="ag-at-btn"' in HTML and 'class="ag-ctx"' in HTML and 'class="ag-at"' in HTML
 
@@ -647,3 +647,16 @@ def test_old_sessions_with_question_titles_get_named_on_open():
     assert f"var TITLE_CHARS = {sessions.TITLE_CHARS};" in JS
     op = _js_block(JS, "function openSession(")
     assert "if (hasDefaultTitle(d)) autoTitle(d.id);" in op
+
+
+def test_viewing_context_is_attached_by_default_and_removable():
+    """뷰어면 이 논문, 홈이면 고른 컬렉션(data-pid) — 점선 칩으로 보이고 ✕는 이번 질문에서만 뺀다."""
+    a = _js_block(JS, "function autoCtx(")
+    assert "onReview() && paper" in a and ".md4-prow.on[data-pid]" in a and "auto: true" in a
+    assert "out.unshift(a)" in _js_block(JS, "function ctxMentions(")
+    assert "mentions: ctxMentions()" in _js_block(JS, "function ctxNow(")
+    assert "autoOff = atKeyOf(a)" in _js_block(JS, "function paintCtx(")
+    assert "atPicked = []; autoOff = '';" in _js_block(JS, "function send(")
+    home = (Path(agent_panel.__file__).with_name("home.py")).read_text(encoding="utf-8")
+    assert "row.props(f'data-pid=\"{value}\"')" in home
+    assert ".ag-row:focus-within" in CSS                 # 입력 상자 전체가 초점을 보인다

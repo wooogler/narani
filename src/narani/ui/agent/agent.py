@@ -464,7 +464,8 @@ async def run_turn(agent: Agent, session: sessions.Session, user_text: str | Non
                   "html": "", "citations": [], "usage": None, "cost_usd": 0.0,
                   "token": deps.current_token,
                   # 질문에 붙인 @ 맥락 — 창이 질문 아래 칩으로 다시 그린다
-                  "mentions": [m.model_dump(exclude_none=True) for m in deps.ctx.mentions]}
+                  "mentions": [m.model_dump(exclude_none=True, exclude={"auto"})
+                               for m in deps.ctx.mentions if not m.auto]}
                  if text else None)
 
     result = None

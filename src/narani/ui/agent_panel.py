@@ -266,7 +266,10 @@ a.chat-cite-note:hover { background: #f7cf60; }
   font-size: 11px; padding: 2px 8px; cursor: pointer; color: inherit; }
 .ag-cap button.ag-cap-go { border-color: #2383e2; background: #eef4fd; color: #1668c4; }
 
-.ag-foot { position: relative; border-top: 1px solid #ecebe8; padding: 8px 9px; }
+.ag-foot { position: relative; border-top: 1px solid #ecebe8; padding: 9px 10px 11px; background: #f7f6f3; }
+/* 보고 있는 것(기본 맥락) — 고른 칩과 같은 줄, 테두리만 있는 옅은 칩 */
+.ag-chip.ag-chip-auto { background: #fff; border-style: dashed; border-color: #b9cde6; color: #3d5a7a; }
+.ag-chip-k { color: #8aa2bf; margin-right: 1px; }
 /* @ 맥락 — 입력창 위 칩 줄(이번 질문에 붙여 보낼 것)과 '@'를 치면 뜨는 고르기 목록 */
 .ag-ctx { display: none; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; }
 .ag-ctx.on { display: flex; }
@@ -302,13 +305,18 @@ a.chat-cite-note:hover { background: #f7cf60; }
   margin: 0 0 6px; }
 .ag-sel.on { display: flex; }
 .ag-sel-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ag-row { display: flex; gap: 6px; align-items: flex-end; }
-.ag-input { flex: 1 1 auto; resize: none; max-height: 120px; box-sizing: border-box;
-  border: 1px solid #e0ded9; border-radius: 10px; padding: 7px 9px; font: inherit;
-  font-size: 12.5px; line-height: 1.5; background: #fff; color: inherit; outline: none; }
-.ag-input:focus { border-color: #2383e2; }
-.ag-input:disabled { background: #f4f3f0; color: #97948d; }
-.ag-send { flex: 0 0 30px; width: 30px; height: 30px; border: none; border-radius: 50%;
+/* 입력창 — @ 단추·글칸·보내기를 테두리 하나로 묶은 상자. 서랍 바닥이 옅은 회색이라 흰 상자 + 파란 테가
+   '여기에 쓴다'를 먼저 보인다. 초점이 들어오면 테가 짙어지고 바깥 고리가 뜬다. */
+.ag-row { display: flex; gap: 4px; align-items: flex-end; background: #fff; border: 1.5px solid #c9d7ea;
+  border-radius: 14px; padding: 4px 4px 4px 3px; box-shadow: 0 2px 10px rgba(35,131,226,.10);
+  transition: border-color .12s ease, box-shadow .12s ease; }
+.ag-row:focus-within { border-color: #2383e2; box-shadow: 0 0 0 3px rgba(35,131,226,.16), 0 2px 10px rgba(35,131,226,.10); }
+.ag-input { flex: 1 1 auto; resize: none; max-height: 160px; box-sizing: border-box; border: none;
+  padding: 7px 4px; font: inherit; font-size: 13.5px; line-height: 1.5; background: transparent;
+  color: inherit; outline: none; min-height: 34px; }
+.ag-input::placeholder { color: #8a8780; }
+.ag-input:disabled { color: #97948d; }
+.ag-send { flex: 0 0 32px; width: 32px; height: 32px; border: none; border-radius: 50%;
   background: #2383e2; color: #fff; font-size: 13px; cursor: pointer; }
 .ag-send:hover { background: #1668c4; }
 .ag-send:disabled { background: #d8d6d1; cursor: default; }
@@ -343,7 +351,11 @@ a.chat-cite-note:hover { background: #f7cf60; }
   .ag-mi.on, .ag-q { background: #24303d; }
   .ag-msep { background: #333; }
   .ag-empty, .ag-meta, .ag-sess-c, .ag-mi-s, .ag-sel, .ag-mi-hint { color: #8f8f8f; }
-  .ag-input { background: #262626; border-color: #3a3a3a; }
+  .ag-foot { background: #1b1b1b; }
+  .ag-row { background: #262626; border-color: #3a4a5e; box-shadow: none; }
+  .ag-row:focus-within { border-color: #5a96e6; box-shadow: 0 0 0 3px rgba(90,150,230,.2); }
+  .ag-input { background: transparent; }
+  .ag-chip.ag-chip-auto { background: #1f1f1f; border-color: #3a4a5e; color: #8fbcf0; }
   .ag-name-in { background: #262626; }
   .ag-mi-hint { border-top-color: #333; }
   .ag-input:disabled { background: #232323; color: #7d7d7d; }
@@ -394,7 +406,7 @@ HTML = """
       <button type="button" class="ag-at-btn" title="⦃맥락 넣기 — 논문·섹션·메모 탭·컬렉션 (@)⦄"
         aria-label="⦃맥락 넣기⦄">@</button>
       <textarea class="ag-input" rows="1"
-        placeholder="⦃무엇이든 물어보세요 — @로 맥락 넣기 (Shift+Enter 줄바꿈)⦄"></textarea>
+        placeholder="⦃무엇이든 물어보세요 · @로 맥락 넣기⦄" title="⦃Enter 보내기 · Shift+Enter 줄바꿈⦄"></textarea>
       <button type="button" class="ag-send" title="⦃전송 (Enter)⦄">&#10148;</button>
     </div>
   </div>
@@ -564,7 +576,7 @@ JS = r"""
     if (SA)       // 단독 창 — 화면(DOM) 맥락이 없다. 넘겨받은 논문만 싣고 제목은 서버가 채운다
       return {screen: 'window', paper: paper ? {token: paper, title: SA.title || null} : null,
               lang: null, visible_rows: [], top_row: null, selection: lastSel || selNow(),
-              note_tabs: null, left_panel: null, project: null, mentions: atPicked.slice()};
+              note_tabs: null, left_panel: null, project: null, mentions: ctxMentions()};
     var review = onReview();
     var rows = review ? visibleRows() : [];
     return {
@@ -577,7 +589,7 @@ JS = r"""
       note_tabs: review ? noteTabs() : null,
       left_panel: review ? leftPanel() : null,
       project: review ? null : projectNow(),
-      mentions: atPicked.slice()             // 입력창에서 @로 집어넣은 맥락 (§ui/agent/context.py Mention)
+      mentions: ctxMentions()                // 보고 있는 것 + 입력창에서 @로 집어넣은 맥락 (§ui/agent/context.py)
     };
   }
   window.__md4Context = ctxNow;
@@ -1352,7 +1364,7 @@ JS = r"""
       if (!q && !approvals) return;
       body = {message: q, context: ctxNow()};
       if (approvals) body.approvals = approvals;
-      if (q){ input.value = ''; autosize(); lastSel = null; paintSel(); atPicked = []; atClose(); paintCtx(); }
+      if (q){ input.value = ''; autosize(); lastSel = null; paintSel(); atPicked = []; autoOff = ''; atClose(); paintCtx(); }
     }
     capRetry = null; notice = null;
     // 대기 중이던 승인 카드를 잠근다 — 승인/거절을 보냈거나, 그냥 새 질문을 보내 건너뛰었다.
@@ -1478,9 +1490,40 @@ JS = r"""
     });
     return box;
   }
+  // 기본 맥락 — 지금 보고 있는 것(뷰어의 논문, 홈에서 고른 컬렉션)을 따로 말하지 않아도 에이전트가 본다.
+  // 입력창 위 점선 칩으로 보이고, ✕로 이번 질문에서만 뺄 수 있다(보내면 다시 붙는다, 화면이 바뀌어도).
+  var autoOff = '';
+  function autoCtx(){
+    if (SA) return paper ? {kind: 'paper', token: paper, title: SA.title || '', current: true, auto: true} : null;
+    if (onReview() && paper) return {kind: 'paper', token: paper, title: paperTitle(), current: true, auto: true};
+    var r = document.querySelector('.md4-prow.on[data-pid]');
+    if (!r) return null;                     // '모든 논문'·'미분류'는 컬렉션이 아니다
+    var n = r.querySelector('.md4-prow-name');
+    return {kind: 'collection', id: r.getAttribute('data-pid'),
+            title: ((n && n.textContent) || '').trim(), auto: true};
+  }
+  function ctxMentions(){
+    var a = autoCtx(), out = atPicked.slice();
+    if (a && atKeyOf(a) !== autoOff && !out.some(function(m){ return atKeyOf(m) === atKeyOf(a); }))
+      out.unshift(a);
+    return out;
+  }
   function paintCtx(){
     ctxBar.innerHTML = '';
-    ctxBar.classList.toggle('on', atPicked.length > 0);
+    var a = autoCtx(), showA = a && atKeyOf(a) !== autoOff;
+    ctxBar.classList.toggle('on', atPicked.length > 0 || !!showA);
+    if (showA){
+      var c = document.createElement('span'); c.className = 'ag-chip ag-chip-auto';
+      c.title = md4T('지금 보고 있는 것 — 따로 말하지 않으면 에이전트가 이것을 두고 답합니다');
+      c.innerHTML = '<i class="material-icons" aria-hidden="true">' + (AT_ICON[a.kind] || 'label')
+        + '</i><span class="ag-chip-k">' + esc(md4T('보는 중')) + '</span><span class="ag-chip-t">'
+        + esc(a.title || (a.kind === 'paper' ? md4T('이 논문') : '')) + '</span>';
+      var x = document.createElement('button'); x.type = 'button'; x.className = 'ag-chip-x';
+      x.innerHTML = '&#10005;'; x.setAttribute('aria-label', md4T('이번 질문에서 빼기'));
+      x.title = md4T('이번 질문에서 빼기');
+      x.addEventListener('click', function(){ autoOff = atKeyOf(a); paintCtx(); input.focus(); });
+      c.appendChild(x); ctxBar.appendChild(c);
+    }
     if (atPicked.length){
       var inner = ctxChips(atPicked, true);
       while (inner.firstChild) ctxBar.appendChild(inner.firstChild);
@@ -1577,7 +1620,7 @@ JS = r"""
   function ask(){ send(input.value, null); }
   function autosize(){
     input.style.height = 'auto';
-    input.style.height = Math.min(120, Math.max(30, input.scrollHeight)) + 'px';
+    input.style.height = Math.min(160, Math.max(34, input.scrollHeight)) + 'px';
   }
 
   // ---- 열기/닫기 (메모 서랍과 배타) ----
@@ -1664,7 +1707,7 @@ JS = r"""
     }).observe(ap, {attributes: true, attributeFilter: ['class']});
   }
   function openPanel(){
-    syncTopSoon();
+    syncTopSoon(); paintCtx();
     var ap = document.getElementById('md-anno-panel');
     if (ap) ap.classList.remove('open');          // 없을 수도 있다 (홈)
     panel.classList.add('open');
@@ -1686,6 +1729,9 @@ JS = r"""
       window.__md4AgentTok = paper;
       watchAnno(); syncTopSoon();
       consumeGoto();
+      if (prev !== paper) autoOff = '';
+      // 보는 중 칩 — 새 화면(제목 탭·사이드바)이 붙은 뒤에. 화면 갈아 끼우기가 늦을 때를 위해 한 번 더
+      setTimeout(paintCtx, 400); setTimeout(paintCtx, 1500);
       if (panel.classList.contains('open') && !live) render();   // 칩의 '다른 논문' 표시를 다시
     },
     context: ctxNow
@@ -1698,6 +1744,11 @@ JS = r"""
     if (atKey(ev)) return;               // @ 목록이 떠 있으면 위·아래·Enter·Tab·Esc는 목록 몫
     if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing){ ev.preventDefault(); ask(); }
   });
+  input.addEventListener('focus', paintCtx);    // 홈에서 컬렉션을 바꿨을 수 있다
+  // 홈 사이드바에서 컬렉션을 고르면 '보는 중' 칩을 바꾼다 (행이 다시 그려진 뒤에)
+  document.addEventListener('click', function(ev){
+    if (ev.target.closest && ev.target.closest('.md4-prow')){ setTimeout(paintCtx, 350); setTimeout(paintCtx, 1200); }
+  }, true);
   input.addEventListener('input', atWatch);
   input.addEventListener('click', atWatch);
   input.addEventListener('blur', function(){ setTimeout(function(){

@@ -100,3 +100,26 @@ def test_candidates_start_with_this_paper_then_sections_notes_papers(tmp_path, m
     # 글자로 거른다
     only = mention_candidates(reg.wd_for, reg.register, tmp_path, tok, "other")
     assert [i["title"] for i in only] == ["Other Paper"]
+
+
+def test_what_you_are_viewing_is_default_context_but_not_saved_on_the_turn(tmp_path):
+    """보고 있는 논문·컬렉션은 창이 기본으로 붙인다(auto) — 지시는 '따로 말이 없으면 이것', 질문 아래 칩으로는 남기지 않는다."""
+    ctx = _ctx(mentions=[{"kind": "paper", "token": "abc", "title": "Maru", "auto": True},
+                         {"kind": "collection", "id": "p1", "title": "HCI", "auto": True}])
+    block = mentions_prompt(ctx)
+    assert "지금 보고 있는 논문 'Maru'" in block and "지금 보고 있는 컬렉션 'HCI'" in block
+
+    reg = Registry(make_wd(tmp_path))
+    tok = next(iter(reg.by_token))
+    agent = make_agent(scripted_model(["네."]))
+    ctx = ScreenContext.model_validate({"screen": "review", "paper": {"token": tok}, "mentions": [
+        {"kind": "paper", "token": tok, "title": "Bespoke Bots", "auto": True},
+        {"kind": "note", "token": tok, "tab": "요약"}]})
+    s = sessions.create()
+
+    async def go():
+        return [ev async for ev in run_turn(agent, s, "요약해 줘", Deps(
+            wd_for=reg.wd_for, current_token=tok, ctx=ctx, register_token=reg.register))]
+    asyncio.run(go())
+    assert [t for t in s.turns if t["role"] == "user"][-1]["mentions"] == [
+        {"kind": "note", "token": tok, "tab": "요약"}]
