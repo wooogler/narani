@@ -1091,6 +1091,8 @@ def build_home(state: dict) -> None:
         """
         on = view["scope"] == value
         row = ui.element("div").classes("md4-prow" + (" on" if on else ""))
+        if project:  # 에이전트 창이 '보고 있는 컬렉션'으로 집어 간다 (§agent_panel autoCtx)
+            row.props(f'data-pid="{value}"')
         if depth:
             row.style(f"padding-left:{16 + 16 * depth}px")
         with row:

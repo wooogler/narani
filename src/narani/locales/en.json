@@ -1027,5 +1027,9 @@
  "같이 보기 — 아래 칸에 지금 본 곳을 띄우고 위 칸은 읽던 자리로": "Side by side — show this spot in a bottom viewer and return the top to where you were reading",
  "같이 보기": "Side by side",
  "끌어서 위아래 칸 높이 조절 · 더블클릭하면 반반": "Drag to resize the top and bottom viewers · double-click for half and half",
- "아래 칸 닫기": "Close bottom viewer"
+ "아래 칸 닫기": "Close bottom viewer",
+ "지금 보고 있는 것 — 따로 말하지 않으면 에이전트가 이것을 두고 답합니다": "What you're looking at — the agent answers about this unless you say otherwise",
+ "이번 질문에서 빼기": "Leave out of this question",
+ "무엇이든 물어보세요 · @로 맥락 넣기": "Ask anything · @ to add context",
+ "Enter 보내기 · Shift+Enter 줄바꿈": "Enter to send · Shift+Enter for a new line"
 }

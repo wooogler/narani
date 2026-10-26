@@ -68,6 +68,7 @@ class Mention(_Loose):
     end: int | None = None        # section — 끝 행 (포함)
     tab: str | None = None        # note — 메모 탭 이름
     id: str | None = None         # collection — 컬렉션 id
+    auto: bool = False            # 사용자가 고른 게 아니라 지금 보고 있는 것(창이 기본으로 붙인다)
 
     @field_validator("title", "tab")
     @classmethod
@@ -131,6 +132,11 @@ def _ranges(rows: list[int]) -> str:
 def _mention_line(m: Mention) -> str:
     title = (m.title or "").strip() or "(이름 없음)"
     tok = m.token or ""
+    if m.auto and m.kind == "paper":
+        return f"- 지금 보고 있는 논문 '{title}' (token {tok}) — 따로 말이 없으면 이 논문에 대해 답한다"
+    if m.auto and m.kind == "collection":
+        return (f"- 지금 보고 있는 컬렉션 '{title}' (id {m.id}) — 따로 말이 없으면 이 컬렉션의 논문들"
+                f"(list_papers(project='{m.id}'))을 두고 답한다")
     if m.kind == "paper":
         return f"- 논문 '{title}' (token {tok}) — search_paper·read_rows·outline에 token={tok}"
     if m.kind == "section":

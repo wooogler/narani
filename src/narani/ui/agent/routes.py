@@ -138,6 +138,9 @@ TITLE_SYSTEM = (
     "one short noun phrase (at most 6 words, or 20 characters in Korean/Japanese/Chinese), "
     "in the same language as the question, no quotes, no trailing period.")
 TITLE_INPUT_MAX = 600   # 질문·답에서 제목을 짓는 데 넘기는 글자 수 (각각)
+# 답 길이 상한 — 제목은 몇 낱말이지만 추론 모델(gpt-6 등)은 이 예산을 생각하는 데 먼저 쓴다.
+# 40으로 두면 생각만 하다 끝나 빈 답이 왔다(실측) → 제목이 첫 질문 앞머리로 남았다. 짧게는 지시문이 맡는다.
+TITLE_MAX_TOKENS = 1024
 
 
 def title_provider():  # noqa: ANN201 — llm.base.Provider
@@ -170,7 +173,8 @@ def suggest_title(s: sessions.Session, make: Callable[[], object] = title_provid
     try:
         llm = make()
         raw = llm.complete(TITLE_SYSTEM, f"Question:\n{first[:TITLE_INPUT_MAX]}\n\n"
-                                         f"Answer (start):\n{answer[:TITLE_INPUT_MAX]}", max_tokens=40)
+                                         f"Answer (start):\n{answer[:TITLE_INPUT_MAX]}",
+                           max_tokens=TITLE_MAX_TOKENS)
     except Exception:  # noqa: BLE001 — 키 없음·네트워크 — 질문 앞머리 제목이 남는다
         return None
     title = clean_title(raw)
