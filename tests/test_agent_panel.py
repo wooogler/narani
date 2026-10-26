@@ -108,7 +108,8 @@ def test_routes_used_by_panel_exist():
     for need in [("GET", "/agent/sessions"), ("POST", "/agent/sessions"),
                  ("GET", "/agent/sessions/{sid}"), ("PATCH", "/agent/sessions/{sid}"),
                  ("DELETE", "/agent/sessions/{sid}"), ("POST", "/agent/sessions/{sid}/turns"),
-                 ("GET", "/agent/models"), ("PUT", "/agent/model")]:
+                 ("GET", "/agent/models"), ("PUT", "/agent/model"),
+                 ("POST", "/agent/sessions/{sid}/title"), ("GET", "/agent/mentions")]:
         assert need in paths
     assert "'/agent/sessions/' + encodeURIComponent(at) + '/turns'" in JS
     assert "api('GET', '/agent/models')" in JS
@@ -628,3 +629,11 @@ def test_at_picker_owns_keys_while_open_and_sends_pointers():
     assert "mentions: atPicked.slice()" in _js_block(JS, "function ctxNow(")
     assert "ctxChips(t.mentions, false)" in _js_block(JS, "function turnNode(")
     assert 'class="ag-at-btn"' in HTML and 'class="ag-ctx"' in HTML and 'class="ag-at"' in HTML
+
+
+def test_first_turn_asks_server_to_name_the_session():
+    """새 세션의 첫 질문이 끝나면 제목을 지어 달라고 한다 — 두 번째 질문부터는 부르지 않는다."""
+    snd = _js_block(JS, "function send(")
+    assert "if (L.q && nUser === 1) autoTitle(at);" in snd
+    at = _js_block(JS, "function autoTitle(")
+    assert "'/title'" in at and "sess.title = m.title" in at and ".catch(function(){})" in at

@@ -1313,6 +1313,16 @@ JS = r"""
       live.err = d.message || md4T('답을 만들지 못했습니다.');
     }
   }
+  // 새 세션의 첫 질문·답으로 제목 짓기 — 서버가 싼 모델로 한 줄 제목을 만든다(이름을 이미 바꿨으면 그대로).
+  // 실패해도 조용히 넘어간다: 질문 앞머리 제목이 이미 있다.
+  function autoTitle(id){
+    loadList().then(renderHead).catch(function(){});
+    api('POST', '/agent/sessions/' + encodeURIComponent(id) + '/title', {}).then(function(m){
+      if (sess && sess.id === id && m && m.title) sess.title = m.title;
+      return loadList();
+    }).then(function(){ renderHead(); if (menu.classList.contains('open')) renderMenu(); })
+      .catch(function(){});
+  }
   function lastTurnId(){ return turns.length ? turns[turns.length - 1].id : null; }
   // again: 비용 상한에 막혔던 요청 본문 — override를 더해 그대로 다시 보낸다
   function send(text, approvals, again){
@@ -1386,7 +1396,8 @@ JS = r"""
         if (!L){ render(); return; }
         if (L.done && !L.done.pending && L.done.turn_id){
           // 서버가 저장한 것과 같은 모양으로 붙인다 (다시 읽지 않아도 칩·비용이 그대로)
-          if (L.q) turns.push({id: 'local-' + Date.now(), role: 'user', text: L.q, html: ''});
+          if (L.q) turns.push({id: 'local-' + Date.now(), role: 'user', text: L.q, html: '',
+                               mentions: L.mentions || []});
           toolsByTurn[L.done.turn_id] = L.tools;
           if (toolOpen.live) toolOpen[L.done.turn_id] = true;   // 흐르는 동안 펼쳐 뒀으면 그대로
           turns.push({id: L.done.turn_id, role: 'assistant', text: L.text, html: L.done.html,
@@ -1395,7 +1406,10 @@ JS = r"""
           if (L.done.jobs) setJobs(L.done.jobs);   // 이 턴이 띄운 작업 — 미완료면 폴링이 시작된다
           live = null;
           render();
-          loadList().then(renderHead).catch(function(){});   // 첫 질문이 세션 제목이 된다
+          var nUser = turns.filter(function(x){ return x.role === 'user'; }).length;
+          // 첫 질문이 끝났으면 제목을 지어 달라고 한다(질문·답을 보고 짧게) — 그동안은 질문 앞머리가 제목
+          if (L.q && nUser === 1) autoTitle(at);
+          else loadList().then(renderHead).catch(function(){});
           return;
         }
         if (L.done && L.done.pending){        // 승인 대기 — 서버 기록(질문 턴·대기 목록)을 다시 읽는다
