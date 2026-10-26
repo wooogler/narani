@@ -245,7 +245,7 @@ _APP_JS = r"""
       return {text: first ? md4T('Google Drive에 연결해 데스크톱에서 보낸 논문을 받아요.') : md4T('Google Drive 연결이 만료됐어요.'),
               button: first ? md4T('Google Drive 연결') : md4T('다시 연결'), act: function(){ gSignIn(); }};
     }
-    if (kind === 'nofolder') return {text: md4T('Drive에 Narani 폴더가 없어요. 데스크톱 앱에서 먼저 폰으로 보내 주세요.')};
+    if (kind === 'nofolder') return {text: md4T('Drive에 Narani 폴더가 없어요. 데스크톱 앱에서 먼저 모바일로 보내 주세요.')};
     return {text: md4T('목록을 불러오지 못했어요. 인터넷 연결을 확인하세요.')};
   }
 
@@ -268,9 +268,19 @@ _APP_JS = r"""
   }
   function pruneCache(ix){
     // 목록에서 빠진 논문의 캐시는 지운다 (폰 저장 공간)
-    var keep = {}, m = haveMap(), k;
-    ix.papers.forEach(function(e){ keep[e.file] = 1; });
+    var keep = {}, keys = {}, m = haveMap(), k;
+    ix.papers.forEach(function(e){ keep[e.file] = 1; keys[e.key] = 1; });
     for (k in m) if (!keep[k]) setHave(k, null);
+    // 데스크톱이 모바일에서 뺀 논문 — 그 논문의 폰 기록도 지운다(다시 올리면 Drive에 주인 없는 파일이 남는다).
+    // 데스크톱은 빼기 전에 올라와 있던 폰 기록을 합쳐 두었다.
+    try {
+      var ok = JSON.parse(localStorage.getItem('narani:opskeys') || '{}') || {}, changed = false;
+      for (k in ok) if (!keys[k]){
+        delete ok[k]; changed = true;
+        localStorage.removeItem('narani:ops:' + k); localStorage.removeItem('narani:opsup:' + k);
+      }
+      if (changed) localStorage.setItem('narani:opskeys', JSON.stringify(ok));
+    } catch (e) {}
     if (!window.caches) return;
     caches.open(DC).then(function(c){
       return c.keys().then(function(reqs){
@@ -319,7 +329,7 @@ _APP_JS = r"""
       meta.appendChild(el('span', 'badge', e.has_ko ? md4T('번역') : md4T('원문만')));
       a.appendChild(meta); li.appendChild(a); libList.appendChild(li);
     });
-    if (INDEX && !INDEX.papers.length) libList.appendChild(el('li', 'empty', md4T('올린 논문이 없어요. 데스크톱 앱에서 폰으로 보내 주세요.')));
+    if (INDEX && !INDEX.papers.length) libList.appendChild(el('li', 'empty', md4T('올린 논문이 없어요. 데스크톱 앱에서 모바일로 보내 주세요.')));
     libBar.innerHTML = '';
     var info = [];
     if (INDEX && INDEX.updated) info.push(md4T('{date}에 올린 목록', {date: fmtDate(INDEX.updated)}));

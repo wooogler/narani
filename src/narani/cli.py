@@ -1353,6 +1353,10 @@ def phone_push_cmd(workdirs: tuple[Path, ...], project_ref: str | None, to_dir: 
         if not to_drive:
             raise
         raise click.ClickException(str(e)) from e
+    if to_drive:  # 홈의 '모바일' 표시가 따라오게 (§phone.service)
+        from narani.phone import service
+
+        service._remember(sync.read_index(store))
     click.echo(f"새로 올림 {s['uploaded']}편 · 그대로 {s['skipped']}편 · 지움 {s['removed']}편 "
                f"({s['bytes'] / 1e6:.1f}MB) · 폰 메모 기록 {s['merged']}개 합침 · 메모 파일 {s['notes']}개 올림 → {target}")
 
@@ -1361,11 +1365,9 @@ def phone_push_cmd(workdirs: tuple[Path, ...], project_ref: str | None, to_dir: 
 def phone_connect_cmd() -> None:
     """Google Drive에 연결한다 — 브라우저에서 로그인·동의하면 Drive에 Narani 폴더가 생긴다.
 
-    config.toml [phone]에 google_desktop_client_id·google_desktop_client_secret이 있어야 한다.
+    앱에 실린 기본 Google 클라이언트를 쓴다(config.toml [phone]에 값이 있으면 그쪽).
     """
-    from narani.phone import gdrive
-
-    ids = gdrive.client_ids()
+    from narani.phone import gdrive, service
 
     def show(url: str) -> None:
         import webbrowser
@@ -1374,10 +1376,7 @@ def phone_connect_cmd() -> None:
         webbrowser.open(url)
 
     try:
-        gdrive.authorize(ids["google_desktop_client_id"], ids["google_desktop_client_secret"], open_url=show)
-        store = gdrive.open_store()
-        store.folder_id()
-        who = store.account()
+        who = service.connect(open_url=show)
     except gdrive.DriveError as e:
         raise click.ClickException(str(e)) from e
     click.echo(f"연결됨: {who or '(계정 확인 못 함)'} — Drive의 '{gdrive.FOLDER_NAME}' 폴더에 올립니다.")
@@ -1386,9 +1385,9 @@ def phone_connect_cmd() -> None:
 @phone_group.command("disconnect")
 def phone_disconnect_cmd() -> None:
     """Google Drive 연결을 끊는다 (Drive에 올린 파일은 그대로)."""
-    from narani.phone import gdrive
+    from narani.phone import service
 
-    click.echo("연결을 끊었습니다." if gdrive.forget() else "연결돼 있지 않습니다.")
+    click.echo("연결을 끊었습니다." if service.disconnect() else "연결돼 있지 않습니다.")
 
 
 @phone_group.command("site")

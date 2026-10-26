@@ -51,16 +51,16 @@ ABOUT_HTML = _page("Narani — read papers side by side in your language", f"""
 <h1>Narani</h1>
 <p class="lead">Read English research papers side by side with a translation in your own language — on your
 computer and on your phone. <span class="lang">한국어 안내는 아래에 있습니다.</span></p>
-<div class="nav"><a href="./">Open the phone reader</a><a href="privacy.html">Privacy Policy</a>
+<div class="nav"><a href="./">Open the mobile reader</a><a href="privacy.html">Privacy Policy</a>
 <a href="{REPO}">Source code &amp; documentation</a></div>
 
 <h2>What it does</h2>
 <p>Narani is a free, open-source desktop app (macOS, Windows, Linux). It converts a paper PDF into clean Markdown,
 translates it into your language with the AI service and API key you choose, and shows the original and the
 translation paragraph by paragraph. You can highlight sentences, write notes, and ask questions about the paper.</p>
-<p>The <strong>phone reader</strong> on this site lets you keep reading on your phone: the desktop app sends the
+<p>The <strong>mobile reader</strong> on this site lets you keep reading on your phone or tablet: the desktop app sends the
 papers you pick to a <code>Narani</code> folder in <em>your own</em> Google Drive, and this web app reads them from
-there. Highlights and notes you make on the phone go back to the desktop the same way. Downloaded papers stay
+there. Highlights and notes you make on mobile go back to the desktop the same way. Downloaded papers stay
 readable offline.</p>
 
 <h2>Install</h2>
@@ -68,7 +68,7 @@ readable offline.</p>
 <pre>curl -LsSf https://raw.githubusercontent.com/wooogler/narani/main/install.sh | sh</pre>
 <p>Windows (PowerShell):</p>
 <pre>irm https://raw.githubusercontent.com/wooogler/narani/main/install.ps1 | iex</pre>
-<p>Then, in the app, tick papers on Home and press <strong>Send to phone</strong>. On your phone, open this site,
+<p>Then, in the app, tick papers on Home and press <strong>Send to mobile</strong>. On your phone, open this site,
 add it to your home screen, and tap <strong>Connect Google Drive</strong> with the same Google account.</p>
 
 <h2>How Narani uses your Google account</h2>
@@ -85,10 +85,10 @@ this site is a static web app hosted on GitHub Pages.</li>
 <p><strong>Narani(나란히)</strong>는 영어 논문을 내 언어 번역과 나란히 읽게 해 주는 무료 오픈소스 데스크톱 앱입니다.
 논문 PDF를 마크다운으로 바꾸고, 사용자가 고른 AI 서비스와 API 키로 번역해 원문과 문단별로 나란히 보여 줍니다.
 문장 하이라이트·메모·질문하기도 됩니다.</p>
-<p>이 사이트의 <strong>폰 리더</strong>로 폰에서도 이어 읽습니다. 데스크톱 앱이 고른 논문을 <em>내</em> Google Drive의
-<code>Narani</code> 폴더에 올리고, 이 웹앱이 거기서 읽습니다. 폰에서 단 하이라이트·메모도 같은 길로 데스크톱에 돌아갑니다.
+<p>이 사이트의 <strong>모바일 리더</strong>로 폰·태블릿에서도 이어 읽습니다. 데스크톱 앱이 고른 논문을 <em>내</em> Google Drive의
+<code>Narani</code> 폴더에 올리고, 이 웹앱이 거기서 읽습니다. 모바일에서 단 하이라이트·메모도 같은 길로 데스크톱에 돌아갑니다.
 받아 둔 논문은 오프라인에서도 읽힙니다.</p>
-<p>설치는 위의 명령 한 줄. 앱 홈에서 논문을 체크하고 <strong>폰으로 보내기</strong>를 누른 뒤, 폰에서 이 사이트를 열어
+<p>설치는 위의 명령 한 줄. 앱 홈에서 논문을 체크하고 <strong>모바일로 보내기</strong>를 누른 뒤, 폰에서 이 사이트를 열어
 홈 화면에 추가하고 같은 계정으로 <strong>Google Drive 연결</strong>을 누르면 됩니다.</p>
 <p>권한은 <code>drive.file</code>(Narani가 만든 파일만) 하나라 Drive의 다른 파일은 보지 못합니다. 서버도 계정 체계도 없고,
 모든 데이터는 내 Drive와 내 기기에만 있습니다. 자세한 내용은 <a href="privacy.html">개인정보처리방침</a>에 있습니다.</p>
@@ -97,7 +97,7 @@ this site is a static web app hosted on GitHub Pages.</li>
 
 PRIVACY_HTML = _page("Narani — Privacy Policy", f"""
 <h1>Privacy Policy</h1>
-<p class="lead">Narani desktop app and phone reader · last updated {UPDATED}.
+<p class="lead">Narani desktop app and mobile reader · last updated {UPDATED}.
 <span class="lang">한국어는 아래에 있습니다.</span></p>
 
 <h2>Summary</h2>
@@ -134,7 +134,7 @@ downloaded for offline reading, and phone notes waiting to be uploaded.</li>
 </ul>
 <p>Narani does not operate any server or database. This site is a static web app on GitHub Pages; GitHub may keep
 standard web server logs under the <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub
-Privacy Statement</a>. The phone reader talks directly to Google's APIs from your browser.</p>
+Privacy Statement</a>. The mobile reader talks directly to Google's APIs from your browser.</p>
 
 <h3>Sharing</h3>
 <p>We do not sell, rent, or share Google user data. Narani transfers it only between Google Drive and your own
@@ -150,7 +150,7 @@ generalized AI or machine-learning models.</p>
 
 <h3>Your choices and deleting data</h3>
 <ul>
-<li>Disconnect on the desktop: Home list ⋯ → <strong>Disconnect phone reader</strong> (or
+<li>Disconnect on the desktop: Home sidebar <strong>Mobile</strong> → <strong>Disconnect</strong> (or
 <code>narani phone disconnect</code>). This revokes the token and deletes it from your computer.</li>
 <li>Revoke access at any time in your Google Account: <a href="https://myaccount.google.com/permissions">Third-party
 apps &amp; services</a>.</li>
@@ -187,7 +187,7 @@ Drive의 다른 파일은 보지도 고치지도 못합니다.</li>
 </ul>
 <p>Narani는 서버나 데이터베이스를 운영하지 않습니다. 이 사이트는 GitHub Pages의 정적 웹앱이며, GitHub은
 <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub 개인정보 고지</a>에
-따라 일반적인 웹 서버 기록을 남길 수 있습니다. 폰 리더는 브라우저에서 Google API와 직접 통신합니다.</p>
+따라 일반적인 웹 서버 기록을 남길 수 있습니다. 모바일 리더는 브라우저에서 Google API와 직접 통신합니다.</p>
 <h3>제공·공유</h3>
 <p>Google 사용자 데이터를 팔거나 빌려주거나 공유하지 않습니다. Google Drive와 내 기기 사이에서만 오갑니다.</p>
 <p>알아 둘 점: 데스크톱 앱의 질문하기(에이전트)는 <em>사용자가 설정한</em> AI 서비스와 API 키로 답합니다. 질문하면 그 논문의
@@ -198,7 +198,7 @@ Drive의 다른 파일은 보지도 고치지도 못합니다.</li>
 Google 사용자 데이터를 범용 AI·머신러닝 모델을 만들거나 학습시키는 데 쓰지 않습니다.</p>
 <h3>선택과 삭제</h3>
 <ul>
-<li>데스크톱에서 연결 끊기: 홈 목록 ⋯ → <strong>폰 리더 연결 끊기</strong>(또는 <code>narani phone disconnect</code>) — 토큰을
+<li>데스크톱에서 연결 끊기: 홈 사이드바 <strong>모바일</strong> → <strong>연결 끊기</strong>(또는 <code>narani phone disconnect</code>) — 토큰을
 반납하고 컴퓨터에서 지웁니다.</li>
 <li>언제든 Google 계정의 <a href="https://myaccount.google.com/permissions">서드파티 앱 및 서비스</a>에서 권한을 거둘 수 있습니다.</li>
 <li>Google Drive의 <code>Narani</code> 폴더를 지우면 Narani가 둔 것이 모두 지워집니다.</li>
