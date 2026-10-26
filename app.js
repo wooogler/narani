@@ -385,6 +385,7 @@
     doc.documentElement.lang = md4Lang;
     setText('lbl-ko', md4T('번역')); setText('lbl-en', md4T('원문')); setText('lbl-both', md4T('대조'));
     setText('fs-dn', md4T('가') + '−'); setText('fs-up', md4T('가') + '+');
+    setText('lnk-about', md4T('Narani 소개')); setText('lnk-privacy', md4T('개인정보처리방침'));
     doc.getElementById('fs-dn').setAttribute('aria-label', md4T('글자 작게'));
     doc.getElementById('fs-up').setAttribute('aria-label', md4T('글자 크게'));
     doc.getElementById('back').setAttribute('aria-label', md4T('논문 목록'));
