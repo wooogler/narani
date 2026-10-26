@@ -469,8 +469,8 @@ remembered.
 Read the papers you translated on the desktop from your phone or tablet, and carry highlights and notes both ways.
 There is no server — papers travel through **a `Narani` folder in your own Google Drive**, and the mobile side reads them
 in a web app (**https://narani.sangwooklee.info/**). The desktop can be off, and downloaded papers open on a plane. The
-only permission is `drive.file` (files Narani created), so it can't see the rest of your Drive, and LLM keys never leave
-the desktop.
+only permission is `drive.file` (files Narani created), so it can't see the rest of your Drive, and the desktop's LLM keys
+never leave the desktop.
 
 **Once**
 1. On the desktop Home, tick papers and press **Send to mobile**. A Google sign-in opens in your browser — sign in and
@@ -493,6 +493,12 @@ the desktop.
 - **Highlights and notes**: tap a sentence, pick a color or **Add note** — both sides of the sentence pair are marked
   (the same shape as the desktop viewer's double-click highlight), with ✎ when there's a note. The list sits under
   **Highlights & notes** at the top of the paper. Changes made offline wait on the device and upload when you're back online.
+- **Contents**: ☰ in the top bar opens the table of contents from the left, with the current section marked. Tap to jump.
+- **Ask (assistant)**: the ✦ button at the bottom right asks about the paper you're reading. Tap an [r12]-style citation
+  in the answer to jump to that paragraph. The first time, enter **your own AI API key** (OpenAI, Anthropic or Gemini) on
+  that device — it's stored only in that browser, and questions send the paper's text and your highlights and notes
+  directly to the service you chose (billed to that key's account). The default service and model follow the desktop
+  assistant's choice.
 
 **Good to know**
 - If the paper was open in the desktop viewer while syncing, reopen it to see mobile notes.

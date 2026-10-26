@@ -37,6 +37,14 @@ def read_index(store: Store) -> dict:
     return {"format": bmod.FORMAT, "papers": []}
 
 
+def _agent_defaults() -> dict:
+    """모바일 에이전트가 처음 고를 서비스·모델 — 데스크톱 에이전트 창과 같게. 키는 싣지 않는다(모바일에서 따로 넣는다)."""
+    from narani import config
+
+    provider, model = config.resolve_chat_choice()
+    return {"provider": provider, "model": model}
+
+
 def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dict[str, dict] | None = None,
          on_progress: Callable[[int, int, str], None] | None = None) -> dict:
     """논문들 → 저장소. extra는 논문 키 → 목록 줄에 덧붙일 값(고정·컬렉션 …).
@@ -81,7 +89,8 @@ def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dic
                 removed += 1
     else:  # 고르지 않은 예전 논문은 목록에 그대로 둔다
         entries += [e for k, e in old.items() if k not in keys]
-    index = {"format": bmod.FORMAT, "updated": time.time(), "ui_lang": i18n.ui_lang(), "papers": entries}
+    index = {"format": bmod.FORMAT, "updated": time.time(), "ui_lang": i18n.ui_lang(), "papers": entries,
+             "agent": _agent_defaults()}
     store.write(INDEX, bmod.dumps(index))
     if on_progress:
         on_progress(len(roots), len(roots), "")

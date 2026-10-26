@@ -1082,5 +1082,21 @@
  "Google Drive를 거쳐 모바일 리더({site})에서 읽습니다 — 모바일에서 단 하이라이트·메모도 이때 합칩니다": "Léelos en el lector móvil ({site}) a través de Google Drive; los resaltados y notas del móvil se fusionan a la vez",
  "모바일에서 빼기": "Quitar del móvil",
  "모바일 목록에서 뺍니다 — 모바일에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 논문 파일은 그대로": "Los quita de la lista del móvil; las notas del móvil se fusionan antes en este ordenador. Los archivos del artículo se conservan",
- "숨긴 논문 · 내보내기 형식 · 이 목록 저장 · 모바일로 보내기": "Artículos ocultos · formato de exportación · guardar esta lista · enviar al móvil"
+ "숨긴 논문 · 내보내기 형식 · 이 목록 저장 · 모바일로 보내기": "Artículos ocultos · formato de exportación · guardar esta lista · enviar al móvil",
+ "이 논문에 대해 묻기": "Preguntar sobre este artículo",
+ "목차가 없는 논문이에요.": "Este artículo no tiene índice.",
+ "질문하려면 이 기기에 AI 서비스와 API 키를 한 번 넣어 주세요.": "Para preguntar, introduce una vez un servicio de IA y una clave de API en este dispositivo.",
+ "이 논문에 대해 무엇이든 물어보세요 — 답의 [r12] 같은 표시를 누르면 그 문단으로 갑니다. ({p} · {m})": "Pregunta lo que quieras sobre este artículo; toca una marca como [r12] en la respuesta para ir a ese párrafo. ({p} · {m})",
+ "API 키": "Clave de API",
+ "저장됨 — 바꾸려면 새로 입력": "Guardada: escribe otra para reemplazarla",
+ "키를 붙여 넣으세요": "Pega tu clave",
+ "키는 이 기기의 브라우저에만 저장됩니다. 질문하면 이 논문의 본문과 내 하이라이트·메모, 대화가 고른 AI 서비스로 직접 보내집니다. 요금은 그 키의 계정에 청구됩니다.": "La clave se guarda solo en el navegador de este dispositivo. Al preguntar, el texto del artículo, tus resaltados y notas y la conversación se envían directamente al servicio de IA elegido. El uso se cobra a la cuenta de esa clave.",
+ "이 서비스 키 지우기": "Borrar la clave de este servicio",
+ "질문하기": "Preguntar",
+ "대화 지우기": "Borrar conversación",
+ "이 논문에 대해 물어보세요": "Pregunta sobre este artículo",
+ "오프라인이라 질문할 수 없어요.": "Sin conexión no puedes preguntar.",
+ "읽는 중…": "Leyendo…",
+ "빈 답이 왔어요": "La respuesta llegó vacía",
+ "답을 받지 못했어요: {e}": "No se pudo obtener respuesta: {e}"
 }

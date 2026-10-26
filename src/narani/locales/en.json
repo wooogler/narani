@@ -1082,5 +1082,21 @@
  "Google Drive를 거쳐 모바일 리더({site})에서 읽습니다 — 모바일에서 단 하이라이트·메모도 이때 합칩니다": "Read them in the mobile reader ({site}) via Google Drive — highlights and notes made on mobile are merged at the same time",
  "모바일에서 빼기": "Remove from mobile",
  "모바일 목록에서 뺍니다 — 모바일에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 논문 파일은 그대로": "Removes them from the mobile list — notes made on mobile are merged into this computer first. The paper's files stay",
- "숨긴 논문 · 내보내기 형식 · 이 목록 저장 · 모바일로 보내기": "Hidden papers · export format · save this list · send to mobile"
+ "숨긴 논문 · 내보내기 형식 · 이 목록 저장 · 모바일로 보내기": "Hidden papers · export format · save this list · send to mobile",
+ "이 논문에 대해 묻기": "Ask about this paper",
+ "목차가 없는 논문이에요.": "This paper has no table of contents.",
+ "질문하려면 이 기기에 AI 서비스와 API 키를 한 번 넣어 주세요.": "To ask questions, enter an AI service and API key on this device once.",
+ "이 논문에 대해 무엇이든 물어보세요 — 답의 [r12] 같은 표시를 누르면 그 문단으로 갑니다. ({p} · {m})": "Ask anything about this paper — tap a mark like [r12] in an answer to jump to that paragraph. ({p} · {m})",
+ "API 키": "API key",
+ "저장됨 — 바꾸려면 새로 입력": "Saved — type a new one to replace it",
+ "키를 붙여 넣으세요": "Paste your key",
+ "키는 이 기기의 브라우저에만 저장됩니다. 질문하면 이 논문의 본문과 내 하이라이트·메모, 대화가 고른 AI 서비스로 직접 보내집니다. 요금은 그 키의 계정에 청구됩니다.": "The key is stored only in this device's browser. When you ask, this paper's text, your highlights and notes, and the conversation are sent directly to the AI service you chose. Usage is billed to that key's account.",
+ "이 서비스 키 지우기": "Delete this service's key",
+ "질문하기": "Ask",
+ "대화 지우기": "Clear conversation",
+ "이 논문에 대해 물어보세요": "Ask about this paper",
+ "오프라인이라 질문할 수 없어요.": "You're offline, so you can't ask right now.",
+ "읽는 중…": "Reading…",
+ "빈 답이 왔어요": "Got an empty answer",
+ "답을 받지 못했어요: {e}": "Couldn't get an answer: {e}"
 }

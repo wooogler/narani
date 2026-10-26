@@ -15,7 +15,7 @@ REPO = "https://github.com/wooogler/narani"
 # Google 동의 화면의 홈페이지·개인정보처리방침·승인된 도메인, 웹 클라이언트의 원본·리디렉션 URI가 이 주소다.
 DOMAIN = "narani.sangwooklee.info"
 SITE = f"https://{DOMAIN}/"
-UPDATED = "2026-10-26"
+UPDATED = "2026-10-26"  # 내용을 바꾸면 날짜도
 
 _STYLE = """
 :root { --bg:#fbfaf7; --fg:#1f1e1c; --muted:#6b6862; --line:#e4e1da; --accent:#2f6fd0; }
@@ -130,7 +130,8 @@ highlights and notes in sync between them. Nothing is used for advertising, anal
 (<code>~/.config/narani/google_drive.json</code>), readable only by your user account. Highlights and notes you made
 on the phone are merged into your local paper folders.</li>
 <li><strong>Your phone's browser</strong> — a short-lived access token (about one hour), copies of papers you
-downloaded for offline reading, and phone notes waiting to be uploaded.</li>
+downloaded for offline reading, phone notes waiting to be uploaded, and — only if you use the mobile assistant — your
+AI API key and that conversation.</li>
 </ul>
 <p>Narani does not operate any server or database. This site is a static web app on GitHub Pages; GitHub may keep
 standard web server logs under the <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub
@@ -139,6 +140,11 @@ Privacy Statement</a>. The mobile reader talks directly to Google's APIs from yo
 <h3>Sharing</h3>
 <p>We do not sell, rent, or share Google user data. Narani transfers it only between Google Drive and your own
 devices.</p>
+<p><strong>Mobile assistant.</strong> The mobile reader has an optional assistant ("Ask") for the paper you are
+reading. To use it you enter <em>your own</em> API key for an AI service (OpenAI, Anthropic, or Google Gemini) on that
+device; the key is stored only in that browser and is never sent to Narani or saved to Drive. When you ask a question,
+your browser sends the paper's text, your highlights and notes for that paper, and the conversation directly to the
+service you chose, and usage is billed to that key's account. The conversation is kept only in that browser.</p>
 <p>One thing to know: the desktop app has an optional assistant that answers questions about your papers using the
 AI service and API key <em>you</em> configure. When you ask it a question, it may include passages and your own
 highlights and notes for that paper in the request it sends to that service — including notes that came from your
@@ -155,7 +161,8 @@ generalized AI or machine-learning models.</p>
 <li>Revoke access at any time in your Google Account: <a href="https://myaccount.google.com/permissions">Third-party
 apps &amp; services</a>.</li>
 <li>Delete the <code>Narani</code> folder in Google Drive to remove everything Narani stored there.</li>
-<li>On the phone, clear this site's data in your browser settings to remove offline copies and the token.</li>
+<li>On the phone, clear this site's data in your browser settings to remove offline copies, the token, and any AI
+key you entered (or use <strong>Delete this service's key</strong> in the assistant's settings).</li>
 </ul>
 
 <h3>Children</h3>
@@ -183,13 +190,18 @@ Drive의 다른 파일은 보지도 고치지도 못합니다.</li>
 <li><strong>내 Google Drive</strong>의 <code>Narani</code> 폴더.</li>
 <li><strong>내 컴퓨터</strong> — 인증 토큰은 Narani 설정 폴더(<code>~/.config/narani/google_drive.json</code>)에 내 계정만
 읽을 수 있게 저장합니다. 폰에서 단 메모는 내 논문 폴더에 합쳐집니다.</li>
-<li><strong>폰 브라우저</strong> — 한 시간쯤 쓰는 접근 토큰, 오프라인으로 받아 둔 논문, 아직 올리지 못한 폰 메모.</li>
+<li><strong>폰 브라우저</strong> — 한 시간쯤 쓰는 접근 토큰, 오프라인으로 받아 둔 논문, 아직 올리지 못한 폰 메모, 그리고
+모바일 질문하기를 쓸 때만 내 AI API 키와 그 대화.</li>
 </ul>
 <p>Narani는 서버나 데이터베이스를 운영하지 않습니다. 이 사이트는 GitHub Pages의 정적 웹앱이며, GitHub은
 <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement">GitHub 개인정보 고지</a>에
 따라 일반적인 웹 서버 기록을 남길 수 있습니다. 모바일 리더는 브라우저에서 Google API와 직접 통신합니다.</p>
 <h3>제공·공유</h3>
 <p>Google 사용자 데이터를 팔거나 빌려주거나 공유하지 않습니다. Google Drive와 내 기기 사이에서만 오갑니다.</p>
+<p><strong>모바일 질문하기.</strong> 모바일 리더에는 읽고 있는 논문에 대해 묻는 기능(선택)이 있습니다. 쓰려면 그 기기에
+<em>내</em> AI 서비스(OpenAI·Anthropic·Google Gemini) API 키를 넣습니다. 키는 그 브라우저에만 저장되고 Narani나 Drive로
+보내지 않습니다. 질문하면 브라우저가 그 논문의 본문, 그 논문의 내 하이라이트·메모, 대화를 고른 서비스로 직접 보내고, 요금은
+그 키의 계정에 청구됩니다. 대화는 그 브라우저에만 남습니다.</p>
 <p>알아 둘 점: 데스크톱 앱의 질문하기(에이전트)는 <em>사용자가 설정한</em> AI 서비스와 API 키로 답합니다. 질문하면 그 논문의
 본문 일부와 내 하이라이트·메모(폰에서 온 것 포함)를 그 서비스로 보내는 요청에 담을 수 있습니다. 질문하기를 쓸 때만, 사용자가
 고른 서비스로만 보냅니다.</p>
@@ -202,7 +214,8 @@ Google 사용자 데이터를 범용 AI·머신러닝 모델을 만들거나 학
 반납하고 컴퓨터에서 지웁니다.</li>
 <li>언제든 Google 계정의 <a href="https://myaccount.google.com/permissions">서드파티 앱 및 서비스</a>에서 권한을 거둘 수 있습니다.</li>
 <li>Google Drive의 <code>Narani</code> 폴더를 지우면 Narani가 둔 것이 모두 지워집니다.</li>
-<li>폰에서는 브라우저 설정에서 이 사이트의 데이터를 지우면 오프라인 사본과 토큰이 지워집니다.</li>
+<li>폰에서는 브라우저 설정에서 이 사이트의 데이터를 지우면 오프라인 사본·토큰·넣어 둔 AI 키가 지워집니다(질문하기
+설정의 <strong>이 서비스 키 지우기</strong>로 키만 지울 수도 있습니다).</li>
 </ul>
 <h3>아동</h3>
 <p>Narani는 만 13세 미만 아동을 대상으로 하지 않습니다.</p>

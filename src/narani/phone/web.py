@@ -31,6 +31,57 @@ APP_NAME = "Narani"
 
 _PWA_CSS = """
 .top button, .seg label { white-space: nowrap; }
+.top .back { font-size: 1.3em; line-height: 1; padding: 4px 10px; }
+.js.reading .top .tb.rd { display: inline-block; }
+.top .tb.rd, #fab.rd { display: none; }
+.pop { position: absolute; right: 10px; top: calc(100% + 4px); display: none; gap: 6px; padding: 6px; z-index: 6;
+  background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.12); }
+.pop.open { display: flex; }
+#scrim { position: fixed; inset: 0; background: rgba(0,0,0,.28); z-index: 11; opacity: 0; pointer-events: none;
+  transition: opacity .18s ease; }
+#scrim.open { opacity: 1; pointer-events: auto; }
+.dh { display: flex; align-items: center; gap: 6px; padding: 10px 12px; border-bottom: 1px solid var(--line);
+  font-weight: 600; font-size: .95em; }
+.dh span { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dh button { border: 0; background: none; color: var(--muted); font: inherit; font-size: 1.2em; padding: 2px 6px; }
+#tocd { position: fixed; top: 0; bottom: 0; left: 0; width: min(84vw, 340px); z-index: 12; background: var(--bg);
+  border-right: 1px solid var(--line); transform: translateX(-102%); transition: transform .2s ease;
+  display: flex; flex-direction: column; padding-top: env(safe-area-inset-top); }
+#tocd.open { transform: none; }
+#tocd ol { list-style: none; margin: 0; padding: 6px 0 calc(24px + env(safe-area-inset-bottom)); overflow-y: auto;
+  font-size: .92em; line-height: 1.45; }
+#tocd li a { display: block; padding: 8px 16px; color: var(--fg); text-decoration: none; }
+#tocd li.l3 a { padding-left: 30px; } #tocd li.l4 a { padding-left: 44px; }
+#tocd li.here a { background: var(--hl2); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent); }
+#fab { position: fixed; right: 16px; bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 8; width: 52px; height: 52px;
+  border-radius: 50%; border: 0; background: var(--accent); color: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.22); }
+.js.reading #fab.rd { display: grid; place-items: center; }
+#agent { position: fixed; left: 0; right: 0; bottom: 0; height: 86vh; z-index: 12; background: var(--sheet);
+  border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,.18); display: flex; flex-direction: column;
+  transform: translateY(105%); transition: transform .2s ease; visibility: hidden; }
+#agent.open { transform: none; visibility: visible; }
+#ag-body { flex: 1; overflow-y: auto; padding: 12px 14px; font-size: .95em; line-height: 1.6; }
+#ag-body .m { margin: 0 0 12px; white-space: pre-wrap; }
+#ag-body .m.u { margin-left: 18%; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; }
+#ag-body .m.a { white-space: normal; } #ag-body .m.a p { margin: 0 0 .6em; } #ag-body .m.a ul { margin: 0 0 .6em; padding-left: 1.2em; }
+#ag-body .m.err { color: #b3261e; }
+#ag-body .hint { color: var(--muted); font-size: .9em; }
+#ag-body a.rr { text-decoration: none; border-bottom: 1px dotted currentColor; font-size: .85em; }
+#ag-body label { display: block; font-size: .8em; color: var(--muted); margin: 12px 0 4px; }
+#ag-body select, #ag-body input { width: 100%; font: inherit; font-size: 16px; color: var(--fg); background: var(--card);
+  border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+#ag-body .acts { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+#ag-body .acts button { border: 1px solid var(--line); background: var(--card); color: var(--fg); border-radius: 9px;
+  font: inherit; font-size: .9em; padding: 8px 14px; }
+#ag-body .acts button.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+#ag-form { display: flex; gap: 8px; padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
+#ag-in { flex: 1; font: inherit; font-size: 16px; color: var(--fg); background: var(--card); border: 1px solid var(--line);
+  border-radius: 18px; padding: 8px 14px; resize: none; max-height: 30vh; }
+#ag-send { width: 40px; height: 40px; border-radius: 50%; border: 0; background: var(--accent); color: #fff; font-size: 1.1em;
+  align-self: flex-end; }
+#ag-send:disabled { opacity: .45; }
+.row.flash { animation: rowFlash 1.6s ease-out; }
+@keyframes rowFlash { 0%, 50% { background: var(--hl2); } 100% { background: transparent; } }
 .lib-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 4px 0 6px; color: var(--muted);
   font-size: .8em; line-height: 1.4; }
 .lib-bar .grow { flex: 1; min-width: 12em; }
@@ -107,7 +158,10 @@ _APP_JS = r"""
   function labels(){
     doc.documentElement.lang = md4Lang;
     setText('lbl-ko', md4T('번역')); setText('lbl-en', md4T('원문')); setText('lbl-both', md4T('대조'));
-    setText('fs-dn', md4T('가') + '−'); setText('fs-up', md4T('가') + '+');
+    setText('fs-dn', md4T('가') + '−'); setText('fs-up', md4T('가') + '+'); setText('fs-btn', md4T('가'));
+    doc.getElementById('fs-btn').setAttribute('aria-label', md4T('글자 크기'));
+    doc.getElementById('toc-btn').setAttribute('aria-label', md4T('목차'));
+    doc.getElementById('fab').setAttribute('aria-label', md4T('이 논문에 대해 묻기'));
     setText('lnk-about', md4T('Narani 소개')); setText('lnk-privacy', md4T('개인정보처리방침'));
     doc.getElementById('fs-dn').setAttribute('aria-label', md4T('글자 작게'));
     doc.getElementById('fs-up').setAttribute('aria-label', md4T('글자 크게'));
@@ -386,7 +440,7 @@ _APP_JS = r"""
   // ---- 목록 ↔ 논문 ----
   function unmount(){ if (cur){ cur.parentNode.removeChild(cur); cur = null; } }
   function showLib(push){
-    loadSeq++; unmount(); loading.style.display = 'none';
+    loadSeq++; unmount(); loading.style.display = 'none'; readerClosed();
     lib.classList.remove('off'); topTitle.textContent = APP;
     closeSheet(); window.scrollTo(0, 0);
     if (push) history.pushState(null, '', '#!lib');
@@ -395,6 +449,7 @@ _APP_JS = r"""
     main.insertAdjacentHTML('beforeend', b.html);
     cur = doc.getElementById(PID); cur.classList.add('on');
     DATA[PID] = {key: b.key, title: b.title_ko || b.title, cites: b.cites || {}, fns: b.fns || {}};
+    readerOpened(b);
     var t = target ? doc.getElementById(target) : null, off = 0;
     if (!t){
       var saved = load('pos:' + b.key, '').split(':');
@@ -407,7 +462,7 @@ _APP_JS = r"""
     var e = entryOf(id);
     if (!e) return false;
     var seq = ++loadSeq;
-    unmount(); closeSheet();
+    unmount(); closeSheet(); readerClosed();
     lib.classList.add('off'); topTitle.textContent = e.title_ko || e.title;
     loading.style.display = ''; loading.textContent = md4T('불러오는 중…');
     window.scrollTo(0, 0);
@@ -735,6 +790,276 @@ _NOTES_JS = r"""
   }
 """
 
+
+# 읽기 화면의 둘레 — 상단 막대의 글자 크기 팝오버, 왼쪽 목차 서랍, 떠 있는 에이전트 단추와 대화 창.
+# 에이전트(§phone 결정 2026-10-26): 지금 보는 논문 하나를 다룬다. 서버가 없으므로 사용자가 이 기기에 넣은 자기 AI 키로
+# 브라우저가 AI 서비스(OpenAI·Anthropic·Gemini — 셋 다 브라우저 요청을 받는다)에 직접 묻는다. 키는 이 기기의
+# localStorage에만 둔다. 보내는 것: 이 논문의 원문(행마다 [rN] 표식)과 내 하이라이트·메모, 대화. 답의 [rN]을 누르면 그 행으로.
+_READER_JS = r"""
+  // ---- 글자 크기 팝오버 ----
+  var fsPop = doc.getElementById('fs-pop');
+  doc.getElementById('fs-btn').onclick = function(e){ e.stopPropagation(); fsPop.classList.toggle('open'); };
+  doc.addEventListener('click', function(e){
+    if (!e.target.closest || !e.target.closest('#fs-pop, #fs-btn')) fsPop.classList.remove('open');
+  }, true);
+
+  // ---- 서랍 공통 ----
+  var scrim = doc.getElementById('scrim'), tocd = doc.getElementById('tocd'), agent = doc.getElementById('agent');
+  function closeDrawers(){
+    tocd.classList.remove('open'); agent.classList.remove('open'); scrim.classList.remove('open');
+    try { doc.getElementById('ag-in').blur(); } catch (e) {}
+  }
+  scrim.onclick = closeDrawers;
+  doc.getElementById('tocd-x').onclick = closeDrawers;
+  doc.getElementById('ag-x').onclick = closeDrawers;
+  [tocd, agent].forEach(function(d){ d.addEventListener('click', function(e){ e.stopPropagation(); }); });
+  function readerOpened(b){ body.classList.add('reading'); AG.key = b.key; AG.lang = b.lang || 'ko'; AG.title = b.title_ko || b.title; AG.msgs = null; }
+  function readerClosed(){ body.classList.remove('reading'); closeDrawers(); }
+  function flashRow(row){
+    if (!row) return;
+    row.scrollIntoView({block: 'start'});
+    row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash');
+  }
+
+  // ---- 목차 서랍 — 논문 머리의 목차를 그대로, 지금 읽는 절을 표시 ----
+  function currentSection(){
+    var r = topRow(); if (!r || !cur) return null;
+    var rows = [].slice.call(cur.querySelectorAll('.row')), idx = rows.indexOf(r), best = null;
+    [].forEach.call(cur.querySelectorAll('.toc a'), function(a){
+      var id = (a.getAttribute('href') || '').slice(1), t = doc.getElementById(id);
+      if (t && rows.indexOf(t) <= idx) best = id;
+    });
+    return best;
+  }
+  function openToc(){
+    if (!cur) return;
+    var list = doc.getElementById('tocd-list'), here = currentSection();
+    list.innerHTML = '';
+    doc.getElementById('tocd-title').textContent = (DATA[PID] || {}).title || md4T('목차');
+    [].forEach.call(cur.querySelectorAll('.toc li'), function(li){
+      var a = li.querySelector('a'); if (!a) return;
+      var id = (a.getAttribute('href') || '').slice(1), item = el('li', li.className), b = el('a', '', a.textContent);
+      b.href = '#';
+      if (id === here) item.classList.add('here');
+      b.onclick = function(ev){ ev.preventDefault(); closeDrawers(); flashRow(doc.getElementById(id)); };
+      item.appendChild(b); list.appendChild(item);
+    });
+    if (!list.children.length) list.appendChild(el('li', 'empty', md4T('목차가 없는 논문이에요.')));
+    tocd.classList.add('open'); scrim.classList.add('open');
+    var h = list.querySelector('.here'); if (h) h.scrollIntoView({block: 'center'});
+  }
+  doc.getElementById('toc-btn').onclick = function(e){ e.stopPropagation(); openToc(); };
+
+  // ---- 에이전트 ----
+  var AG = {key: null, lang: 'ko', title: '', msgs: null, busy: false, mode: 'chat'};
+  var agBody = doc.getElementById('ag-body'), agIn = doc.getElementById('ag-in'), agSend = doc.getElementById('ag-send');
+  var PNAME = {openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Google Gemini'};
+  function aiCfg(){
+    var c = lsGet('narani:ai', null) || {}, d = (INDEX && INDEX.agent) || {}, tiers = CFG.ai_models || {};
+    c.keys = c.keys || {}; c.models = c.models || {};
+    c.provider = c.provider || d.provider || 'openai';
+    c.model = c.models[c.provider] || (d.provider === c.provider && d.model) || (tiers[c.provider] || [])[0] || '';
+    return c;
+  }
+  function chat(){
+    if (!AG.msgs) AG.msgs = lsGet('narani:chat:' + AG.key, []) || [];
+    return AG.msgs;
+  }
+  function saveChat(){ lsSet('narani:chat:' + AG.key, chat().slice(-30)); }
+  function esc(s){ return String(s).replace(/[&<>"]/g, function(c){ return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;'}[c]; }); }
+  function md(text){   // 답 — 굵게·코드·목록·문단, [r12]·[r12, r15] 근거 링크
+    var h = esc(text).replace(/\*\*([^*\n]+)\*\*/g, '<b>$1</b>').replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    h = h.replace(/\[((?:r\d+\s*,?\s*)+)\]/g, function(m, ids){
+      return ids.split(/\s*,\s*/).filter(Boolean).map(function(r){
+        return '<a href="#" class="rr" data-row="' + r.replace(/\D/g, '') + '">[' + r + ']</a>';
+      }).join(' ');
+    });
+    var out = [], list = false;
+    h.split('\n').forEach(function(line){
+      var m = /^\s*(?:[-*•]|\d+[.)])\s+(.*)$/.exec(line);
+      if (m){ if (!list){ out.push('<ul>'); list = true; } out.push('<li>' + m[1] + '</li>'); return; }
+      if (list){ out.push('</ul>'); list = false; }
+      if (line.trim()) out.push('<p>' + line + '</p>');
+    });
+    if (list) out.push('</ul>');
+    return out.join('');
+  }
+  agBody.addEventListener('click', function(e){
+    var a = e.target.closest ? e.target.closest('a.rr') : null;
+    if (!a) return;
+    e.preventDefault(); closeDrawers();
+    flashRow(doc.getElementById(PID + '-r' + a.getAttribute('data-row')));
+  });
+  function msgEl(m){
+    var d = el('div', 'm ' + (m.role === 'user' ? 'u' : (m.err ? 'a err' : 'a')));
+    if (m.role === 'user' || m.err) d.textContent = m.content; else d.innerHTML = md(m.content);
+    return d;
+  }
+  function showChat(){
+    AG.mode = 'chat'; agBody.innerHTML = '';
+    doc.getElementById('ag-form').style.display = '';
+    var c = aiCfg();
+    if (!c.keys[c.provider]){ showSettings(md4T('질문하려면 이 기기에 AI 서비스와 API 키를 한 번 넣어 주세요.')); return; }
+    var msgs = chat();
+    if (!msgs.length) agBody.appendChild(el('p', 'hint', md4T('이 논문에 대해 무엇이든 물어보세요 — 답의 [r12] 같은 표시를 누르면 그 문단으로 갑니다. ({p} · {m})', {p: PNAME[c.provider] || c.provider, m: c.model})));
+    msgs.forEach(function(m){ agBody.appendChild(msgEl(m)); });
+    agBody.scrollTop = agBody.scrollHeight;
+  }
+  function showSettings(note){
+    AG.mode = 'settings'; agBody.innerHTML = '';
+    doc.getElementById('ag-form').style.display = 'none';
+    var c = aiCfg(), tiers = CFG.ai_models || {};
+    if (note) agBody.appendChild(el('p', 'hint', note));
+    agBody.appendChild(el('label', '', md4T('AI 서비스')));
+    var sel = el('select'); Object.keys(PNAME).forEach(function(p){ var o = el('option', '', PNAME[p]); o.value = p; if (p === c.provider) o.selected = true; sel.appendChild(o); });
+    agBody.appendChild(sel);
+    agBody.appendChild(el('label', '', md4T('모델')));
+    var model = el('input'); model.setAttribute('list', 'ag-models'); model.value = c.model; agBody.appendChild(model);
+    var dl = el('datalist'); dl.id = 'ag-models'; agBody.appendChild(dl);
+    function fillModels(){ dl.innerHTML = ''; (tiers[sel.value] || []).forEach(function(m){ var o = el('option'); o.value = m; dl.appendChild(o); }); }
+    fillModels();
+    agBody.appendChild(el('label', '', md4T('API 키')));
+    var key = el('input'); key.type = 'password'; key.autocomplete = 'off'; key.spellcheck = false; agBody.appendChild(key);
+    function keyHint(){ key.value = ''; key.placeholder = c.keys[sel.value] ? md4T('저장됨 — 바꾸려면 새로 입력') : md4T('키를 붙여 넣으세요'); }
+    keyHint();
+    sel.onchange = function(){ fillModels(); model.value = c.models[sel.value] || ((INDEX && INDEX.agent && INDEX.agent.provider === sel.value) ? INDEX.agent.model : (tiers[sel.value] || [])[0] || ''); keyHint(); };
+    agBody.appendChild(el('p', 'hint', md4T('키는 이 기기의 브라우저에만 저장됩니다. 질문하면 이 논문의 본문과 내 하이라이트·메모, 대화가 고른 AI 서비스로 직접 보내집니다. 요금은 그 키의 계정에 청구됩니다.')));
+    var acts = el('div', 'acts'), save = el('button', 'pri', md4T('저장')), del = el('button', '', md4T('이 서비스 키 지우기'));
+    save.onclick = function(){
+      c.provider = sel.value; c.models[c.provider] = model.value.trim();
+      if (key.value.trim()) c.keys[c.provider] = key.value.trim();
+      lsSet('narani:ai', {provider: c.provider, models: c.models, keys: c.keys});
+      try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+      showChat();
+    };
+    del.onclick = function(){ delete c.keys[sel.value]; lsSet('narani:ai', {provider: c.provider, models: c.models, keys: c.keys}); keyHint(); };
+    acts.appendChild(save); if (c.keys[c.provider]) acts.appendChild(del);
+    if (c.keys[c.provider]){ var back = el('button', '', md4T('취소')); back.onclick = showChat; acts.appendChild(back); }
+    agBody.appendChild(acts);
+  }
+  doc.getElementById('ag-set').onclick = function(){ if (AG.mode === 'settings') showChat(); else showSettings(); };
+  doc.getElementById('ag-clear').onclick = function(){ AG.msgs = []; saveChat(); showChat(); };
+  doc.getElementById('fab').onclick = function(e){
+    e.stopPropagation();
+    closeSheet(); setText('ag-title', md4T('질문하기') + ' — ' + AG.title);
+    setText('ag-clear', '⟲'); doc.getElementById('ag-clear').setAttribute('aria-label', md4T('대화 지우기'));
+    agIn.placeholder = md4T('이 논문에 대해 물어보세요');
+    agent.classList.add('open'); scrim.classList.add('open');
+    showChat();
+  };
+
+  function paperText(){
+    var out = [], n = 0;
+    [].forEach.call(cur.querySelectorAll('.row'), function(r){
+      var k = r.id.replace(/^p\d+-r/, ''), c = r.querySelector('.cell.en') || r.querySelector('.cell.same') || r.querySelector('.cell.ko');
+      var t = c ? c.textContent.replace(/\s+/g, ' ').trim() : '';
+      if (t && n < 300000){ out.push('[r' + k + '] ' + t); n += t.length; }
+    });
+    return out.join('\n');
+  }
+  function notesText(){
+    if (NOTE.key !== AG.key) return '';
+    return items().map(function(it){
+      var a = (it.anchors || [])[0] || {};
+      return '- [r' + a.row + '] "' + String(a.quote || '').slice(0, 300) + '"' + (it.note ? ' — ' + it.note : '');
+    }).join('\n');
+  }
+  function systemPrompt(){
+    var notes = notesText();
+    return 'You are the reading assistant inside Narani, on the user\'s phone. The user is reading the paper below. ' +
+      'Reply in the language whose BCP-47 code is "' + AG.lang + '". Be concise and concrete. Base every claim on the paper ' +
+      'and cite the paragraphs you used with their ids, like [r12] or [r12, r15]. If the paper does not say, say so first; ' +
+      'you may then add general knowledge, clearly marked as such.\n\nTITLE: ' + AG.title +
+      (notes ? '\n\nTHE USER\'S HIGHLIGHTS AND NOTES:\n' + notes : '') +
+      '\n\nPAPER (original text; one paragraph per line, each starting with its id):\n' + paperText();
+  }
+  function sse(resp, onData){
+    var reader = resp.body.getReader(), dec = new TextDecoder(), buf = '';
+    function pump(){
+      return reader.read().then(function(r){
+        if (r.done) return;
+        buf += dec.decode(r.value, {stream: true});
+        var lines = buf.split('\n'); buf = lines.pop();
+        lines.forEach(function(l){
+          l = l.trim();
+          if (l.indexOf('data:') !== 0) return;
+          var d = l.slice(5).trim();
+          if (d && d !== '[DONE]'){ try { onData(JSON.parse(d)); } catch (e) {} }
+        });
+        return pump();
+      });
+    }
+    return pump();
+  }
+  function failed(resp){
+    return resp.text().then(function(t){
+      var m = t; try { var j = JSON.parse(t); m = (j.error && (j.error.message || j.error)) || t; } catch (e) {}
+      throw new Error('HTTP ' + resp.status + ': ' + String(m).slice(0, 300));
+    });
+  }
+  function askAI(c, system, msgs, onText){
+    var key = c.keys[c.provider], req;
+    if (c.provider === 'anthropic'){
+      req = fetch('https://api.anthropic.com/v1/messages', {method: 'POST', headers: {'x-api-key': key,
+        'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true', 'content-type': 'application/json'},
+        body: JSON.stringify({model: c.model, max_tokens: 2048, stream: true, system: system, messages: msgs})});
+      return req.then(function(r){ if (!r.ok) return failed(r);
+        return sse(r, function(d){ if (d.type === 'content_block_delta' && d.delta && d.delta.text) onText(d.delta.text); }); });
+    }
+    if (c.provider === 'gemini'){
+      req = fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(c.model) +
+        ':streamGenerateContent?alt=sse', {method: 'POST', headers: {'x-goog-api-key': key, 'content-type': 'application/json'},
+        body: JSON.stringify({systemInstruction: {parts: [{text: system}]}, contents: msgs.map(function(m){
+          return {role: m.role === 'assistant' ? 'model' : 'user', parts: [{text: m.content}]}; })})});
+      return req.then(function(r){ if (!r.ok) return failed(r);
+        return sse(r, function(d){
+          var p = d.candidates && d.candidates[0] && d.candidates[0].content && d.candidates[0].content.parts;
+          if (p) onText(p.map(function(x){ return x.text || ''; }).join(''));
+        }); });
+    }
+    req = fetch('https://api.openai.com/v1/chat/completions', {method: 'POST',
+      headers: {'Authorization': 'Bearer ' + key, 'content-type': 'application/json'},
+      body: JSON.stringify({model: c.model, stream: true, messages: [{role: 'system', content: system}].concat(msgs)})});
+    return req.then(function(r){ if (!r.ok) return failed(r);
+      return sse(r, function(d){ var t = d.choices && d.choices[0] && d.choices[0].delta && d.choices[0].delta.content; if (t) onText(t); }); });
+  }
+  function send(){
+    var q = agIn.value.trim(), c = aiCfg();
+    if (!q || AG.busy || !cur) return;
+    if (!c.keys[c.provider]){ showSettings(); return; }
+    if (navigator.onLine === false){ agBody.appendChild(msgEl({role: 'assistant', err: true, content: md4T('오프라인이라 질문할 수 없어요.')})); return; }
+    var msgs = chat();
+    msgs.push({role: 'user', content: q});
+    agIn.value = ''; agIn.style.height = '';
+    showChat();
+    var ans = {role: 'assistant', content: ''}, box = msgEl(ans);
+    box.innerHTML = '<p class="hint">' + esc(md4T('읽는 중…')) + '</p>';
+    agBody.appendChild(box); agBody.scrollTop = agBody.scrollHeight;
+    AG.busy = true; agSend.disabled = true;
+    var hist = msgs.slice(-12).map(function(m){ return {role: m.role, content: m.content}; });
+    askAI(c, systemPrompt(), hist, function(t){
+      ans.content += t; box.innerHTML = md(ans.content);
+      var near = agBody.scrollHeight - agBody.scrollTop - agBody.clientHeight < 120;
+      if (near) agBody.scrollTop = agBody.scrollHeight;
+    }).then(function(){
+      if (!ans.content) throw new Error(md4T('빈 답이 왔어요'));
+      msgs.push(ans);
+    }).catch(function(e){
+      msgs.push({role: 'assistant', err: true, content: md4T('답을 받지 못했어요: {e}', {e: e.message || e})});
+      msgs.splice(msgs.length - 2, 1);   // 실패한 질문은 대화에서 빼고(다시 물을 수 있게) 오류만 남긴다
+      agIn.value = q;
+    }).then(function(){
+      AG.busy = false; agSend.disabled = false;
+      AG.msgs = msgs.filter(function(m){ return !m.err; }); saveChat();
+      var shown = msgs.slice(); showChat(); if (shown.length && shown[shown.length - 1].err) agBody.appendChild(msgEl(shown[shown.length - 1]));
+      agBody.scrollTop = agBody.scrollHeight;
+    });
+  }
+  doc.getElementById('ag-form').addEventListener('submit', function(e){ e.preventDefault(); send(); });
+  agIn.addEventListener('input', function(){ agIn.style.height = ''; agIn.style.height = Math.min(agIn.scrollHeight, 200) + 'px'; });
+  agIn.addEventListener('keydown', function(e){ if (e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); send(); } });
+"""
+
 _SW_JS = r"""
 // 앱 껍데기 캐시 — 먼저 캐시로 띄우고 뒤에서 새로 받아 둔다. 데이터(data/·__data/)는 앱이 직접 캐시한다.
 var V = '%(version)s', SHELL = 'narani-shell-' + V;
@@ -774,7 +1099,7 @@ def _js_strings(*codes: str) -> set[str]:
 
 def _catalogs() -> dict[str, dict[str, str]]:
     """화면 언어별 카탈로그 — 리더 JS가 쓰는 문구만 (전부 실으면 index.html이 커진다)."""
-    used = _js_strings(mobile.CORE_JS, _APP_JS, _NOTES_JS)
+    used = _js_strings(mobile.CORE_JS, _APP_JS, _NOTES_JS, _READER_JS)
     out: dict[str, dict[str, str]] = {}
     for lang in i18n.available():
         if lang == i18n.SOURCE:
@@ -817,26 +1142,44 @@ def _index_html(cfg: dict) -> str:
         "<input type=\"radio\" name=\"mode\" id=\"m-en\" class=\"mode\">"
         "<input type=\"radio\" name=\"mode\" id=\"m-both\" class=\"mode\">"
         "<header class=\"top\">"
-        "<button class=\"only-js back\" id=\"back\">☰</button>"
+        "<button class=\"only-js back\" id=\"back\">‹</button>"
         f"<span class=\"top-title\" id=\"top-title\">{APP_NAME}</span>"
+        "<button class=\"only-js tb rd\" id=\"toc-btn\">☰</button>"
         "<span class=\"seg\"><label for=\"m-ko\" id=\"lbl-ko\"></label><label for=\"m-en\" id=\"lbl-en\"></label>"
         "<label for=\"m-both\" id=\"lbl-both\"></label></span>"
-        "<button class=\"only-js fs\" id=\"fs-dn\"></button><button class=\"only-js fs\" id=\"fs-up\"></button>"
+        "<button class=\"only-js tb\" id=\"fs-btn\"></button>"
+        "<div class=\"pop\" id=\"fs-pop\"><button class=\"fs\" id=\"fs-dn\"></button>"
+        "<button class=\"fs\" id=\"fs-up\"></button></div>"
         "</header>"
         f"<main><nav id=\"lib\"><h1 id=\"lib-h\">{APP_NAME}</h1><div class=\"lib-bar\" id=\"lib-bar\"></div>"
         "<ol id=\"lib-list\"></ol><p class=\"lib-foot\"><a href=\"about.html\" id=\"lnk-about\"></a> · "
         "<a href=\"privacy.html\" id=\"lnk-privacy\"></a></p></nav><p id=\"loading\" style=\"display:none\"></p></main>"
         "<div id=\"sheet\" role=\"dialog\" aria-live=\"polite\"><div class=\"sh-grip\"></div>"
         "<div class=\"sh-label\"></div><div class=\"sh-text\"></div><div class=\"sh-acts\"></div></div>"
+        # 목차 서랍(왼쪽) · 에이전트(떠 있는 단추 → 아래에서 올라오는 창) · 둘 뒤의 어둠막
+        "<div id=\"scrim\"></div>"
+        "<nav id=\"tocd\"><div class=\"dh\"><span id=\"tocd-title\"></span><button id=\"tocd-x\">×</button></div>"
+        "<ol id=\"tocd-list\"></ol></nav>"
+        "<button id=\"fab\" class=\"rd\"><svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" aria-hidden=\"true\">"
+        "<path fill=\"currentColor\" d=\"M12 2l1.9 5.6L19.5 9.5l-5.6 1.9L12 17l-1.9-5.6L4.5 9.5l5.6-1.9zM19 14l.9 2.6"
+        " 2.6.9-2.6.9L19 21l-.9-2.6L15.5 17.5l2.6-.9z\"/></svg></button>"
+        "<section id=\"agent\" role=\"dialog\"><div class=\"dh\"><span id=\"ag-title\"></span>"
+        "<button id=\"ag-clear\"></button><button id=\"ag-set\">⚙</button><button id=\"ag-x\">×</button></div>"
+        "<div id=\"ag-body\"></div><form id=\"ag-form\"><textarea id=\"ag-in\" rows=\"1\"></textarea>"
+        "<button id=\"ag-send\" type=\"submit\">↑</button></form></section>"
         "<script src=\"app.js\"></script></body></html>"
     )
 
 
 def site_files(*, local: bool = False, google_client_id: str = "") -> dict[str, tuple[bytes, str]]:
     """웹앱 파일들 → {이름: (바이트, MIME)}. local=True면 같은 주소의 `data/`를 저장소로 쓴다(미리보기)."""
+    from narani import config
+
     cfg = {"app_name": APP_NAME, "source_lang": i18n.SOURCE, "fallback_lang": "en", "local": local,
+           "ai_models": {p: list(m) for p, m in config.MODEL_TIERS.items()},  # 모바일 에이전트의 모델 고르기
            "google_client_id": google_client_id, "catalogs": _catalogs()}
-    app_js = _PRELUDE_JS + "(function(){\n" + sentpair.JS + mobile.CORE_JS + _APP_JS + _NOTES_JS + "})();\n"
+    app_js = (_PRELUDE_JS + "(function(){\n" + sentpair.JS + mobile.CORE_JS + _APP_JS + _NOTES_JS + _READER_JS
+              + "})();\n")
     manifest = {
         "name": APP_NAME, "short_name": APP_NAME, "start_url": "./", "scope": "./", "display": "standalone",
         "background_color": "#fbfaf7", "theme_color": "#fbfaf7",
