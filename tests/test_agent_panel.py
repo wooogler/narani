@@ -114,7 +114,8 @@ def test_routes_used_by_panel_exist():
     assert "'/agent/sessions/' + encodeURIComponent(at) + '/turns'" in JS
     assert "api('GET', '/agent/models')" in JS
     # 모델 고르기는 서랍이 아니라 설정 창(AI 탭)이 한다 — 같은 [chat] 설정을 쓴다
-    assert "api('PUT', '/agent/model'" not in JS
+    # 모델은 설정 창(AI 탭)과 서랍의 ⚙ 메뉴 두 곳에서 — 같은 [chat] 설정을 쓴다
+    assert "api('PUT', '/agent/model'" in JS and 'class="ag-setm-model"' in HTML
     from narani.ui import settings_dialog
     src = Path(settings_dialog.__file__).read_text(encoding="utf-8")
     assert "config.set_chat_choice(" in src and "window.__md4Agent.reloadModels()" in src
@@ -412,7 +413,7 @@ def test_no_money_or_model_picker_in_drawer():
     """머리줄은 세션만 — 모델 고르기는 설정 창으로, 쓴 돈·단가·토큰은 서랍 어디에도 없다.
     (비용 상한에 걸린 턴의 경고 카드는 남는다 — 그건 막힌 이유다.)"""
     assert 'class="ag-model"' not in HTML and 'class="ag-cost"' not in HTML
-    assert ".ag-model" not in CSS and ".ag-cost" not in CSS
+    assert ".ag-model " not in CSS and ".ag-cost" not in CSS
     assert "m.price" not in JS and "money(" not in JS and "toFixed(4)" not in JS
     turn = _js_block(JS, "function turnNode(")
     assert "cost_usd" not in turn and "toFixed" not in turn
@@ -660,3 +661,18 @@ def test_viewing_context_is_attached_by_default_and_removable():
     home = (Path(agent_panel.__file__).with_name("home.py")).read_text(encoding="utf-8")
     assert "row.props(f'data-pid=\"{value}\"')" in home
     assert ".ag-row:focus-within" in CSS                 # 입력 상자 전체가 초점을 보인다
+
+
+def test_gear_menu_sets_text_size_and_model():
+    """⚙ — 글자 크기(이 브라우저에 기억, 대화·입력만 zoom)와 모델(키 없는 서비스는 못 고름)."""
+    assert 'class="ag-btn ag-gear"' in HTML and HTML.count("data-z=") == 4
+    assert "#md4-agent .ag-list, #md4-agent .ag-foot { zoom: var(--ag-zoom, 1); }" in CSS
+    z = _js_block(JS, "function applyZoom(")
+    assert "[0.9, 1, 1.12, 1.25].indexOf(+z) >= 0" in z
+    assert "var LS_ZOOM = 'md4agent.zoom';" in JS
+    assert "o.disabled = !m.has_key;" in _js_block(JS, "function renderSetModel(")
+
+
+def test_composer_row_cannot_overflow_the_drawer():
+    """textarea는 cols 기본 폭(약 20자)을 고집해 flex 줄을 서랍 밖으로 밀었다 — min-width·width를 0으로."""
+    assert "min-width: 0; width: 0;" in _rule(CSS, ".ag-input")

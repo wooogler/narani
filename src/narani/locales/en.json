@@ -1031,5 +1031,15 @@
  "지금 보고 있는 것 — 따로 말하지 않으면 에이전트가 이것을 두고 답합니다": "What you're looking at — the agent answers about this unless you say otherwise",
  "이번 질문에서 빼기": "Leave out of this question",
  "무엇이든 물어보세요 · @로 맥락 넣기": "Ask anything · @ to add context",
- "Enter 보내기 · Shift+Enter 줄바꿈": "Enter to send · Shift+Enter for a new line"
+ "Enter 보내기 · Shift+Enter 줄바꿈": "Enter to send · Shift+Enter for a new line",
+ "에이전트 설정 — 글자 크기 · 모델": "Agent settings — text size · model",
+ "에이전트 설정": "Agent settings",
+ "글자 크기": "Text size",
+ "작게": "Small",
+ "보통": "Normal",
+ "크게": "Large",
+ "아주 크게": "Larger",
+ "모델": "Model",
+ "번역 설정과 별개": "separate from translation",
+ "에이전트가 쓸 모델": "Model the agent uses"
 }
