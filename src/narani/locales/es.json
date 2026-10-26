@@ -1098,5 +1098,7 @@
  "오프라인이라 질문할 수 없어요.": "Sin conexión no puedes preguntar.",
  "읽는 중…": "Leyendo…",
  "빈 답이 왔어요": "La respuesta llegó vacía",
- "답을 받지 못했어요: {e}": "No se pudo obtener respuesta: {e}"
+ "답을 받지 못했어요: {e}": "No se pudo obtener respuesta: {e}",
+ "번역으로 보기": "Ver traducción",
+ "원문으로 보기": "Ver original"
 }

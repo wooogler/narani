@@ -30,10 +30,20 @@ from narani.ui import mobile, sentpair
 APP_NAME = "Narani"
 
 _PWA_CSS = """
-.top button, .seg label { white-space: nowrap; }
+.top button { white-space: nowrap; }
 .top .back { font-size: 1.3em; line-height: 1; padding: 4px 10px; }
 .js.reading .top .tb.rd { display: inline-block; }
 .top .tb.rd, #fab.rd { display: none; }
+/* 제목 — 두 줄까지. 논문을 열었을 때는 누르면 목차(▾) */
+.top .top-title { border: 0; background: none; min-height: 0; padding: 2px 2px; text-align: left; color: var(--fg);
+  font: inherit; font-weight: 600; font-size: .92em; line-height: 1.25; white-space: normal; display: -webkit-box;
+  -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.js.reading .top .top-title { position: relative; padding-right: 16px; }
+.js.reading .top .top-title::after { content: "▾"; position: absolute; right: 2px; bottom: 2px; color: var(--muted);
+  font-weight: 400; font-size: .9em; }
+.top #lang-btn { font-weight: 600; min-width: 64px; }
+/* 키보드가 올라오면 아래 시트·대화 창을 그 위로 (--kb: 키보드 높이, visualViewport로 잰다) */
+#sheet { bottom: var(--kb, 0px); max-height: min(55vh, calc(100vh - var(--kb, 0px) - 70px)); }
 .pop { position: absolute; right: 10px; top: calc(100% + 4px); display: none; gap: 6px; padding: 6px; z-index: 6;
   background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.12); }
 .pop.open { display: flex; }
@@ -56,7 +66,7 @@ _PWA_CSS = """
 #fab { position: fixed; right: 16px; bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 8; width: 52px; height: 52px;
   border-radius: 50%; border: 0; background: var(--accent); color: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.22); }
 .js.reading #fab.rd { display: grid; place-items: center; }
-#agent { position: fixed; left: 0; right: 0; bottom: 0; height: 86vh; z-index: 12; background: var(--sheet);
+#agent { position: fixed; left: 0; right: 0; bottom: var(--kb, 0px); height: min(86vh, calc(100vh - var(--kb, 0px) - 40px)); z-index: 12; background: var(--sheet);
   border-radius: 16px 16px 0 0; box-shadow: 0 -8px 30px rgba(0,0,0,.18); display: flex; flex-direction: column;
   transform: translateY(105%); transition: transform .2s ease; visibility: hidden; }
 #agent.open { transform: none; visibility: visible; }
@@ -157,10 +167,10 @@ _APP_JS = r"""
   function setText(id, s){ var el = doc.getElementById(id); if (el) el.textContent = s; }
   function labels(){
     doc.documentElement.lang = md4Lang;
-    setText('lbl-ko', md4T('번역')); setText('lbl-en', md4T('원문')); setText('lbl-both', md4T('대조'));
+    langLabel();
     setText('fs-dn', md4T('가') + '−'); setText('fs-up', md4T('가') + '+'); setText('fs-btn', md4T('가'));
     doc.getElementById('fs-btn').setAttribute('aria-label', md4T('글자 크기'));
-    doc.getElementById('toc-btn').setAttribute('aria-label', md4T('목차'));
+    doc.getElementById('top-title').setAttribute('aria-label', md4T('목차'));
     doc.getElementById('fab').setAttribute('aria-label', md4T('이 논문에 대해 묻기'));
     setText('lnk-about', md4T('Narani 소개')); setText('lnk-privacy', md4T('개인정보처리방침'));
     doc.getElementById('fs-dn').setAttribute('aria-label', md4T('글자 작게'));
@@ -776,16 +786,23 @@ _NOTES_JS = r"""
     if (it) buttons.push(button(md4T('지우기'), function(){ record({op: 'del', id: it.id}); clearSent(); closeSheet(); }));
     return {nodes: nodes, buttons: buttons};
   }
+  // 쓰는 중인 메모 — 시트가 어떻게 닫히든('저장'·'닫기'·바깥 누르기) 바뀐 글은 저장한다. 폰에서는 키보드가
+  // 시트 아래쪽을 가려 '저장'을 못 누르고 바깥을 눌러 닫는 일이 흔하다 — 그때 쓴 글을 잃지 않게.
+  var noteDraft = null;
+  function beforeSheetClose(){
+    var d = noteDraft; noteDraft = null;
+    if (!d) return;
+    var note = d.ta.value.replace(/\s+$/, '');
+    if (note === d.orig) return;
+    if (d.it) record({op: 'put', item: Object.assign({}, d.it, {note: note})});
+    else if (note) record({op: 'put', item: d.fresh('yellow', note)});
+  }
   function editNote(it, fresh){
     var ta = el('textarea', 'anno-ta');
     ta.value = (it && it.note) || ''; ta.rows = 4; ta.placeholder = md4T('메모를 적으세요');
-    var save = button(md4T('저장'), function(){
-      var note = ta.value.replace(/\s+$/, '');
-      if (it) record({op: 'put', item: Object.assign({}, it, {note: note})});
-      else if (note) record({op: 'put', item: fresh('yellow', note)});
-      clearSent(); closeSheet();
-    });
+    var save = button(md4T('저장'), function(){ clearSent(); closeSheet(); });   // 저장은 beforeSheetClose가
     openSheet(md4T('메모'), [ta], [save]);
+    noteDraft = {it: it, fresh: fresh, ta: ta, orig: (it && it.note) || ''};
     setTimeout(function(){ ta.focus(); }, 50);
   }
 """
@@ -848,7 +865,30 @@ _READER_JS = r"""
     tocd.classList.add('open'); scrim.classList.add('open');
     var h = list.querySelector('.here'); if (h) h.scrollIntoView({block: 'center'});
   }
-  doc.getElementById('toc-btn').onclick = function(e){ e.stopPropagation(); openToc(); };
+  topTitle.onclick = function(e){ if (!cur) return; e.stopPropagation(); openToc(); };
+
+  // ---- 번역 ⇄ 원문 토글 (대조는 화면에서 뺐다 — 문장을 누르면 짝 문장이 뜬다) ----
+  if (doc.getElementById('m-both').checked){ doc.getElementById('m-ko').checked = true; store('mode', 'ko'); }
+  function langLabel(){
+    var en = doc.getElementById('m-en').checked;
+    setText('lang-btn', (en ? md4T('원문') : md4T('번역')) + ' ⇄');
+    doc.getElementById('lang-btn').setAttribute('aria-label', en ? md4T('번역으로 보기') : md4T('원문으로 보기'));
+  }
+  doc.getElementById('lang-btn').onclick = function(e){
+    e.stopPropagation();
+    modeAnchor = topRow();   // 바꾸기 전 화면 맨 위 문단 — 바꾼 뒤 그 문단으로 (CORE_JS의 change 처리)
+    var to = doc.getElementById('m-en').checked ? 'm-ko' : 'm-en', r = doc.getElementById(to);
+    r.checked = true; r.dispatchEvent(new Event('change'));
+    langLabel();
+  };
+
+  // ---- 키보드 높이 — iOS는 키보드가 올라와도 아래에 붙은 창을 밀어 올리지 않는다 ----
+  function fitKeyboard(){
+    var vv = window.visualViewport; if (!vv) return;
+    var kb = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+    doc.documentElement.style.setProperty('--kb', kb + 'px');
+  }
+  if (window.visualViewport){ visualViewport.addEventListener('resize', fitKeyboard); visualViewport.addEventListener('scroll', fitKeyboard); }
 
   // ---- 에이전트 ----
   var AG = {key: null, lang: 'ko', title: '', msgs: null, busy: false, mode: 'chat'};
@@ -1140,14 +1180,12 @@ def _index_html(cfg: dict) -> str:
         f"<script>window.NARANI_CFG = {payload};</script></head><body>"
         "<input type=\"radio\" name=\"mode\" id=\"m-ko\" class=\"mode\" checked>"
         "<input type=\"radio\" name=\"mode\" id=\"m-en\" class=\"mode\">"
-        "<input type=\"radio\" name=\"mode\" id=\"m-both\" class=\"mode\">"
+        "<input type=\"radio\" name=\"mode\" id=\"m-both\" class=\"mode\">"  # 읽기 동작이 찾는다 — 화면엔 번역/원문 토글만
         "<header class=\"top\">"
-        "<button class=\"only-js back\" id=\"back\">‹</button>"
-        f"<span class=\"top-title\" id=\"top-title\">{APP_NAME}</span>"
-        "<button class=\"only-js tb rd\" id=\"toc-btn\">☰</button>"
-        "<span class=\"seg\"><label for=\"m-ko\" id=\"lbl-ko\"></label><label for=\"m-en\" id=\"lbl-en\"></label>"
-        "<label for=\"m-both\" id=\"lbl-both\"></label></span>"
-        "<button class=\"only-js tb\" id=\"fs-btn\"></button>"
+        "<button class=\"only-js tb rd back\" id=\"back\">‹</button>"
+        f"<button class=\"top-title\" id=\"top-title\">{APP_NAME}</button>"
+        "<button class=\"only-js tb rd\" id=\"lang-btn\"></button>"
+        "<button class=\"only-js tb rd\" id=\"fs-btn\"></button>"
         "<div class=\"pop\" id=\"fs-pop\"><button class=\"fs\" id=\"fs-dn\"></button>"
         "<button class=\"fs\" id=\"fs-up\"></button></div>"
         "</header>"

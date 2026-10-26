@@ -437,7 +437,8 @@ CORE_JS = r"""
     return null;
   }
   // ---- 아래 시트 ----
-  function closeSheet(){ sheet.classList.remove('open'); tapped = null; }
+  // 쓰는 쪽이 시트가 닫히기 직전에 할 일을 둘 수 있다(폰 리더: 쓰던 메모 저장 — beforeSheetClose)
+  function closeSheet(){ if (typeof beforeSheetClose === 'function') beforeSheetClose(); sheet.classList.remove('open'); tapped = null; }
   function openSheet(label, nodes, acts){
     shLabel.textContent = label; shText.innerHTML = ''; shActs.innerHTML = '';
     nodes.forEach(function(n){ shText.appendChild(n); });
@@ -571,6 +572,9 @@ CORE_JS = r"""
   }
 
   doc.addEventListener('click', function(e){
+    // 시트 단추가 시트 내용을 갈아 끼우면(예: '메모 달기' → 입력칸) 눌린 단추는 문서에서 떨어져 나간 뒤 여기 닿는다 —
+    // 그걸 '시트 바깥을 눌렀다'로 보면 방금 연 시트를 곧바로 닫아 버린다
+    if (!e.target.isConnected) return;
     var a = e.target.closest ? e.target.closest('a[href]') : null;
     if (a){ if (!sheet.contains(a)) onLink(a, e); return; }
     if (sheet.contains(e.target) || e.target.closest('.top')) return;

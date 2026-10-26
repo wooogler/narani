@@ -205,7 +205,7 @@ def test_index_carries_agent_defaults_without_keys(tmp_path):
 def test_reader_has_toc_drawer_and_agent():
     files = web.site_files()
     html, js = files["index.html"][0].decode(), files["app.js"][0].decode()
-    for el_id in ('id="toc-btn"', 'id="tocd"', 'id="fab"', 'id="agent"', 'id="ag-in"', 'id="fs-pop"'):
+    for el_id in ('id="lang-btn"', 'id="tocd"', 'id="fab"', 'id="agent"', 'id="ag-in"', 'id="fs-pop"'):
         assert el_id in html
     cfg = json.loads(re.search(r"window\.NARANI_CFG = (\{.*?\});</script>", html).group(1))
     assert cfg["ai_models"]["openai"]  # 모바일 에이전트의 모델 고르기
@@ -213,3 +213,15 @@ def test_reader_has_toc_drawer_and_agent():
     for host in ("api.openai.com", "api.anthropic.com", "generativelanguage.googleapis.com"):
         assert host in js
     assert "anthropic-dangerous-direct-browser-access" in js and "narani:ai" in js
+
+
+def test_reader_sheet_click_and_note_draft_guards():
+    from narani.ui import mobile
+
+    # 시트 단추가 시트 내용을 갈아 끼우면 눌린 단추는 문서에서 떨어져 나간다 — 바깥 누르기로 보지 않아야
+    # '메모 달기'를 누르자마자 입력칸이 닫히지 않는다 (실기기에서 메모가 안 되던 원인)
+    assert "if (!e.target.isConnected) return;" in mobile.CORE_JS
+    assert "typeof beforeSheetClose === 'function'" in mobile.CORE_JS
+    js = web.site_files()["app.js"][0].decode()
+    assert "function beforeSheetClose" in js and "var noteDraft" in js  # 닫히면 쓰던 메모를 저장
+    assert "visualViewport" in js  # 키보드 위로 시트를 올린다

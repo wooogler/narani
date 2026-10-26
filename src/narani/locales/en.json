@@ -1098,5 +1098,7 @@
  "오프라인이라 질문할 수 없어요.": "You're offline, so you can't ask right now.",
  "읽는 중…": "Reading…",
  "빈 답이 왔어요": "Got an empty answer",
- "답을 받지 못했어요: {e}": "Couldn't get an answer: {e}"
+ "답을 받지 못했어요: {e}": "Couldn't get an answer: {e}",
+ "번역으로 보기": "Show translation",
+ "원문으로 보기": "Show original"
 }
