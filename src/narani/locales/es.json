@@ -1031,5 +1031,15 @@
  "지금 보고 있는 것 — 따로 말하지 않으면 에이전트가 이것을 두고 답합니다": "Lo que estás viendo — el agente responde sobre esto salvo que digas otra cosa",
  "이번 질문에서 빼기": "Quitar de esta pregunta",
  "무엇이든 물어보세요 · @로 맥락 넣기": "Pregunta lo que quieras · @ para contexto",
- "Enter 보내기 · Shift+Enter 줄바꿈": "Enter para enviar · Shift+Enter para salto de línea"
+ "Enter 보내기 · Shift+Enter 줄바꿈": "Enter para enviar · Shift+Enter para salto de línea",
+ "에이전트 설정 — 글자 크기 · 모델": "Ajustes del agente — tamaño de texto · modelo",
+ "에이전트 설정": "Ajustes del agente",
+ "글자 크기": "Tamaño de texto",
+ "작게": "Pequeño",
+ "보통": "Normal",
+ "크게": "Grande",
+ "아주 크게": "Muy grande",
+ "모델": "Modelo",
+ "번역 설정과 별개": "aparte de la traducción",
+ "에이전트가 쓸 모델": "Modelo que usa el agente"
 }

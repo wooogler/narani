@@ -126,6 +126,29 @@ body.ag-open.ag-narrow .md4-hprev { display: none; }
 .ag-btn:hover { background: #f0efec; }
 .ag-btn:disabled { cursor: default; opacity: .5; }
 .ag-x { font-size: 13px; }
+/* 에이전트 설정(⚙) — 글자 크기·모델. 머리 오른쪽 아래로 펼친다 */
+a.ag-pop, .ag-gear { display: inline-flex; align-items: center; }
+.ag-gear { padding: 3px 4px; }
+.ag-gear .material-icons { font-size: 16px; }
+.ag-gear.on { background: #f0efec; color: #2383e2; }
+.ag-setm { position: absolute; right: 8px; top: calc(100% + 2px); z-index: 2; display: none; width: 236px;
+  background: #fff; border: 1px solid #e6e4e0; border-radius: 10px; box-shadow: 0 8px 24px rgba(0,0,0,.14);
+  padding: 10px 11px 12px; font-size: 12px; }
+.ag-setm.open { display: block; }
+.ag-setm-l { color: #6b6862; font-weight: 600; font-size: 11px; margin: 2px 0 6px; }
+.ag-setm-l + .ag-fs + .ag-setm-l { margin-top: 12px; }
+.ag-setm-s { color: #97948d; font-weight: 400; }
+.ag-fs { display: flex; border: 1px solid #e0ded9; border-radius: 8px; overflow: hidden; }
+.ag-fs button { flex: 1 1 0; border: none; background: #fff; color: inherit; cursor: pointer; padding: 4px 2px;
+  height: 32px; line-height: 1;
+  font-family: inherit; }
+.ag-fs button + button { border-left: 1px solid #e0ded9; }
+.ag-fs button:hover { background: #f7f6f3; }
+.ag-fs button.on { background: #eef4fd; color: #1668c4; font-weight: 600; }
+.ag-setm-model { width: 100%; font: inherit; font-size: 12px; padding: 5px 6px; border: 1px solid #e0ded9;
+  border-radius: 8px; background: #fff; color: inherit; }
+/* 글자 크기 — 대화 목록과 입력칸만 함께 키운다(머리줄은 그대로). px로 적힌 크기들을 한꺼번에 바꾸려고 zoom */
+#md4-agent .ag-list, #md4-agent .ag-foot { zoom: var(--ag-zoom, 1); }
 /* '새 창으로' — 진짜 링크(<a>)다: 브라우저 모드에서는 이 링크가 새 탭을 연다 */
 a.ag-pop { display: inline-flex; align-items: center; text-decoration: none; padding: 3px 4px; }
 a.ag-pop .material-icons { font-size: 15px; }
@@ -283,7 +306,7 @@ a.chat-cite-note:hover { background: #f7cf60; }
 .ag-chip-x:hover { opacity: 1; background: rgba(35,131,226,.14); }
 .ag-q-ctx { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
 .ag-q-ctx .ag-chip { height: 20px; padding-right: 6px; }
-.ag-at-btn { flex: 0 0 26px; height: 30px; border: none; background: none; color: #8a8780;
+.ag-at-btn { flex: 0 0 28px; height: 34px; border: none; background: none; color: #8a8780;
   font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; border-radius: 8px; padding: 0; }
 .ag-at-btn:hover { background: #f0efec; color: #2383e2; }
 .ag-at-btn:disabled { opacity: .4; cursor: default; }
@@ -307,16 +330,16 @@ a.chat-cite-note:hover { background: #f7cf60; }
 .ag-sel-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 /* 입력창 — @ 단추·글칸·보내기를 테두리 하나로 묶은 상자. 서랍 바닥이 옅은 회색이라 흰 상자 + 파란 테가
    '여기에 쓴다'를 먼저 보인다. 초점이 들어오면 테가 짙어지고 바깥 고리가 뜬다. */
-.ag-row { display: flex; gap: 4px; align-items: flex-end; background: #fff; border: 1.5px solid #c9d7ea;
+.ag-row { display: flex; gap: 4px; align-items: flex-end; min-width: 0; box-sizing: border-box; background: #fff; border: 1.5px solid #c9d7ea;
   border-radius: 14px; padding: 4px 4px 4px 3px; box-shadow: 0 2px 10px rgba(35,131,226,.10);
   transition: border-color .12s ease, box-shadow .12s ease; }
 .ag-row:focus-within { border-color: #2383e2; box-shadow: 0 0 0 3px rgba(35,131,226,.16), 0 2px 10px rgba(35,131,226,.10); }
-.ag-input { flex: 1 1 auto; resize: none; max-height: 160px; box-sizing: border-box; border: none;
+.ag-input { flex: 1 1 auto; min-width: 0; width: 0; resize: none; max-height: 160px; box-sizing: border-box; border: none;
   padding: 7px 4px; font: inherit; font-size: 13.5px; line-height: 1.5; background: transparent;
   color: inherit; outline: none; min-height: 34px; }
 .ag-input::placeholder { color: #8a8780; }
 .ag-input:disabled { color: #97948d; }
-.ag-send { flex: 0 0 32px; width: 32px; height: 32px; border: none; border-radius: 50%;
+.ag-send { flex: 0 0 32px; width: 32px; height: 32px; margin: 0 1px 1px 0; border: none; border-radius: 50%;
   background: #2383e2; color: #fff; font-size: 13px; cursor: pointer; }
 .ag-send:hover { background: #1668c4; }
 .ag-send:disabled { background: #d8d6d1; cursor: default; }
@@ -347,6 +370,9 @@ a.chat-cite-note:hover { background: #f7cf60; }
   .ag-a hr { border-top-color: #333; }
   .ag-tool b { color: #d0d0d0; }
   .ag-btn:hover, .ag-sess:hover, .ag-mi:hover { background: #2c2c2c; }
+  .ag-setm, .ag-fs button, .ag-setm-model { background: #262626; border-color: #3a3a3a; }
+  .ag-fs { border-color: #3a3a3a; } .ag-fs button + button { border-left-color: #3a3a3a; }
+  .ag-fs button.on { background: #24303d; color: #8fbcf0; }
   .ag-menu { background: #262626; border-color: #3a3a3a; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
   .ag-mi.on, .ag-q { background: #24303d; }
   .ag-msep { background: #333; }
@@ -390,11 +416,25 @@ HTML = """
     <button type="button" class="ag-sess" title="⦃세션 목록 — 더블클릭하면 이름 바꾸기⦄"><span
       class="ag-sess-t">⦃에이전트⦄</span><span class="ag-sess-c">&#9662;</span></button>
     <button type="button" class="ag-btn ag-new" title="⦃새 세션⦄">+ ⦃새 세션⦄</button>
+    <button type="button" class="ag-btn ag-gear" title="⦃에이전트 설정 — 글자 크기 · 모델⦄"
+      aria-label="⦃에이전트 설정⦄" aria-haspopup="true"><i class="material-icons"
+      aria-hidden="true">settings</i></button>
     <a class="ag-btn ag-pop" href="/agent" target="_blank" rel="noopener"
       title="⦃새 창으로 열기 — 이 창의 서랍은 닫힙니다⦄"><i class="material-icons"
       aria-hidden="true">open_in_new</i></a>
     <button type="button" class="ag-btn ag-x" title="⦃닫기 (Esc)⦄">&#10005;</button>
     <div class="ag-menu" role="menu"></div>
+    <div class="ag-setm" role="dialog" aria-label="⦃에이전트 설정⦄">
+      <div class="ag-setm-l">⦃글자 크기⦄</div>
+      <div class="ag-fs" role="group" aria-label="⦃글자 크기⦄">
+        <button type="button" data-z="0.9" style="font-size:11px" title="⦃작게⦄" aria-label="⦃작게⦄">가</button>
+        <button type="button" data-z="1" style="font-size:13px" title="⦃보통⦄" aria-label="⦃보통⦄">가</button>
+        <button type="button" data-z="1.12" style="font-size:15px" title="⦃크게⦄" aria-label="⦃크게⦄">가</button>
+        <button type="button" data-z="1.25" style="font-size:17px" title="⦃아주 크게⦄" aria-label="⦃아주 크게⦄">가</button>
+      </div>
+      <div class="ag-setm-l">⦃모델⦄ <span class="ag-setm-s">⦃번역 설정과 별개⦄</span></div>
+      <select class="ag-setm-model" aria-label="⦃에이전트가 쓸 모델⦄"></select>
+    </div>
   </div>
   <div class="ag-list"></div>
   <div class="ag-foot">
@@ -425,6 +465,8 @@ JS = r"""
   var sessT = panel.querySelector('.ag-sess-t');
   var menu = panel.querySelector('.ag-menu');
   var newBtn = panel.querySelector('.ag-new');
+  var gearBtn = panel.querySelector('.ag-gear'), setm = panel.querySelector('.ag-setm');
+  var setModel = panel.querySelector('.ag-setm-model');
   var selBar = panel.querySelector('.ag-sel');
   var selT = panel.querySelector('.ag-sel-t');
   var popBtn = panel.querySelector('.ag-pop');
@@ -812,7 +854,51 @@ JS = r"""
 
   // 세션 메뉴 — 목록뿐이다. 이름은 메모 탭처럼 제목을 더블클릭해 그 자리에서 바꾸고(머리줄·목록 줄 모두),
   // 지우기는 줄마다 휴지통(한 번 더 눌러야 지운다). 앱 창(웹뷰)에서 prompt/confirm이 막힐 수 있어 다 제자리에서 한다.
-  function closeMenu(){ menu.classList.remove('open'); menuMode = ''; }
+  function closeMenu(){ menu.classList.remove('open'); menuMode = ''; closeSet(); }
+  // ---- 에이전트 설정(⚙) — 글자 크기(이 브라우저에 기억)·모델(설정 창 AI 탭과 같은 [chat] 설정) ----
+  var LS_ZOOM = 'md4agent.zoom';
+  function applyZoom(z){
+    z = [0.9, 1, 1.12, 1.25].indexOf(+z) >= 0 ? +z : 1;
+    panel.style.setProperty('--ag-zoom', String(z));
+    setm.querySelectorAll('.ag-fs button').forEach(function(b){ b.classList.toggle('on', +b.dataset.z === z); });
+  }
+  applyZoom(lsGet(LS_ZOOM));
+  setm.querySelectorAll('.ag-fs button').forEach(function(b){
+    b.addEventListener('click', function(){ lsSet(LS_ZOOM, b.dataset.z); applyZoom(b.dataset.z); });
+  });
+  var PROV = {openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Gemini'};
+  function renderSetModel(){
+    setModel.innerHTML = '';
+    var byProv = {};
+    (models || []).forEach(function(m){ (byProv[m.provider] = byProv[m.provider] || []).push(m); });
+    Object.keys(byProv).forEach(function(prov){
+      var g = document.createElement('optgroup'); g.label = PROV[prov] || prov;
+      byProv[prov].forEach(function(m){
+        var o = document.createElement('option');
+        o.value = m.provider + '/' + m.model;
+        o.textContent = m.model + (m.has_key ? '' : '  ' + md4T('(키 없음)'));   // 키 없는 서비스는 보이되 못 고른다
+        o.disabled = !m.has_key;
+        if (m.model === modelInfo.model && m.provider === modelInfo.provider) o.selected = true;
+        g.appendChild(o);
+      });
+      setModel.appendChild(g);
+    });
+    setModel.disabled = busy || !models.length;
+  }
+  setModel.addEventListener('change', function(){
+    var v = (setModel.value || '').split('/');
+    if (v.length < 2) return;
+    api('PUT', '/agent/model', {provider: v[0], model: v.slice(1).join('/')})
+      .then(function(j){ takeModels(j); errMsg = null; render(); renderSetModel(); })
+      .catch(function(e){ errMsg = md4T('모델을 바꾸지 못했습니다: {e}', {e: e.message}); render(); });
+  });
+  function closeSet(){ setm.classList.remove('open'); gearBtn.classList.remove('on'); }
+  gearBtn.addEventListener('click', function(){
+    if (setm.classList.contains('open')) return closeSet();
+    menu.classList.remove('open'); menuMode = '';
+    renderSetModel(); setm.classList.add('open'); gearBtn.classList.add('on');
+    loadModels().then(renderSetModel);       // 그새 키를 넣었을 수 있다 — 목록을 새로
+  });
   function sessTitle(id){
     if (sess && sess.id === id && sess.title) return sess.title;
     for (var i = 0; i < sessList.length; i++) if (sessList[i].id === id) return sessList[i].title || '';
@@ -914,10 +1000,11 @@ JS = r"""
       return renameInline(sessT, sid, null);
     }
     if (menu.classList.contains('open')) return closeMenu();
-    menuMode = 'list';
+    closeSet(); menuMode = 'list';
     loadList().catch(function(){}).then(function(){ renderMenu(); menu.classList.add('open'); });
   });
   document.addEventListener('mousedown', function(ev){
+    if (setm.classList.contains('open') && !setm.contains(ev.target) && !gearBtn.contains(ev.target)) closeSet();
     if (menu.classList.contains('open') && !menu.contains(ev.target) && !sessBtn.contains(ev.target))
       closeMenu();
   });
@@ -1762,7 +1849,7 @@ JS = r"""
   });
   document.addEventListener('keydown', function(ev){
     if (ev.key !== 'Escape') return;
-    if (menu.classList.contains('open')){ closeMenu(); return; }
+    if (menu.classList.contains('open') || setm.classList.contains('open')){ closeMenu(); return; }
     // 알약이 있으면 알약만 닫는다 — Esc 한 번에 알약과 서랍이 동시에 사라지지 않게.
     // 단 그림 확대·메모 카드·찾기 바·대화상자가 열려 있으면 Esc의 주인은 그쪽이라 비켜선다.
     if (document.querySelector('#md-img-zoom.open, #md-anno-pop.open, #md4-find.on, .q-dialog')) return;
