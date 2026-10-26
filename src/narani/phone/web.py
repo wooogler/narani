@@ -24,6 +24,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from narani import i18n
+from narani.phone import pages
 from narani.ui import mobile, sentpair
 
 APP_NAME = "Narani"
@@ -40,6 +41,8 @@ _PWA_CSS = """
 .li-title .dl { color: var(--muted); font-weight: 400; font-size: .8em; margin-left: 4px; }
 #loading { color: var(--muted); text-align: center; margin: 30vh 0 0; font-size: .95em; }
 #lib .empty { color: var(--muted); font-size: .9em; padding: 12px 2px; }
+.lib-foot { color: var(--muted); font-size: .8em; text-align: center; margin: 8px 0 24px; }
+.lib-foot a { color: var(--muted); }
 
 /* 하이라이트 — 데스크톱 뷰어와 같은 색. 글자는 형광 위라 늘 어둡게 */
 mark.anno { color: #24211c; border-radius: 2px; padding: 0; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
@@ -105,6 +108,7 @@ _APP_JS = r"""
     doc.documentElement.lang = md4Lang;
     setText('lbl-ko', md4T('번역')); setText('lbl-en', md4T('원문')); setText('lbl-both', md4T('대조'));
     setText('fs-dn', md4T('가') + '−'); setText('fs-up', md4T('가') + '+');
+    setText('lnk-about', md4T('Narani 소개')); setText('lnk-privacy', md4T('개인정보처리방침'));
     doc.getElementById('fs-dn').setAttribute('aria-label', md4T('글자 작게'));
     doc.getElementById('fs-up').setAttribute('aria-label', md4T('글자 크게'));
     doc.getElementById('back').setAttribute('aria-label', md4T('논문 목록'));
@@ -739,10 +743,13 @@ self.addEventListener('fetch', function(e){
   if (req.method !== 'GET' || url.origin !== location.origin) return;
   var scope = new URL(self.registration.scope).pathname, rel = url.pathname.slice(scope.length);
   if (/^(data|__data)\//.test(rel)) return;
+  // 앱 첫 화면으로 가는 이동만 껍데기('./')로 — 소개·개인정보처리방침 같은 다른 페이지는 그 페이지로
+  var shell = req.mode === 'navigate' && (rel === '' || rel === 'index.html');
+  if (req.mode === 'navigate' && !shell) return;
   e.respondWith(caches.open(SHELL).then(function(c){
-    var key = req.mode === 'navigate' ? './' : req;
+    var key = shell ? './' : req;
     return c.match(key, {ignoreSearch: true}).then(function(hit){
-      var net = fetch(req).then(function(r){ if (r.ok && (hit || req.mode === 'navigate')) c.put(key, r.clone()); return r; });
+      var net = fetch(req).then(function(r){ if (r.ok && (hit || shell)) c.put(key, r.clone()); return r; });
       if (hit){ net.catch(function(){}); return hit; }
       return net;
     });
@@ -807,7 +814,8 @@ def _index_html(cfg: dict) -> str:
         "<button class=\"only-js fs\" id=\"fs-dn\"></button><button class=\"only-js fs\" id=\"fs-up\"></button>"
         "</header>"
         f"<main><nav id=\"lib\"><h1 id=\"lib-h\">{APP_NAME}</h1><div class=\"lib-bar\" id=\"lib-bar\"></div>"
-        "<ol id=\"lib-list\"></ol></nav><p id=\"loading\" style=\"display:none\"></p></main>"
+        "<ol id=\"lib-list\"></ol><p class=\"lib-foot\"><a href=\"about.html\" id=\"lnk-about\"></a> · "
+        "<a href=\"privacy.html\" id=\"lnk-privacy\"></a></p></nav><p id=\"loading\" style=\"display:none\"></p></main>"
         "<div id=\"sheet\" role=\"dialog\" aria-live=\"polite\"><div class=\"sh-grip\"></div>"
         "<div class=\"sh-label\"></div><div class=\"sh-text\"></div><div class=\"sh-acts\"></div></div>"
         "<script src=\"app.js\"></script></body></html>"
@@ -833,6 +841,9 @@ def site_files(*, local: bool = False, google_client_id: str = "") -> dict[str, 
         "icon-180.png": (_icon_png(180), "image/png"),
         "icon-192.png": (_icon_png(192), "image/png"),
         "icon-512.png": (_icon_png(512), "image/png"),
+        # 소개·개인정보처리방침 — Google 동의 화면이 링크하는 페이지(같은 도메인이어야 한다) (§phone.pages)
+        "about.html": (pages.ABOUT_HTML.encode("utf-8"), "text/html; charset=utf-8"),
+        "privacy.html": (pages.PRIVACY_HTML.encode("utf-8"), "text/html; charset=utf-8"),
     }
     # 껍데기가 바뀌면 서비스 워커도 바뀌어야 새 판을 받는다 — 내용 지문을 캐시 이름에
     h = hashlib.sha256()

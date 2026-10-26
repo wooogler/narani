@@ -493,6 +493,8 @@ permission is `drive.file` (files Narani created), so it can't see the rest of y
   on the phone; desktop highlights still show.
 - The phone's Google sign-in may ask you to **Reconnect** after about an hour — downloaded papers stay readable.
 - To disconnect: list ⋯ → **Disconnect phone reader** (files in Drive stay). CLI: `narani phone connect | push --drive | disconnect`.
+- How Google data is used: [Privacy Policy](https://wooogler.github.io/narani/privacy.html) · [About](https://wooogler.github.io/narani/about.html).
+- To use your own Google Cloud project, put `google_desktop_client_id`, `google_desktop_client_secret` and `google_web_client_id` under `[phone]` in `config.toml` (they take precedence over the built-in defaults).
 
 ## Export — which format, and where it goes
 
