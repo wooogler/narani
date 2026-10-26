@@ -171,3 +171,14 @@ def test_preview_server_accepts_phone_records_only(tmp_path):
 def test_phone_app_has_notes():
     js = web.site_files(local=True)["app.js"][0].decode()
     assert "function sentenceActs" in js and "function notesOpen" in js
+
+
+def test_site_ships_about_and_privacy_pages():
+    files = web.site_files()
+    about, privacy = files["about.html"][0].decode(), files["privacy.html"][0].decode()
+    # 동의 화면 요건: 홈페이지가 앱을 설명하고 방침에 링크, 방침은 Google 데이터의 쓰임·Limited Use를 밝힌다
+    assert 'href="privacy.html"' in about and "drive.file" in about
+    assert "drive.file" in privacy and "Limited Use" in privacy and "api-services-user-data-policy" in privacy
+    assert 'href="about.html"' in files["index.html"][0].decode()
+    sw = files["sw.js"][0].decode()
+    assert "rel === 'index.html'" in sw  # 다른 페이지로 가는 이동을 앱 껍데기로 돌려주지 않는다

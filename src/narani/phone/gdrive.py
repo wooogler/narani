@@ -50,10 +50,23 @@ class NotConnected(DriveError):
     pass
 
 
+# 앱에 실어 배포하는 기본값 자리 — Narani 개발자가 등록한 Google 클라이언트(같은 Cloud 프로젝트의 데스크톱·웹)를
+# base64로 감싼 JSON {google_desktop_client_id, google_desktop_client_secret, google_web_client_id}. 채워 두면
+# 설치만으로 누구나 '폰으로 보내기'를 쓴다. 비어 있으면 config.toml [phone]이 있어야 한다.
+# 설치형 앱의 client secret은 앱에 실려 나가므로 지킬 수 없다(Google도 비밀로 보지 않고, PKCE와 사용자 동의가
+# 보호한다) — base64는 GitHub 비밀 검사·자동 수집기에 걸리지 않게 할 뿐 숨기는 것이 아니다.
+# 채울지는 저장소 주인이 정한다(공개 저장소에 들어간다).
+_DEFAULTS = ""
+
+
 def client_ids() -> dict[str, str]:
-    """config.toml [phone]의 클라이언트 값들 (없으면 빈 문자열)."""
+    """클라이언트 값들 — config.toml [phone] > 앱에 실린 기본값(_DEFAULTS) > 빈 문자열."""
     sec = config.load_config().get("phone", {})
-    return {k: str(sec.get(k) or "").strip() for k in
+    try:
+        base = json.loads(base64.b64decode(_DEFAULTS)) if _DEFAULTS else {}
+    except ValueError:
+        base = {}
+    return {k: str(sec.get(k) or base.get(k) or "").strip() for k in
             ("google_desktop_client_id", "google_desktop_client_secret", "google_web_client_id")}
 
 

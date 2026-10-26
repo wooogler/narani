@@ -509,6 +509,8 @@ transduction)"처럼 처리된 걸 여기서 확인할 수 있습니다. **원�
 - 원문·번역의 절 수가 달라 나란히 맞추지 못한 논문은 폰에서 새 하이라이트를 달 수 없습니다(데스크톱 표시는 보입니다).
 - 폰의 Google 로그인은 한 시간쯤 지나면 **다시 연결**을 물을 수 있습니다 — 받아 둔 논문은 그대로 읽힙니다.
 - 연결 끊기: 목록 ⋯ → **폰 리더 연결 끊기**(Drive의 파일은 그대로). CLI로는 `narani phone connect | push --drive | disconnect`.
+- Google 데이터를 어떻게 쓰는지: [개인정보처리방침](https://wooogler.github.io/narani/privacy.html) · [소개](https://wooogler.github.io/narani/about.html).
+- 자기 Google Cloud 프로젝트를 쓰려면 `config.toml`의 `[phone]`에 `google_desktop_client_id`·`google_desktop_client_secret`·`google_web_client_id`를 넣습니다(앱에 실린 기본값보다 우선합니다).
 
 ## 내보내기 — 어떤 형식으로, 어디에 넣나
 
