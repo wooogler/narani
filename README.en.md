@@ -468,7 +468,7 @@ remembered.
 
 Read the papers you translated on the desktop from your phone, and carry highlights and notes both ways. There is
 no server — papers travel through **a `Narani` folder in your own Google Drive**, and the phone reads them in a web app
-(**https://wooogler.github.io/narani/**). The desktop can be off, and downloaded papers open on a plane. The only
+(**https://narani.sangwooklee.info/**). The desktop can be off, and downloaded papers open on a plane. The only
 permission is `drive.file` (files Narani created), so it can't see the rest of your Drive, and LLM keys never leave the desktop.
 
 **Once**
@@ -493,7 +493,7 @@ permission is `drive.file` (files Narani created), so it can't see the rest of y
   on the phone; desktop highlights still show.
 - The phone's Google sign-in may ask you to **Reconnect** after about an hour — downloaded papers stay readable.
 - To disconnect: list ⋯ → **Disconnect phone reader** (files in Drive stay). CLI: `narani phone connect | push --drive | disconnect`.
-- How Google data is used: [Privacy Policy](https://wooogler.github.io/narani/privacy.html) · [About](https://wooogler.github.io/narani/about.html).
+- How Google data is used: [Privacy Policy](https://narani.sangwooklee.info/privacy.html) · [About](https://narani.sangwooklee.info/about.html).
 - To use your own Google Cloud project, put `google_desktop_client_id`, `google_desktop_client_secret` and `google_web_client_id` under `[phone]` in `config.toml` (they take precedence over the built-in defaults).
 
 ## Export — which format, and where it goes

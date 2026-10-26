@@ -853,8 +853,8 @@ def site_files(*, local: bool = False, google_client_id: str = "") -> dict[str, 
     return files
 
 
-def write_site(out: Path, **kw: object) -> list[Path]:
-    """웹앱 파일을 폴더에 쓴다 (정적 호스팅에 올릴 것)."""
+def write_site(out: Path, cname: str | None = pages.DOMAIN, **kw: object) -> list[Path]:
+    """웹앱 파일을 폴더에 쓴다 (정적 호스팅에 올릴 것). cname이 있으면 GitHub Pages 사용자 도메인 파일(CNAME)도."""
     out.mkdir(parents=True, exist_ok=True)
     written = []
     for name, (data, _mime) in site_files(**kw).items():  # type: ignore[arg-type]
@@ -863,6 +863,9 @@ def write_site(out: Path, **kw: object) -> list[Path]:
     # GitHub Pages가 Jekyll로 다시 굽지 않고 파일 그대로 내보내게
     (out / ".nojekyll").write_bytes(b"")
     written.append(out / ".nojekyll")
+    if cname:  # 없으면 Pages가 사용자 도메인 설정을 지운다(배포할 때마다 함께 올려야 한다)
+        (out / "CNAME").write_text(cname + "\n", encoding="ascii")
+        written.append(out / "CNAME")
     return written
 
 

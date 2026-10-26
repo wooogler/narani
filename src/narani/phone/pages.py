@@ -11,6 +11,10 @@ Google OAuth 동의 화면을 '프로덕션'으로 올리려면 앱을 설명하
 from __future__ import annotations
 
 REPO = "https://github.com/wooogler/narani"
+# 웹앱·이 페이지들이 올라가는 주소 — GitHub Pages(wooogler/narani의 gh-pages)에 사용자 도메인을 붙였다.
+# Google 동의 화면의 홈페이지·개인정보처리방침·승인된 도메인, 웹 클라이언트의 원본·리디렉션 URI가 이 주소다.
+DOMAIN = "narani.sangwooklee.info"
+SITE = f"https://{DOMAIN}/"
 UPDATED = "2026-10-26"
 
 _STYLE = """

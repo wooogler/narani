@@ -182,3 +182,12 @@ def test_site_ships_about_and_privacy_pages():
     assert 'href="about.html"' in files["index.html"][0].decode()
     sw = files["sw.js"][0].decode()
     assert "rel === 'index.html'" in sw  # 다른 페이지로 가는 이동을 앱 껍데기로 돌려주지 않는다
+
+
+def test_write_site_adds_cname_for_pages_domain(tmp_path):
+    from narani.phone import pages
+
+    web.write_site(tmp_path / "a")
+    assert (tmp_path / "a" / "CNAME").read_text() == pages.DOMAIN + "\n"
+    web.write_site(tmp_path / "b", cname=None)
+    assert not (tmp_path / "b" / "CNAME").exists() and (tmp_path / "b" / "index.html").exists()
