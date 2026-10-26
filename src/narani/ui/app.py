@@ -20,7 +20,7 @@ from narani import notes as notes_io
 from narani.ir import Flavor, GlossaryEntry
 from narani.ui import (
     agent_panel, annotations, desktop, figrefs, figure_crop, figure_ko, find_bar, formula_pop, jobs,
-    live_preview, mdrender, pdf_zoom, reanchor,
+    jump_back, live_preview, mdrender, pdf_zoom, reanchor,
     scroll_memory, sentpair, spa, tabstore, term_examples, translate_job, update_banner,
 )
 from narani.ui.controller import LEVEL_OPTIONS, RUNIN_LEVEL_OPTIONS, UIController
@@ -956,6 +956,7 @@ _ANNO_HTML = """
     }
     var ms = marksFor(id);
     if (!ms.length){ openPop(id); return; }
+    if (window.__mdJumpBack) window.__mdJumpBack.mark(ms[0], 'center');   // 읽던 자리 쌓기 (§ui/jump_back.py)
     ms[0].scrollIntoView({behavior: 'smooth', block: 'center'});
     for (var i = 0; i < ms.length; i++){
       ms[i].classList.remove('md-anno-flash'); void ms[i].offsetWidth; ms[i].classList.add('md-anno-flash');
@@ -2156,6 +2157,12 @@ def _auto_rename(wd: WorkDir, workspace: Path) -> WorkDir:
         return wd
 
 
+def _jump_js(el_expr: str, behavior: str) -> str:
+    """본문을 그 요소의 위끝으로 옮기는 JS — 옮기기 직전에 읽던 자리를 쌓는다(§ui/jump_back.py)."""
+    return ("(function(e){if(!e)return;" + jump_back.mark_js("e", "start")
+            + f"e.scrollIntoView({{behavior:'{behavior}', block:'start'}});}})({el_expr})")
+
+
 def _review_url(root: Path) -> str:
     """워크디렉토리를 URL 쿼리에 담은 리뷰 페이지 주소 (브라우저 히스토리·뒤로가기용)."""
     from urllib.parse import quote
@@ -2215,6 +2222,15 @@ _CHROME_CSS = """
 .md4-chip.todo { background: #fff; color: #2383e2; font-weight: 600; }
 .md4-chip.todo:hover { background: #f3f8ff; }
 .md4-chip.warn { background: #f59e0b; color: #fff; }
+/* 헤더 맨 오른쪽 에이전트 단추 — 홈·뷰어 같은 자리. 상태 칩과 같은 높이·바닥선, 서랍이 열리면
+   흰 바닥(활성 탭과 같은 말)으로 '지금 열려 있다'를 보인다. */
+.md4-agentbtn { align-self: flex-end; margin: 0 2px 3px 0; display: inline-flex; align-items: center;
+  gap: 6px; height: 26px; padding: 0 11px 0 9px; border: none; border-radius: 13px; cursor: pointer;
+  font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; flex: 0 0 auto;
+  color: #fff; background: rgba(255,255,255,.16); transition: background .12s ease; }
+.md4-agentbtn:hover { background: rgba(255,255,255,.28); }
+.md4-agentbtn:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+body.ag-open .md4-agentbtn { background: #fff; color: #2383e2; }
 /* 본문 = 레일 + (작업 패널 | 캔버스). 높이는 헤더(44px)와 페이지 여백(16px×2)을 뺀 나머지. */
 /* 리뷰 화면은 앱처럼 창 끝까지 채운다 — 페이지 여백(16px)·자식 간격을 걷어 레일이 왼쪽 끝, 본문이 아래
    끝에 닿게. 여백을 남기면 아래에 어중간한 빈 띠가 생기고, 높이를 잘못 빼면 창 전체가 따로 스크롤된다. */
@@ -2467,6 +2483,23 @@ async def _spawn_path(path: str, state: dict, title: str, *, dup_note: str) -> N
                   type="negative", timeout=6000)
 
 
+def agent_button() -> None:
+    """헤더 맨 오른쪽 에이전트 단추 — 홈·뷰어 어디서나 같은 자리.
+
+    에이전트는 논문 하나가 아니라 앱 전체의 기능이라(대화는 전역 세션, §ui/agent_panel.py) 화면마다
+    다른 곳(홈 탭 줄 끝·뷰어 툴바)에 두지 않고 늘 같은 자리에 둔다. 서랍은 헤더 아래에서 열리므로
+    단추는 열린 서랍 바로 위에 남아 닫는 손잡이도 된다. 열림 표시는 body.ag-open(서랍이 붙인다)이 맡는다.
+    """
+    from nicegui import ui
+
+    b = ui.element("button").classes("md4-agentbtn").props('type="button"')
+    with b:
+        ui.icon("forum", size="16px")
+        ui.label(t("에이전트")).classes("md4-agentbtn-t")
+    b.on("click", js_handler="() => window.__md4Agent && window.__md4Agent.toggle()")
+    b.tooltip(t("에이전트 — 이 논문·라이브러리에 묻고, 근거 문단으로 이동"))
+
+
 def tab_bar(state: dict, here: Path | None, here_title: str = "", tools=None):  # noqa: ANN001, ANN201
     """헤더의 탭 줄 — 맨 앞 '홈' 탭 + 연 논문 탭들(×까지 유지) + '+'(변환된 논문 골라 열기).
 
@@ -2495,11 +2528,6 @@ def tab_bar(state: dict, here: Path | None, here_title: str = "", tools=None):  
             .tooltip(t("논문 열기 — 변환된 논문을 골라 새 탭으로"))
         with ui.row().classes("items-center gap-0 no-wrap md4-tabtools"):
             jobs_menu()
-            if here_key is None:  # 홈 — 에이전트 창 여는 단추 (뷰어는 캔버스 툴바의 forum 단추가 맡는다)
-                ui.button(icon="forum", color=None, on_click=lambda: ui.run_javascript(
-                    "window.__md4Agent && window.__md4Agent.toggle()")) \
-                    .props("flat dense round size=sm text-color=white").classes("md4-agentbtn") \
-                    .tooltip(t("에이전트 — 라이브러리의 논문을 찾아 읽고 답합니다"))
             if tools is not None:
                 tools()
 
@@ -2749,6 +2777,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         paper_tabs = tab_bar(state, ctrl.wd.root, _title, tools=review_tools)
         ui.space()
         chip_slot = ui.row().classes("items-center no-wrap md4-chipslot")  # 상태 칩은 아래에서 채운다
+        agent_button()  # 맨 오른쪽 — 홈과 같은 자리
 
     # 화면은 하나의 캔버스다 — 원문|번역|PDF 그리드(또는 편집기|프리뷰)와 목차가 같은 en.md/ko.md를
     # 읽으므로, 문서가 바뀌면 이 둘을 함께 다시 그린다. (옛 변환 프리뷰·번역 결과·뷰어가 각자 그리던
@@ -3103,6 +3132,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
 
     ui.on("md4-fx-apply", on_formula_apply)
     spa.add_body_html(f"<script>{agent_panel.init_js(tok)}</script>")  # 에이전트 창(셸에 붙음)에 지금 논문을 알린다
+    spa.add_body_html(f"<script>{jump_back.init_js(tok)}</script>")  # 읽던 자리는 이 논문의 것 — 바뀌면 비운다
 
     def push_cite_tips() -> None:
         """참고문헌을 (재)파싱한 뒤 클라이언트 툴팁 맵을 갱신한다."""
@@ -3429,12 +3459,11 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                 return last
         return None
 
-    def _row_scroll_js(k: int) -> str:  # 정렬 그리드의 k번째 행으로 스크롤
-        return (f"document.querySelector('.sbs-grid [data-row=\"{k}\"]')"
-                "?.scrollIntoView({behavior:'smooth', block:'start'})")
+    def _row_scroll_js(k: int, behavior: str = "smooth") -> str:  # 정렬 그리드의 k번째 행으로 스크롤
+        return _jump_js(f"document.querySelector('.sbs-grid [data-row=\"{k}\"]')", behavior)
 
     def _sec_scroll_js(sid: str) -> str:  # 폴백 패널 — sec 앵커로 스크롤
-        return f"document.getElementById('sec-{sid}')?.scrollIntoView({{behavior:'smooth', block:'start'}})"
+        return _jump_js(f"document.getElementById('sec-{sid}')", "smooth")
 
     def _edit_goto_js(sid: str) -> str:
         """편집 중 섹션 이동 — 편집기를 그 섹션 헤더 줄로(커서도 그리로), 옆이 PDF면 그 쪽으로도.
@@ -4127,9 +4156,6 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                 "window.__mdAnnoTogglePanel && window.__mdAnnoTogglePanel()")) \
                 .props("flat dense round color=grey-7").classes("md4-anno-btn") \
                 .tooltip(t("하이라이트 · 메모 목록 — 드래그하면 그 자리에, 문장을 더블클릭하면 원문·번역 양쪽에"))
-            ui.button(icon="forum", on_click=lambda: ui.run_javascript(
-                "window.__md4Agent && window.__md4Agent.toggle()")).props(
-                "flat dense round color=grey-7").tooltip(t("에이전트 — 이 논문·라이브러리에 묻고, 근거 문단으로 이동"))
             ui.space()
             library_button()
             if ctrl.source_pdf():  # 내보내기와 같은 '이 논문 파일을 바깥으로' 묶음 — 앱 안 PDF 칸은 왼쪽 토글
@@ -4253,12 +4279,14 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         if ex_dialog["dlg"] is not None:
             ex_dialog["dlg"].close()
         ui.run_javascript(
-            "setTimeout(function(){var els=document.querySelectorAll('.sbs-grid .sbs-cell[data-row=\"%d\"]');"
-            "if(!els.length) els=document.querySelectorAll('[data-row=\"%d\"]');if(!els.length) return;"
-            "els[0].scrollIntoView({behavior:'smooth',block:'center'});"
+            ("setTimeout(function(){var els=document.querySelectorAll('.sbs-grid .sbs-cell[data-row=\"%d\"]');"
+             "if(!els.length) els=document.querySelectorAll('[data-row=\"%d\"]');if(!els.length) return;"
+             % (row, row))
+            + jump_back.mark_js("els[0]")
+            + "els[0].scrollIntoView({behavior:'smooth',block:'center'});"
             "els.forEach(function(el){el.classList.remove('chat-cite-flash');void el.offsetWidth;"
             "el.classList.add('chat-cite-flash');setTimeout(function(){el.classList.remove('chat-cite-flash');},1400);});"
-            "}, 250);" % (row, row))
+            "}, 250);")
 
     def example_toggle(term: str, refresh) -> None:  # noqa: ANN001 — ui.refreshable
         from narani.translate.glossary import term_key
@@ -4761,8 +4789,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         if show_text:
             k = row_for_section(sid)
             if k is not None:
-                js += (f"document.querySelector('.sbs-grid [data-row=\"{k}\"]')"
-                       "?.scrollIntoView({behavior:'instant', block:'start'});")
+                js += _row_scroll_js(k, "instant") + ";"
         # 나란히(PDF도 표시)면 클릭 스크롤은 sync 이벤트를 확실히 못 태우므로 PDF도 직접 옮긴다
         if show_pdf and pg is not None:
             js += f" document.getElementById('pdfpage-{pg}')?.scrollIntoView({{behavior:'instant', block:'start'}});"
@@ -6292,6 +6319,7 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
             if desktop.active() else None)
         # w-full: 없으면 sub_pages 상자가 내용 폭으로 줄어(큰 화면에서 1275px) 변환·번역 탭 splitter가 좁아진다
         ui.sub_pages({"/": index_view, "/home": home_view, "/review": review_view}).classes("w-full")
+        jump_back.install()  # '읽던 자리로' 알약 — 본문을 옮기는 모든 길이 함께 쓴다
         update_banner.install(state)  # 새 버전 알림 — 셸에 붙어 탭을 옮겨도 남는다
 
     # 에이전트 단독 창 — 셸과 **다른** 페이지 함수라 새 문서로 뜬다(헤더·화면 없이 창 UI만).

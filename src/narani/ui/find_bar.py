@@ -140,6 +140,8 @@ HTML = """
       var st = getComputedStyle(e);
       if (!/(auto|scroll|overlay)/.test(st.overflowY) || e.scrollHeight <= e.clientHeight + 1) continue;
       var box = e.getBoundingClientRect();
+      // 본문으로 가는 결과면 읽던 자리를 쌓는다 — 연달아 다음 결과로 가면 한 번만(§ui/jump_back.py)
+      if (window.__mdJumpBack) window.__mdJumpBack.mark(el, 'center');
       e.scrollTop += (rect.top + rect.height / 2) - (box.top + box.height / 2);
       break;
     }

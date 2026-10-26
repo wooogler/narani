@@ -40,8 +40,8 @@ from pathlib import Path
 from narani.i18n import N_, t
 from narani import config, langs, library, projects
 from narani.ui import (
-    agent_panel, batch_translate_dialog, collection_glossary_dialog, desktop, find_bar, jobs, scroll_memory,
-    settings_dialog, spa, tabstore, translate_job, update_banner,
+    agent_panel, batch_translate_dialog, collection_glossary_dialog, desktop, find_bar, jobs, jump_back,
+    scroll_memory, settings_dialog, spa, tabstore, translate_job, update_banner,
 )
 from narani.workdir import WorkDir
 
@@ -538,7 +538,8 @@ def build_home(state: dict) -> None:
     from narani.extract import DEFAULT_BACKEND, available_backends
     from narani.ui.app import (
         _CHROME_CSS, _EXPORT_TARGET, _EXTLINK_HTML, _QUEUE_ACTIVE, _pdf_page_count, _process_queue,
-        _relative_time, _review_url, new_window_button, open_source_pdf, save_source, tab_bar, wd_token,
+        _relative_time, _review_url, agent_button, new_window_button, open_source_pdf, save_source,
+        tab_bar, wd_token,
     )
     from narani.ui.controller import UIController
     from narani.workdir import delete_workdir, recent_workdirs, set_hidden, set_pinned
@@ -554,6 +555,7 @@ def build_home(state: dict) -> None:
     spa.add_body_html(_DRAG_HTML)
     spa.add_body_html(_COLGRIP_HTML)
     spa.add_body_html(f"<script>{agent_panel.init_js(None)}</script>")  # 에이전트 창: 지금 연 논문 없음
+    spa.add_body_html(f"<script>{jump_back.init_js(None)}</script>")  # 논문의 읽던 자리는 홈에서 비운다
     # 논문 화면에서 열어 둔 서랍·툴팁(본문 밖 오버레이라 화면을 갈아 끼워도 남는다)은 홈에서 닫는다
     # (에이전트 창은 닫지 않는다 — 논문을 가로지르는 대화라 홈에서도 이어 쓴다)
     ui.run_javascript("document.querySelectorAll('#md-anno-panel.open')"
@@ -563,6 +565,8 @@ def build_home(state: dict) -> None:
     # 홈도 탭 하나다 — 맨 앞 '홈' 탭이 활성, 연 논문 탭들과 '+'(논문 골라 열기)가 그대로 보인다
     with spa.header():
         tabs_bar = tab_bar(state, None)  # 서지를 고치면 탭 제목(paper_title)도 따라가게 다시 그린다
+        ui.space()
+        agent_button()  # 맨 오른쪽 — 뷰어와 같은 자리
     scroll_memory.install("home")  # 논문을 열었다 돌아와도 목록의 그 자리
     find_bar.install()  # Cmd/Ctrl+F 페이지 찾기 (앱 창에는 브라우저 찾기 바가 없다)
     state.setdefault("queue", [])

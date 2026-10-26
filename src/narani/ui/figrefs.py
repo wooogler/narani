@@ -389,6 +389,7 @@ HTML = """
   }
   function hideSoon(){ clearTimeout(hideT); hideT = setTimeout(function(){ tip.classList.remove('open'); cur = null; }, 180); }
   function jump(h){
+    if (window.__mdJumpBack) window.__mdJumpBack.mark(h, 'start');   // 읽던 자리 쌓기 (§ui/jump_back.py)
     h.scrollIntoView({behavior: 'smooth', block: 'start'});
     h.classList.remove('md-sec-flash'); void h.offsetWidth; h.classList.add('md-sec-flash');
     setTimeout(function(){ h.classList.remove('md-sec-flash'); }, 1700);

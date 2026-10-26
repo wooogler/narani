@@ -2,7 +2,7 @@
 
 창은 순수 클라이언트라 파이썬 로직이 얇다. 그래서 검증 표면은 (1) 셸에 남는 id·전역 API·이벤트
 이름이 서버 쪽(app.py·spa·백엔드 칩 마크업)과 한 이름을 가리킨다는 것, (2) 레이아웃 규칙(본문 밀기·
-층 순서), (3) 옛 서랍에서 옮겨 온 '읽던 자리로' 알약의 순서가 곧 동작인 몇 줄이다.
+층 순서), (3) 칩이 본문을 옮기기 전에 읽던 자리를 쌓는 순서(알약 자체는 §tests/test_jump_back.py).
 """
 
 from __future__ import annotations
@@ -177,12 +177,6 @@ def test_width_clamps_to_viewport_on_open_resize_and_drag():
     assert "window.innerWidth - AG_KEEP" in _js_block(JS, "function agCap(")
 
 
-def test_jump_back_pill_avoids_overlay_drawer():
-    place = _js_block(JS, "function jbPlace(")
-    assert "classList.contains('ag-overlay')" in place
-    assert "panel.getBoundingClientRect().left" in place
-
-
 def test_panel_z_matches_memo_drawer():
     """메모 서랍과 같은 층 — 번갈아 열리는 같은 자리다."""
     z = int(re.search(r"z-index:\s*(\d+)", _rule(CSS, "#md4-agent")).group(1))
@@ -200,10 +194,6 @@ def test_storage_keys():
     assert re.findall(r"var LS_SESSION = '([^']+)', LS_W = '([^']+)', LS_OPEN = '([^']+)'", JS) == [
         ("md4agent.session", "md4agent.w", "md4agent.open")]
     assert "var SS_GOTO = 'md4agent.goto'" in JS
-    # '읽던 자리' 핀은 메모리에만 산다 — 리로드하면 뷰어는 맨 위에서 다시 시작하므로 지난 생애의
-    # 핀은 도움보다 혼란이다
-    jb = JS[JS.index("// ---- '읽던 자리로'"):JS.index("// ---- 모델 고르기")]
-    assert "Storage" not in jb and "lsSet" not in jb
 
 
 # --- 설치 -----------------------------------------------------------------
@@ -238,77 +228,20 @@ def test_install_puts_css_html_script_once_and_registers_nav(monkeypatch):
     assert events == [agent_panel.NAV_EVENT] * 2
 
 
-# --- '읽던 자리로' 오버레이 (옛 챗봇 서랍에서 옮김) ---------------------------
-
-
-def test_jump_back_markup_sits_outside_the_drawer():
-    """서랍 안에 두면 서랍을 닫는 순간 함께 사라진다 — 접고 본문만 읽는 사람에게도 복귀는 필요하다."""
-    assert HTML.index('class="ag-foot"') < HTML.index('id="md-jump-back"')
-    seg = HTML[HTML.index('<div id="md4-agent"'):HTML.index('<div id="md-jump-back"')]
-    assert seg.count("<div") == seg.count("</div>")
-
-
-def test_jump_back_constants_are_single_sourced():
-    assert f'id="{agent_panel.JUMP_BACK_ID}"' in HTML
-    assert f"#{agent_panel.JUMP_BACK_ID}" in CSS
-    assert f"z-index: {agent_panel.JUMP_BACK_Z}" in CSS
-    assert JS.count(f"window.{agent_panel.JUMP_BACK_API} =") == 1
-    assert f"JB_EDGE = {agent_panel.JUMP_EDGE_PX}" in JS
-
-
-def test_jump_back_z_index_between_find_bar_and_drawers():
-    """알약은 본문 층 위, 서랍·찾기 바 아래여야 한다."""
-    from narani.ui import find_bar
-
-    find_z = max(int(v) for v in re.findall(r"z-index:\s*(\d+)", find_bar.CSS))
-    assert 100 < agent_panel.JUMP_BACK_Z < min(agent_panel.PANEL_Z, find_z)
-
-
-def test_jump_back_has_dark_mode_override():
-    dark = CSS.split("@media (prefers-color-scheme: dark)")[1]
-    assert "#md-jump-back" in dark and "background: #262626" in dark and "--mjb-ring" in dark
-
-
-def test_jump_back_marks_before_every_programmatic_scroll():
-    """무장이 스크롤 뒤로 가면 애니메이션 중간값을 집어 앵커가 목적지 쪽으로 끌려간다."""
-    for head in ("function gotoRow(", "function gotoNote("):
-        piece = _js_block(JS, head)
-        assert piece.index("jbMark(") < piece.index("scrollIntoView(")
-
-
-def test_jump_back_container_lookup_is_gated():
-    """단독 `.sbs-grid`는 번역 탭 결과 그리드까지 잡는다 — [data-row]로 뷰어 것만 가려낸다."""
-    assert "'.sbs-grid, .vpane'" in JS and "matches('[data-row]')" in JS
-
-
-def test_jump_back_buttons_are_real_and_labelled():
-    seg = HTML[HTML.index('<div id="md-jump-back"'):]
-    assert seg.count('type="button"') == 2
-    assert seg.count("aria-label=") == 2 and seg.count('aria-hidden="true"') == 1
-    assert 'role="status"' in seg
-
-
-def test_jump_back_thresholds_have_hysteresis_and_grace():
-    arm = float(re.search(r"JB_ARM = ([\d.]+)", JS).group(1))
-    home = float(re.search(r"JB_HOME = ([\d.]+)", JS).group(1))
-    arm_min = int(re.search(r"JB_ARM_MIN = (\d+)", JS).group(1))
-    home_min = int(re.search(r"JB_HOME_MIN = (\d+)", JS).group(1))
-    assert arm > home and arm_min > home_min
-    assert int(re.search(r"JB_GRACE = (\d+)", JS).group(1)) >= 500
-    assert "Date.now() - jbJumpAt > JB_GRACE" in JS
-
-
-def test_jump_back_flash_is_not_the_citation_flash():
-    """"여기가 근거다"(파랑)와 "여기로 돌아왔다"(무채색)는 다른 말이다."""
-    assert ".mjb-flash" in CSS and "@keyframes mdJumpFlash" in CSS and "'mjb-flash'" in JS
-    assert ".chat-cite-flash" in CSS and "'chat-cite-flash'" in JS and "'md-anno-flash'" in JS
-    assert "'wheel'" in JS and "{passive: false}" in JS
-
-
 def test_escape_yields_to_other_overlays_then_pin_then_drawer():
     seg = JS[JS.index("document.addEventListener('keydown'"):]
     assert "#md-img-zoom.open" in seg and "#md-anno-pop.open" in seg and "#md4-find.on" in seg
-    assert seg.index("jbDismiss()") < seg.index("panel.classList.remove('open')")
+    assert seg.index("jb.dismiss()") < seg.index("panel.classList.remove('open')")
+
+
+def test_chip_jumps_stack_reading_place_before_scrolling():
+    """쌓기가 스크롤 뒤로 가면 애니메이션 중간값을 집어 앵커가 목적지 쪽으로 끌려간다."""
+    for head in ("function gotoRow(", "function gotoNote("):
+        piece = _js_block(JS, head)
+        assert piece.index("jbMark(") < piece.index("scrollIntoView(")
+    # 단독 창(/agent)에는 알약이 없다 — 칩 코드가 그 부재를 견뎌야 한다
+    assert "var jb = window.__mdJumpBack;" in _js_block(JS, "function jbMark(")
+    assert 'id="md-jump-back"' not in HTML
 
 
 # --- 승인 카드 (쓰기 tool) ---------------------------------------------------
@@ -560,13 +493,13 @@ def test_install_registers_popout_only_in_app_window_mode(monkeypatch):
 
 
 def test_standalone_mode_css_hides_drawer_chrome():
-    """단독 창 — 서랍을 화면 전체로 펴고 닫기·너비 드래그·새 창 단추·'읽던 자리로' 알약은 숨긴다."""
+    """단독 창 — 서랍을 화면 전체로 펴고 닫기·너비 드래그·새 창 단추는 숨긴다."""
     assert agent_panel.STANDALONE_CLASS == "ag-standalone"
     assert "document.body.classList.add('ag-standalone')" in JS
     r = _rule(CSS, "body.ag-standalone #md4-agent")
     assert "top: 0" in r and "left: 0" in r and "width: auto" in r
     hide = CSS.split("body.ag-standalone .ag-handle,", 1)[1].split("}", 1)[0]
-    for sel in (".ag-x", ".ag-pop", "#md-jump-back"):
+    for sel in (".ag-x", ".ag-pop"):
         assert f"body.ag-standalone {sel}" in hide
     assert "display: none !important" in hide
     assert "--ag-top: 0px" in _rule(CSS, "body.ag-standalone")
