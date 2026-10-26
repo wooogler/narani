@@ -78,3 +78,44 @@ def test_no_annotations_means_no_notes_file_and_prune_cleans_up(tmp_path):
     store.write(notes.mobile_name("alpha"), b'{"ops": []}')
     sync.push([b.root], store, prune=True)
     assert store.read(notes.notes_name("alpha")) is None and store.read(notes.mobile_name("alpha")) is None
+
+
+def test_sync_notes_only_moves_notes_and_updates_index(tmp_path):
+    wd = _wd(tmp_path, "bots")
+    store = LocalStore(tmp_path / "store")
+    sync.push([wd.root], store)
+    bundle_before = store.read(json.loads(store.read("index.json"))["papers"][0]["file"])
+    assert sync.sync_notes(store, [wd.root]) == {"merged": 0, "notes": 0}
+    store.write(notes.mobile_name("bots"), json.dumps({"ops": [
+        {"op": "put", "ts": 50.0, "item": _item("p1", "phone")}]}).encode())
+    out = sync.sync_notes(store, [wd.root, tmp_path / "gone.md4"])
+    assert out == {"merged": 1, "notes": 1}
+    e = json.loads(store.read("index.json"))["papers"][0]
+    assert e["notes_hash"] and json.loads(store.read(notes.notes_name("bots")))["items"][0]["note"] == "phone"
+    assert store.read(e["file"]) == bundle_before  # 본문 번들은 그대로
+    assert [it["id"] for it in annotations.load(wd)] == ["p1"]
+
+
+def test_service_startup_sync_is_quiet(tmp_path, monkeypatch):
+    from narani.phone import gdrive, service
+
+    wd = _wd(tmp_path, "bots")
+    store = LocalStore(tmp_path / "store")
+    sync.push([wd.root], store)
+    store.write(notes.mobile_name("bots"), json.dumps({"ops": [
+        {"op": "put", "ts": 7.0, "item": _item("p1", "phone")}]}).encode())
+    monkeypatch.setattr(service, "_rows", lambda: [{"root": wd.root, "name": "bots", "pinned": False,
+                                                     "has_ko": True, "hidden": False}])
+    monkeypatch.setattr(service, "configured", lambda: True)
+    monkeypatch.setattr(service, "connected", lambda: False)
+    assert service.sync_notes_quietly() is None  # 연결 전이면 아무것도 안 한다
+    monkeypatch.setattr(service, "connected", lambda: True)
+    monkeypatch.setattr(gdrive, "open_store", lambda: store)
+    assert service.sync_notes_quietly() == {"merged": 1, "notes": 1}
+    assert service.translated_roots() == [wd.root]
+
+    def offline():
+        raise gdrive.DriveError("offline")
+
+    monkeypatch.setattr(gdrive, "open_store", offline)
+    assert service.sync_notes_quietly() is None  # 오프라인이어도 앱 켜기를 막지 않는다

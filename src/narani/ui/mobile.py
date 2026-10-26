@@ -1,19 +1,17 @@
-"""모바일로 읽는 논문 묶음 — 고른 논문들을 **HTML 한 장**으로 (서버 없이, 밖에서도 폰으로 연다).
+"""폰 리더(§phone)의 렌더 — 논문 한 편을 폰 화면용 HTML로, 그리고 읽기 화면의 CSS·공통 JS.
 
-로컬 앱은 Mac의 127.0.0.1에만 떠 있어 밖에서는 닿지 않는다. 그래서 읽기에 필요한 것을 전부 파일
-하나에 굳혀 둔다 — 원문·번역 렌더 결과, 그림(폰에 맞게 줄여 data URI로), 인용·각주 서지 정보.
-iCloud Drive·구글 드라이브 같은 동기화 폴더에 두면 오프라인에서도 열린다.
+폰 리더는 서버 없이 정적 웹앱이 저장소(Google Drive)의 번들을 받아 읽는다(§phone.bundle·web). 번들의
+본문(`<article>`)과 보기 화면의 CSS·읽기 동작이 여기서 나온다. 읽기에 필요한 것을 번들 하나에 굳힌다 —
+원문·번역 렌더 결과, 그림(폰에 맞게 줄여 data URI로), 인용·각주 서지 정보.
 
-**JS 없이도 읽힌다.** iOS 파일 앱의 미리보기(Quick Look)는 HTML을 열 때 JavaScript를 끈다.
-그래서 뼈대는 CSS만으로 동작하게 만든다:
-  - 보기 모드(번역 / 원문 / 문단 대조)는 라디오 버튼 + `:checked` 선택자로 바꾼다.
-  - 목차·인용·각주는 평범한 앵커 링크다(논문·언어별로 id에 접두어를 붙여 겹치지 않게).
-브라우저로 열면 JS가 그 위에 얹힌다 — 논문 목록 화면, 문장을 누르면 짝 문장(원문↔번역)이
-아래 시트에 뜨는 기능, 인용을 누르면 어떤 논문인지 보여 주는 시트, 문단 하나만 대조로 펼치기,
-글자 크기, 읽던 위치·모드 기억.
+**보기 모드는 CSS로.** 번역 / 원문 / 문단 대조는 라디오 버튼 + `:checked` 선택자로 바꾼다. 목차·인용·
+각주는 평범한 앵커 링크다(언어별로 id에 접두어를 붙여 겹치지 않게). 그 위에 JS(CORE_JS)가 문장을
+누르면 짝 문장(원문↔번역)이 아래 시트에 뜨는 기능, 인용을 누르면 어떤 논문인지 보여 주는 시트,
+글자 크기, 읽던 위치·모드 기억을 얹는다.
 
 **행 = 뷰어의 정렬 행.** 원문·번역의 짝은 뷰어와 같은 `align_rows`(섹션→문단 정렬)로 만들고,
 문장 짝은 뷰어와 같은 JS(§sentpair)로 누를 때 그 행만 맞춘다 — 두 화면의 짝이 갈라지지 않는다.
+하이라이트·메모의 앵커(행·셀 평문 오프셋)도 그래서 뷰어와 같은 좌표가 된다.
 """
 
 from __future__ import annotations
@@ -21,14 +19,11 @@ from __future__ import annotations
 import base64
 import html
 import io
-import json
 import re
-import time
 from pathlib import Path
 
-from narani import i18n
 from narani.i18n import t
-from narani.ui import mdrender, sentpair
+from narani.ui import mdrender
 from narani.workdir import WorkDir, paper_title
 
 # 그림 — 폰 화면(최대 3x 레티나 ~1300px)에 충분한 폭으로 줄이고, 이미 작은 파일은 그대로 둔다.
@@ -275,57 +270,6 @@ def _paper_html(p: dict) -> str:
     )
 
 
-def _lib_html(papers: list[dict]) -> str:
-    items = []
-    for p in papers:
-        meta = " · ".join(_esc(x) for x in (p["authors"], p["year"], p["venue"]) if x)
-        sub = f'<span class="li-en">{_esc(p["title"])}</span>' if p["title_ko"] else ""
-        badge = t("번역") if p["has_ko"] else t("원문만")
-        items.append(
-            f'<li><a href="#{p["id"]}" data-open="{p["id"]}">'
-            f'<span class="li-title">{_esc(p["title_ko"] or p["title"])}</span>{sub}'
-            f'<span class="li-meta">{meta}<span class="badge">{badge}</span></span></a></li>')
-    return f'<nav id="lib"><h1>{t("논문 {n}편", n=len(papers))}</h1><ol>{"".join(items)}</ol></nav>'
-
-
-def build(roots: list[Path]) -> str:
-    """고른 논문들(작업 디렉토리 경로) → 모바일 HTML 문서 한 장."""
-    papers = [_paper(i + 1, Path(r)) for i, r in enumerate(roots)]
-    data = {p["id"]: {"key": p["key"], "title": p["title_ko"] or p["title"],
-                      "cites": p["cites"], "fns": p["fns"]} for p in papers}
-    payload = json.dumps(data, ensure_ascii=False).replace("<", "\\u003c")
-    stamp = time.strftime("%Y-%m-%d %H:%M")
-    return (
-        f"<!doctype html><html lang=\"{i18n.ui_lang()}\"><head><meta charset=\"utf-8\">"
-        "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1, viewport-fit=cover\">"
-        "<meta name=\"color-scheme\" content=\"light dark\">"
-        f"<title>Narani · {t('논문 {n}편', n=len(papers))}</title><style>{_CSS}</style>"
-        f"{i18n.head_html()}</head><body>"
-        # 라디오는 본문(main)·상단 바보다 **앞의 형제**여야 `:checked ~` 선택자가 닿는다
-        "<input type=\"radio\" name=\"mode\" id=\"m-ko\" class=\"mode\" checked>"
-        "<input type=\"radio\" name=\"mode\" id=\"m-en\" class=\"mode\">"
-        "<input type=\"radio\" name=\"mode\" id=\"m-both\" class=\"mode\">"
-        "<header class=\"top\">"
-        f"<button class=\"only-js back\" id=\"back\" aria-label=\"{t('논문 목록')}\">☰</button>"
-        "<span class=\"top-title\" id=\"top-title\">Narani</span>"
-        f"<span class=\"seg\"><label for=\"m-ko\">{t('번역')}</label><label for=\"m-en\">{t('원문')}</label>"
-        f"<label for=\"m-both\">{t('대조')}</label></span>"
-        f"<button class=\"only-js fs\" id=\"fs-dn\" aria-label=\"{t('글자 작게')}\">{t('가')}−</button>"
-        f"<button class=\"only-js fs\" id=\"fs-up\" aria-label=\"{t('글자 크게')}\">{t('가')}+</button>"
-        "</header>"
-        f"<main>{_lib_html(papers)}{''.join(_paper_html(p) for p in papers)}"
-        f"<p class=\"stamp\">{t('Narani에서 {stamp}에 만듦', stamp=stamp)}</p></main>"
-        "<div id=\"sheet\" role=\"dialog\" aria-live=\"polite\"><div class=\"sh-grip\"></div>"
-        "<div class=\"sh-label\"></div><div class=\"sh-text\"></div><div class=\"sh-acts\"></div></div>"
-        f"<script>var DATA = {payload};\n{_JS}</script>"
-        "</body></html>"
-    )
-
-
-def file_name(n: int) -> str:
-    return t("narani-mobile-{n}편-{date}.html", n=n, date=time.strftime("%Y%m%d"))
-
-
 _CSS = """
 :root { --bg:#fbfaf7; --fg:#1f1e1c; --muted:#6b6862; --line:#e4e1da; --card:#fff; --accent:#2f6fd0;
   --hl:#ffe9a8; --hl2:#fff4cf; --sheet:#fff; --fs:17px; }
@@ -441,9 +385,10 @@ main { max-width: 720px; margin: 0 auto; padding: 0 16px 45vh; }
   border-radius: 9px; padding: 7px 12px; font: inherit; font-size: .85em; text-decoration: none; }
 """
 
-# 읽기 화면의 공통 동작 — 보기 모드·글자 크기·아래 시트·문장 짝·인용/각주. 목록↔논문 전환(_ROUTE_JS)은
-# 쓰는 쪽이 따로 붙인다: 이 파일(논문 전부가 한 문서에)과 폰 리더(§phone.web, 논문을 하나씩 불러옴).
-# 붙이는 쪽이 `cur`(연 논문 article)를 채우고 `showLib(push)`·`openPaper(id, push, target)`·`DATA`를 둔다.
+# 읽기 화면의 공통 동작 — 보기 모드·글자 크기·아래 시트·문장 짝·인용/각주. 목록↔논문 전환은 폰 리더
+# (§phone.web)가 붙인다: `cur`(연 논문 article)를 채우고 `showLib(push)`·`openPaper(id, push, target)`·`DATA`를
+# 둔다. 문장 시트에 동작을 더하려면 `sentenceActs(row, pi, pr, side)`를 정의한다(하이라이트·메모).
+# 문장 짝 함수들(§sentpair)과 같은 IIFE 안에 끼워 지역 함수로 쓴다.
 CORE_JS = r"""
   var doc = document, body = doc.body;
   body.classList.add('js');
@@ -638,55 +583,3 @@ CORE_JS = r"""
   doc.addEventListener('keydown', function(e){ if (e.key === 'Escape'){ clearSent(); closeSheet(); } });
 
 """
-
-_ROUTE_JS = r"""
-  // ---- 목록 ↔ 논문 ----
-  function showLib(push){
-    if (cur) cur.classList.remove('on');
-    cur = null; lib.classList.remove('off'); topTitle.textContent = 'Narani';
-    closeSheet(); window.scrollTo(0, 0);
-    if (push) history.pushState(null, '', '#!lib');
-  }
-  function openPaper(id, push, target){
-    var art = doc.getElementById(id);
-    if (!art || !art.classList.contains('paper')) return false;
-    if (cur && cur !== art) cur.classList.remove('on');
-    cur = art; art.classList.add('on'); lib.classList.add('off');
-    topTitle.textContent = (DATA[id] || {}).title || '';
-    closeSheet();
-    if (push) history.pushState(null, '', '#!' + id);
-    var el = target ? doc.getElementById(target) : null;
-    var off = 0;
-    if (!el){   // 저장해 둔 '행:행 안에서 내려간 px'
-      var saved = load('pos:' + art.getAttribute('data-key'), '').split(':');
-      el = saved[0] ? doc.getElementById(id + '-' + saved[0]) : null; off = +saved[1] || 0;
-    }
-    if (el){ el.scrollIntoView({block: 'start'}); if (off) window.scrollBy(0, off); } else window.scrollTo(0, 0);
-    return true;
-  }
-  try { history.scrollRestoration = 'manual'; } catch (e) {}   // 다시 열 때의 자리는 우리가 정한다
-  // 주소는 `#!p1` — `#p1`이면 그 id(논문 article)가 있어 Safari가 로드 직후 그리로 스크롤해
-  // 읽던 위치 복원을 덮어쓴다. JS 없는 미리보기에서 온 `#p1`·`#p1-ko-ref-3`도 받아 준다.
-  function route(){
-    var h = location.hash.replace(/^#!?/, ''), m = /^(p\d+)(?:-|$)/.exec(h);
-    if (m && openPaper(m[1], false, h === m[1] ? null : h)) return;
-    showLib(false);
-  }
-  doc.getElementById('back').onclick = function(){ showLib(true); };
-  window.addEventListener('popstate', route);
-  var saveTimer = null;
-  window.addEventListener('scroll', function(){
-    if (!cur || saveTimer) return;
-    saveTimer = setTimeout(function(){
-      saveTimer = null;
-      var r = topRow(); if (!r || !cur) return;
-      var into = Math.max(0, Math.round(64 - r.getBoundingClientRect().top));   // scroll-margin-top과 같은 기준
-      store('pos:' + cur.getAttribute('data-key'), r.id.replace(/^p\d+-/, '') + ':' + into);
-    }, 400);
-  }, {passive: true});
-
-  route();
-"""
-
-# 문장 짝 함수들(§sentpair)을 이 IIFE 안에 그대로 끼워 지역 함수로 쓴다.
-_JS = "(function(){\n" + sentpair.JS + CORE_JS + _ROUTE_JS + "})();\n"

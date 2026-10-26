@@ -6374,6 +6374,15 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
     def _check_update() -> None:
         update_banner.start_check(state)  # 켤 때마다 GitHub에 새 커밋이 있는지 (백그라운드)
 
+    @fastapi_app.on_startup
+    def _phone_notes() -> None:
+        # 폰 리더에서 단 하이라이트·메모를 합치고 데스크톱 메모를 올린다 (§phone.service) — 연결 전·오프라인이면 그냥 넘어간다
+        import threading
+
+        from narani.phone import service as phone_service
+
+        threading.Thread(target=phone_service.sync_notes_quietly, daemon=True, name="phone-notes").start()
+
     @fastapi_app.on_shutdown
     def _close_extra_windows() -> None:
         from narani.ui import window as extra_window

@@ -1,4 +1,4 @@
-"""모바일 HTML — 고른 논문들을 한 장으로 (원문·번역 행, 그림 한 번만, 앵커, CLI)."""
+"""폰 리더 렌더 — 논문 한 편의 원문·번역 행, 그림 한 번만, 앵커, 인용·각주 시트 데이터."""
 
 from __future__ import annotations
 
@@ -60,66 +60,63 @@ def _wd(tmp_path, name: str, en: str = EN, ko: str | None = KO) -> WorkDir:
     return wd
 
 
-def _data(html: str) -> dict:
-    return json.loads(re.search(r"var DATA = (\{.*?\});\n", html, re.S).group(1))
+def _html(root) -> tuple[dict, str]:
+    p = mobile._paper(0, root)
+    return p, mobile._paper_html(p)
 
 
-def test_build_rows_images_and_anchors(tmp_path):
-    a = _wd(tmp_path, "a")
-    b = _wd(tmp_path, "b", ko=None)
-    html = mobile.build([a.root, b.root])
-
-    # 논문 목록 + 두 편 + CSS로만 바꾸는 보기 모드
-    assert html.count('data-open="p') == 2
-    assert 'id="m-ko"' in html and 'id="m-en"' in html and 'id="m-both"' in html
-    assert 'class="paper has-ko" id="p1"' in html
-    assert 'class="paper noalign" id="p2"' in html  # 번역 없음 → 원문만, 대조 불가
-
+def test_paper_rows_images_and_anchors(tmp_path):
+    p, html = _html(_wd(tmp_path, "a").root)
+    assert html.startswith('<article class="paper has-ko" id="p0" data-key="a">')
     # 정렬 행: 번역 셀과 원문 셀이 짝으로
-    p1 = html.split('id="p1"', 1)[1].split('id="p2"', 1)[0]
-    assert '<div class="cell ko" lang="ko">' in p1 and '<div class="cell en" lang="en">' in p1
-    assert "교수자가 챗봇을" in p1 and "instructors customize" in p1
-
+    assert '<div class="cell ko" lang="ko">' in html and '<div class="cell en" lang="en">' in html
+    assert "교수자가 챗봇을" in html and "instructors customize" in html
     # 그림 줄은 원문·번역 공통 셀로 한 번만 — 크기도 적혀 자리가 미리 잡힌다
-    assert p1.count("<img ") == 1
-    assert re.search(r'<img [^>]*src="data:image/png;base64,[^"]+" width="40" height="20"', p1)
-
-    # id가 논문·언어별로 갈려 겹치지 않고, 내부 링크는 전부 있는 곳을 가리킨다
+    assert html.count("<img ") == 1
+    assert re.search(r'<img [^>]*src="data:image/png;base64,[^"]+" width="40" height="20"', html)
+    # id가 언어별로 갈려 겹치지 않고, 내부 링크는 전부 있는 곳을 가리킨다
     ids = re.findall(r'\sid="([^"]+)"', html)
     assert not [k for k, v in collections.Counter(ids).items() if v > 1]
-    assert {h for h in re.findall(r'href="#([^"]+)"', html)} <= set(ids)
+    assert {h for h in re.findall(r'href="#([^"]+)"', html)} - {"lib"} <= set(ids)
     # 번역 셀의 인용은 번역 쪽 참고문헌으로
-    assert 'href="#p1-ko-ref-1"' in p1 and 'href="#p1-en-ref-1"' in p1
+    assert 'href="#p0-ko-ref-1"' in html and 'href="#p0-en-ref-1"' in html
+
+
+def test_untranslated_paper_is_source_only(tmp_path):
+    p, html = _html(_wd(tmp_path, "b", ko=None).root)
+    assert 'class="paper noalign"' in html and not p["has_ko"]
+    assert "번역이 없는 논문이라 원문만 보입니다." in html
 
 
 def test_untranslated_references_reachable_from_both_sides(tmp_path):
     """참고문헌이 원문·번역에서 같으면 공통 셀 하나 — 양쪽 인용이 모두 닿도록 별칭 앵커를 둔다."""
-    html = mobile.build([_wd(tmp_path, "a").root])
-    assert 'id="p1-ko-ref-1"' in html and 'id="p1-en-ref-1"' in html
+    _, html = _html(_wd(tmp_path, "a").root)
+    assert 'id="p0-ko-ref-1"' in html and 'id="p0-en-ref-1"' in html
     assert html.count("[1] Lee, M. 2022. CoAuthor. CHI.") == 1
 
 
 def test_cite_and_footnote_data_for_tap_sheet(tmp_path):
-    html = mobile.build([_wd(tmp_path, "a").root])
-    d = _data(html)["p1"]
-    assert d["cites"]["1"]["url"] == "https://doi.org/10.1145/3491102.3502030"
-    assert "CoAuthor" in d["cites"]["1"]["text"]
-    assert d["fns"] == {"1": "Footnote text."}
-    assert d["title"] == "맞춤형 봇"  # 번역 제목을 앞에
+    p, _ = _html(_wd(tmp_path, "a").root)
+    assert p["cites"]["1"]["url"] == "https://doi.org/10.1145/3491102.3502030"
+    assert "CoAuthor" in p["cites"]["1"]["text"]
+    assert p["fns"] == {"1": "Footnote text."}
+    assert p["title_ko"] == "맞춤형 봇"  # 번역 제목을 앞에
 
 
-def test_script_embeds_shared_sentence_pairing():
+def test_reader_embeds_shared_sentence_pairing():
     """문장 짝 규칙은 뷰어와 같은 코드 — 두 화면이 갈라지지 않게 같은 문자열을 끼운다."""
+    from narani.phone import web
     from narani.ui.app import _ANNO_HTML
 
-    assert sentpair.JS in mobile._JS
+    js = web.site_files(local=True)["app.js"][0].decode()
+    assert sentpair.JS in js and mobile.CORE_JS in js
     assert sentpair.JS in _ANNO_HTML
     assert "function pairUp" in sentpair.JS and "function sentsOf" in sentpair.JS
 
 
 def test_noalign_when_section_counts_differ(tmp_path):
     ko = KO.replace("## References", "## 참고문헌\n\n## 부록")
-    html = mobile.build([_wd(tmp_path, "a", ko=ko).root])
+    _, html = _html(_wd(tmp_path, "a", ko=ko).root)
     assert 'class="paper has-ko noalign"' in html
     assert "문단 대조·문장 짝을 쓸 수 없습니다" in html
 
@@ -140,19 +137,11 @@ def test_large_image_is_shrunk(tmp_path):
     assert len(data) < p.stat().st_size and mime in ("image/png", "image/webp", "image/jpeg")
 
 
-def test_cli_mobile_accepts_paper_folder(tmp_path):
+def test_mobile_html_command_is_gone():
+    """폰 리더로 옮겨 간 '모바일 HTML 한 장' 내보내기 — 명령이 남아 있지 않다."""
     from click.testing import CliRunner
 
     from narani.cli import cli
 
-    a = _wd(tmp_path / "A", "a")  # tmp/A/a.md4 — 논문 폴더(tmp/A)를 넘겨도 찾는다
-    b = _wd(tmp_path, "b", ko=None)
-    out = tmp_path / "m.html"
-    result = CliRunner().invoke(cli, ["mobile", str(tmp_path / "A"), str(b.root), "-o", str(out)])
-    assert result.exit_code == 0, result.output
-    assert "2편" in result.output
-    html = out.read_text(encoding="utf-8")
-    assert a.root.stem in html and 'id="p2"' in html
-
-    empty = CliRunner().invoke(cli, ["mobile"])
-    assert empty.exit_code != 0 and "논문을 고르세요" in empty.output
+    result = CliRunner().invoke(cli, ["mobile"])
+    assert result.exit_code != 0 and "No such command" in result.output

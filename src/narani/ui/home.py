@@ -978,23 +978,58 @@ def build_home(state: dict) -> None:
         name, payload = bulk_zip(roots, which, config.resolve_export_target())
         await desktop.deliver(name, payload)
 
-    async def download_mobile() -> None:
-        """선택한 논문들을 폰에서 읽는 HTML 한 장으로 (§mobile) — 동기화 폴더에 두면 밖에서도 열린다."""
-        from narani.ui import mobile
+    async def connect_drive() -> bool:
+        """폰 리더용 Google Drive 연결 — 브라우저에서 로그인·허용을 마치면 True."""
+        from narani.phone import gdrive, service
 
-        roots = [Path(p) for p in selected]
-        if not roots:
-            ui.notify(t("선택된 논문이 없습니다."), type="warning")
-            return
-        n = ui.notification(t("모바일 HTML 만드는 중… ({n}편)", n=len(roots)), spinner=True, timeout=None)
+        n = ui.notification(t("브라우저에서 Google 로그인을 마치세요 — 폰 리더가 쓸 Narani 폴더를 Drive에 만듭니다."),
+                            spinner=True, timeout=None)
         try:
-            html = await run.io_bound(mobile.build, roots)
-        except Exception as e:  # noqa: BLE001
-            ui.notify(t("모바일 HTML을 만들지 못했습니다: {e}", e=e), type="negative")
-            return
+            who = await run.io_bound(service.connect)
+        except gdrive.DriveError as e:
+            ui.notify(t("Google Drive에 연결하지 못했습니다: {e}", e=e), type="negative")
+            return False
         finally:
             n.dismiss()
-        await desktop.deliver(mobile.file_name(len(roots)), html.encode("utf-8"), media_type="text/html")
+        ui.notify(t("Google Drive에 연결했습니다: {who}", who=who or "?"), type="positive")
+        return True
+
+    async def send_to_phone(roots: list[Path]) -> None:
+        """논문들을 폰 리더로 (§phone) — Drive의 Narani 폴더에 올린다. 하이라이트·메모도 이때 오간다."""
+        from narani.phone import gdrive, service
+
+        if not roots:
+            ui.notify(t("보낼 논문이 없습니다."), type="warning")
+            return
+        if not service.configured():
+            ui.notify(t("폰 리더용 Google 클라이언트 설정이 없습니다 — README의 '폰에서 읽기'를 보세요."), type="warning")
+            return
+        if not service.connected() and not await connect_drive():
+            return
+        for attempt in (0, 1):
+            n = ui.notification(t("폰으로 보내는 중… ({n}편)", n=len(roots)), spinner=True, timeout=None)
+            try:
+                s = await run.io_bound(service.send, roots)
+                break
+            except gdrive.NotConnected:  # 승인이 만료됐거나 Google 계정에서 지웠다 — 한 번 다시 연결
+                gdrive.token_path().unlink(missing_ok=True)
+                if attempt or not await connect_drive():
+                    return
+            except Exception as e:  # noqa: BLE001
+                ui.notify(t("폰으로 보내지 못했습니다: {e}", e=e), type="negative")
+                return
+            finally:
+                n.dismiss()
+        msg = t("폰으로 보냄 — 새로 {up}편 · 그대로 {same}편", up=s["uploaded"], same=s["skipped"])
+        if s["merged"]:
+            msg += t(" · 폰에서 단 메모 {n}개를 합쳤습니다", n=s["merged"])
+        ui.notify(msg, type="positive")
+
+    async def disconnect_drive() -> None:
+        from narani.phone import gdrive
+
+        await run.io_bound(gdrive.forget)
+        ui.notify(t("폰 리더의 Google Drive 연결을 끊었습니다 (Drive의 파일은 그대로)."))
 
     async def save_to_library(roots: list[Path]) -> None:
         """논문들을 각자의 자리(소속 프로젝트 폴더들 > 공통 저장 위치)로 내보내기."""
@@ -1261,6 +1296,14 @@ def build_home(state: dict) -> None:
             ui.separator()
             ui.menu_item(t("이 목록의 논문을 폴더로 저장"),
                          on_click=lambda: save_to_library([r["root"] for r in visible_rows()])).props("dense")
+            ui.separator()
+            ui.menu_item(t("번역한 논문을 모두 폰으로 보내기"),
+                         on_click=lambda: send_to_phone([r["root"] for r in visible_rows() if r["has_ko"]])) \
+                .props("dense")
+            from narani.phone import service as phone_service
+
+            if phone_service.connected():
+                ui.menu_item(t("폰 리더 연결 끊기"), on_click=disconnect_drive).props("dense")
 
     def toggle_hidden_view() -> None:
         view["show_hidden"] = not view["show_hidden"]
@@ -2171,9 +2214,10 @@ def build_home(state: dict) -> None:
                     .props("outline dense no-caps")
                 ui.button(t("번역 zip"), icon="download", on_click=lambda: download_bulk("ko")) \
                     .props("outline dense no-caps")
-                ui.button(t("모바일 HTML"), icon="smartphone", on_click=download_mobile).props("outline dense no-caps") \
-                    .tooltip(t("폰에서 읽는 HTML 한 장 (원문·번역·문단 대조) — iCloud Drive·구글 드라이브에 저장하면 "
-                             "밖에서도 열립니다"))
+                ui.button(t("폰으로 보내기"), icon="smartphone",
+                          on_click=lambda: send_to_phone([Path(p) for p in selected])) \
+                    .props("outline dense no-caps") \
+                    .tooltip(t("Google Drive를 거쳐 폰 리더(웹앱)에서 읽습니다 — 폰에서 단 하이라이트·메모도 이때 합칩니다"))
                 # 추가 = 다른 소속은 그대로 두고 더하기, 빼기 = 그 소속만 떼기(그 폴더의 사본도 정리)
                 with ui.button(t("컬렉션에 추가 ▾"), icon="playlist_add").props("outline dense no-caps"):
                     project_pick_menu(lambda v: bulk_member(v, True), with_new=True)
@@ -2312,7 +2356,7 @@ def build_home(state: dict) -> None:
                         .props('accept=".pdf,.md,.markdown"').classes("md4-upload") \
                         .tooltip(t("PDF·마크다운 고르기 — 창 위로 끌어다 놓아도 됩니다"))
                 with ui.button(icon="more_horiz", color=None).props("flat dense round").classes("text-grey-7") \
-                        .tooltip(t("숨긴 논문 · 내보내기 형식 · 이 목록 저장")):
+                        .tooltip(t("숨긴 논문 · 내보내기 형식 · 이 목록 저장 · 폰으로 보내기")):
                     more_menu()
                 pv["btn"] = ui.button(icon="view_sidebar", color=None, on_click=toggle_preview) \
                     .props("flat dense round").classes("text-primary") \
