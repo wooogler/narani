@@ -70,6 +70,68 @@ def model_options() -> list[dict]:
     return out
 
 
+MENTION_PAPERS = 8      # @ 후보에 보일 다른 논문 수 (글자를 치면 그 글자로 거른다)
+
+
+def mention_candidates(wd_for: Callable[[str], WorkDir | None], register_token: Callable[[WorkDir], str],
+                       workspace: Path | None, paper: str = "", q: str = "") -> list[dict]:
+    """입력창 `@` 후보 — 이 논문(그 섹션·메모 탭) → 다른 논문 → 컬렉션 순.
+
+    값만 싣는다(§context.Mention). 섹션은 retrieval의 헤더 행으로 범위를 정한다 — 다음 같은·윗
+    레벨 헤더 앞까지. q는 제목·저자·학회(논문), 이름(섹션·탭·컬렉션)에 든 글자로 거른다.
+    """
+    from narani import notes, projects
+    from narani.ui.agent import retrieval
+    from narani.workdir import paper_title, recent_workdirs
+
+    qq = " ".join((q or "").split()).lower()
+
+    def hit(*texts: str) -> bool:
+        return not qq or any(qq in (t or "").lower() for t in texts)
+
+    out: list[dict] = []
+    wd = wd_for(paper) if paper else None
+    if wd is not None:
+        title = " ".join(paper_title(wd.root).split())[:120]
+        if hit(title, "이 논문", "this paper"):
+            out.append({"kind": "paper", "token": paper, "title": title, "current": True})
+        try:
+            chunks = retrieval.paper(wd).chunks
+        except Exception:  # noqa: BLE001 — 본문을 못 읽어도 다른 후보는 보인다
+            chunks = []
+        heads = [c for c in chunks if c.head_level]
+        last = chunks[-1].row if chunks else 0
+        for i, c in enumerate(heads):
+            nxt = next((h for h in heads[i + 1:] if h.head_level <= c.head_level), None)
+            if hit(c.heading):
+                out.append({"kind": "section", "token": paper, "title": c.heading[:120],
+                            "row": c.row, "end": (nxt.row - 1) if nxt else last,
+                            "level": c.head_level})
+        try:
+            tabs = notes.tab_names(wd)
+        except Exception:  # noqa: BLE001
+            tabs = []
+        out += [{"kind": "note", "token": paper, "title": n, "tab": n} for n in tabs if hit(n)]
+    ws = workspace or config.resolve_workspace()
+    names = {p["id"]: p["name"] for p in projects.all_projects()}
+    shown = 0
+    for r in recent_workdirs(Path(ws), limit=100_000):
+        if shown >= MENTION_PAPERS:
+            break
+        t = str(r.get("title") or r.get("name") or "")
+        if not hit(t, " ".join(r.get("authors") or []), str(r.get("venue") or "")):
+            continue
+        tok = register_token(WorkDir(Path(r["root"])))
+        if tok == paper:
+            continue
+        authors = ", ".join((r.get("authors") or [])[:2])
+        sub = " · ".join(b for b in (str(r.get("year") or ""), authors) if b)
+        out.append({"kind": "paper", "token": tok, "title": " ".join(t.split())[:120], "sub": sub})
+        shown += 1
+    out += [{"kind": "collection", "id": i, "title": n} for i, n in names.items() if hit(n)]
+    return out
+
+
 def readiness(make: Callable[[], object] | None = None) -> tuple[bool, str]:
     """에이전트를 만들 수 있는지 (준비됐나?, 안내 메시지). 네트워크는 건드리지 않는다."""
     try:
@@ -204,6 +266,9 @@ def register_routes(fastapi_app, wd_for: Callable[[str], WorkDir | None],  # noq
         tok = ctx.token
         if tok and wd_for(tok) is None:
             raise HTTPException(status_code=404, detail="알 수 없는 논문 token")
+        # @ 맥락 — 모르는 논문을 가리키는 것은 조용히 뺀다(재시작 뒤 옛 창이 보낸 token 등)
+        ctx.mentions = [m for m in ctx.mentions
+                        if m.kind == "collection" or (m.token and wd_for(m.token) is not None)]
 
         approvals = body.get("approvals")
         deferred = None
@@ -266,6 +331,11 @@ def register_routes(fastapi_app, wd_for: Callable[[str], WorkDir | None],  # noq
         return StreamingResponse(stream(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache",
                                           "X-Accel-Buffering": "no"})
+
+    @fastapi_app.get("/agent/mentions")
+    def _mentions(paper: str = "", q: str = ""):  # noqa: ANN202 — 입력창 @ 후보
+        return {"items": mention_candidates(wd_for, register_token,
+                                            workspace() if workspace else None, paper, q)}
 
     @fastapi_app.get("/agent/models")
     def _models():  # noqa: ANN202 — 모델 목록 + 지금 선택 + 키 준비 상태

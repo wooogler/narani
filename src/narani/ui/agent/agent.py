@@ -54,7 +54,7 @@ from narani import config  # noqa: E402
 from narani.llm.base import Usage, cost_usd  # noqa: E402
 from narani.ui.agent import jobtools, retrieval, sessions  # noqa: E402
 from narani.ui.agent.cites import note_tag, render_html, resolve_citations  # noqa: E402
-from narani.ui.agent.context import PaperRef, to_prompt  # noqa: E402
+from narani.ui.agent.context import PaperRef, mentions_prompt, to_prompt  # noqa: E402
 from narani.ui.agent.tools import TOOLS, Deps, review_url  # noqa: E402
 
 COST_TOOLS = [Tool(fn, requires_approval=True) for fn in jobtools.TOOLS]
@@ -453,13 +453,19 @@ async def run_turn(agent: Agent, session: sessions.Session, user_text: str | Non
         # 새로 끝난 작업은 이번 질문 메시지 앞에도 싣는다 — 지시문만으로는 모델이 앞 턴의 "아직 알림을
         # 못 받았다"는 자기 답을 따라가 버렸다(실데이터 확인). 기록에 한 번 남으므로 나중에 물어도 보인다.
         prompt = [JOB_NOTE_HEAD + "\n" + "\n".join(_job_line(r) for r in fresh), text]
+    at = mentions_prompt(deps.ctx) if text else ""
+    if at:   # @로 지정한 맥락도 그 질문 메시지 앞에 — 지시문과 달리 기록에 남아 다음 질문에서도 보인다
+        prompt = [at, *(prompt if isinstance(prompt, list) else [prompt])]
     cur = deps.wd_for(deps.current_token) if deps.current_token else None
     sessions.touch_paper(session, deps.current_token, cur.root if cur is not None else None)
     if text and not session.title:
         session.title = sessions.default_title(text)
     user_turn = ({"id": sessions.turn_id(), "ts": time.time(), "role": "user", "text": text,
                   "html": "", "citations": [], "usage": None, "cost_usd": 0.0,
-                  "token": deps.current_token} if text else None)
+                  "token": deps.current_token,
+                  # 질문에 붙인 @ 맥락 — 창이 질문 아래 칩으로 다시 그린다
+                  "mentions": [m.model_dump(exclude_none=True) for m in deps.ctx.mentions]}
+                 if text else None)
 
     result = None
     after_tool = False

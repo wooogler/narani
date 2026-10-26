@@ -41,6 +41,7 @@ CSS = """
   border-radius: 999px; box-shadow: 0 8px 24px rgba(35,131,226,.38), 0 2px 6px rgba(0,0,0,.14);
   font-size: 13px; overflow: hidden; }
 #md-jump-back.on { display: inline-flex; animation: mdJumpIn .2s ease-out; }
+body:has(.q-dialog) #md-jump-back { z-index: 5990; }   /* 대화상자 밑으로 (에이전트 서랍과 같은 규칙) */
 #md-jump-back button { border: none; background: none; color: inherit; font: inherit;
   cursor: pointer; padding: 8px 14px; line-height: 1.4; white-space: nowrap; }
 #md-jump-back .mjb-go { display: inline-flex; align-items: center; gap: 7px; min-width: 0;

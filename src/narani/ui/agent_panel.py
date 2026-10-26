@@ -71,7 +71,7 @@ AG_OVERLAY_BELOW = 760           # 남는 본문 폭이 이보다 좁으면 밀�
 AG_NARROW_BELOW = 1100           # 밀기 모드에서 남는 폭이 이보다 좁으면 홈 미리보기 열을 접는다(ag-narrow).
                                  # home.py의 @media(max-width:1100px)와 같은 경계 — 그 미디어 쿼리는
                                  # 뷰포트만 봐서 서랍이 민 폭을 모른다
-AG_SLIM_BELOW = 380              # 서랍 자체가 이보다 좁으면 머리줄에서 비용을 숨기고 모델 칸을 줄인다
+AG_SLIM_BELOW = 380              # 서랍 자체가 이보다 좁으면 머리줄 단추를 조인다
 
 CSS = """
 /* 오른쪽 에이전트 컬럼 — 메모 서랍과 같은 자리·같은 시각 언어 (동시에 열리지 않는다).
@@ -86,6 +86,9 @@ CSS = """
   display: none; flex-direction: column; background: #fff; border-left: 1px solid #e6e4e0;
   color: #37352f; }
 #md4-agent.open { display: flex; }
+/* 대화상자(설정 등)가 뜨면 서랍은 그 밑으로 — 서랍(9000)이 Quasar 대화상자(6000)보다 높아 덮고 있었다.
+   대화상자 안 드롭다운(q-menu 6000)까지 가리지 않게 대화상자를 올리지 않고 서랍을 내린다. */
+body:has(.q-dialog) #md4-agent { z-index: 5990; }
 body.ag-open .md4-body { padding-right: var(--ag-w); }
 /* 좁은 창 — 남는 본문 폭이 모자라면(JS syncLayout이 붙인다) 밀지 않고 덮는다. 본문은 제 폭 그대로
    두고 서랍만 위에 띄우므로 뷰어·홈의 열이 짓눌리지 않는다. 떠 있다는 걸 그림자로 분명히 한다. */
@@ -94,9 +97,7 @@ body.ag-open.ag-overlay #md4-agent { box-shadow: -12px 0 36px rgba(0,0,0,.22); }
 /* 밀기 모드인데 홈 세 열이 다 안 들어갈 때 — 미리보기 열을 접는다(더 좁으면 이미 덮기로 넘어간다).
    home.py의 @media(max-width:1100px)는 뷰포트만 보므로 서랍이 민 폭은 여기서 반영한다. */
 body.ag-open.ag-narrow .md4-hprev { display: none; }
-/* 서랍 자체가 좁을 때 — 머리줄(세션·모델·비용·새 세션·닫기)이 한 줄에 버티게 덜 중요한 것부터 뺀다 */
-#md4-agent.ag-slim .ag-cost { display: none; }
-#md4-agent.ag-slim .ag-model { max-width: 84px; }
+/* 서랍 자체가 좁을 때 — 머리줄(세션·새 세션·새 창·닫기)이 한 줄에 버티게 단추를 조인다 */
 #md4-agent.ag-slim .ag-new { padding: 3px 5px; }
 /* 너비 드래그 핸들 — 목차·컬럼 핸들과 같은 감각 */
 .ag-handle { position: absolute; left: 0; top: 0; bottom: 0; width: 9px; margin-left: -4px;
@@ -106,7 +107,7 @@ body.ag-open.ag-narrow .md4-hprev { display: none; }
 .ag-handle:hover::after { background: #2383e2; width: 2px; }
 .ag-head { position: relative; display: flex; align-items: center; gap: 6px; padding: 8px 10px;
   flex-wrap: nowrap; border-bottom: 1px solid #ecebe8; font-size: 13px; }
-.ag-head .ag-btn, .ag-cost { white-space: nowrap; flex: 0 0 auto; }
+.ag-head .ag-btn { white-space: nowrap; flex: 0 0 auto; }
 /* 세션 고르기 — 제목이 길면 말줄임, 남는 폭은 이것이 먼저 쓴다 */
 .ag-sess { display: inline-flex; align-items: center; gap: 3px; min-width: 0; flex: 1 1 auto;
   border: none; background: none; font: inherit; font-size: 12.5px; font-weight: 600;
@@ -115,13 +116,11 @@ body.ag-open.ag-narrow .md4-hprev { display: none; }
 .ag-sess:disabled { cursor: default; opacity: .7; }
 .ag-sess-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .ag-sess-c { flex: 0 0 auto; color: #97948d; font-size: 10px; }
-.ag-model { font-size: 10.5px; padding: 1px 4px; border-radius: 9px; background: #f0efec;
-  color: #6b6862; flex: 0 1 auto; min-width: 44px; max-width: 112px; border: none;
-  cursor: pointer; font-family: inherit; }
-.ag-model:hover { background: #e6e4e0; }
-.ag-model:disabled { cursor: default; opacity: .7; }
-.ag-cost { font-size: 10.5px; color: #97948d; font-variant-numeric: tabular-nums; }
-.ag-cost.over { color: #b3261e; }     /* 세션 비용이 상한을 넘었다 — 다음 질문은 한 번 더 묻는다 */
+/* 이름 바꾸는 중 — 제목 자리에 같은 크기의 입력 칸 (메모 탭과 같은 손짓: 더블클릭 → Enter·바깥 클릭 저장, Esc 취소) */
+.ag-name-in { flex: 1 1 auto; min-width: 0; border: none; outline: none; background: #fff;
+  box-shadow: 0 0 0 1.5px #2383e2; border-radius: 6px; padding: 2px 6px; font: inherit;
+  font-size: 12.5px; font-weight: 600; color: inherit; }
+.ag-menu .ag-name-in { font-weight: 400; font-size: 12px; }
 .ag-btn { border: none; background: none; font-size: 11.5px; color: #8a8780; cursor: pointer;
   padding: 3px 6px; border-radius: 7px; }
 .ag-btn:hover { background: #f0efec; }
@@ -155,13 +154,17 @@ body.ag-standalone .ag-list, body.ag-standalone .ag-foot {
 .ag-mi.on { background: #eef4fd; }
 .ag-mi-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ag-mi-s { flex: 0 0 auto; color: #97948d; font-size: 10.5px; }
-.ag-mi-act { color: #6b6862; }
-.ag-mi-del { color: #b3261e; }
-.ag-msep { height: 1px; background: #ecebe8; margin: 4px 2px; }
-.ag-rename { display: flex; gap: 5px; padding: 4px 4px 6px; }
-.ag-rename input { flex: 1 1 auto; min-width: 0; border: 1px solid #e0ded9; border-radius: 7px;
-  padding: 4px 7px; font: inherit; font-size: 12px; background: #fff; color: inherit; outline: none; }
-.ag-rename input:focus { border-color: #2383e2; }
+.ag-mi-s + .ag-mi-x { margin-left: -2px; }
+/* 세션마다 지우기 — 줄에 올리면 보인다. 한 번 누르면 빨갛게 '지우기?'로 바뀌고 한 번 더 눌러야 지운다 */
+.ag-mi-x { flex: 0 0 auto; display: inline-flex; align-items: center; gap: 2px; border: none;
+  background: none; color: #97948d; cursor: pointer; padding: 1px 3px; border-radius: 5px;
+  font: inherit; font-size: 10.5px; opacity: 0; }
+.ag-mi-x .material-icons { font-size: 15px; }
+.ag-mi:hover .ag-mi-x, .ag-mi-x:focus-visible, .ag-mi-x.arm { opacity: 1; }
+.ag-mi-x:hover { background: rgba(0,0,0,.07); color: #b3261e; }
+.ag-mi-x.arm { background: #b3261e; color: #fff; }
+.ag-mi-hint { padding: 5px 8px 2px; color: #97948d; font-size: 10.5px; border-top: 1px solid #ecebe8;
+  margin-top: 4px; }
 
 .ag-list { flex: 1 1 auto; overflow-y: auto; padding: 10px 11px; }
 .ag-empty { padding: 26px 14px; font-size: 12px; color: #97948d; text-align: center;
@@ -263,7 +266,38 @@ a.chat-cite-note:hover { background: #f7cf60; }
   font-size: 11px; padding: 2px 8px; cursor: pointer; color: inherit; }
 .ag-cap button.ag-cap-go { border-color: #2383e2; background: #eef4fd; color: #1668c4; }
 
-.ag-foot { border-top: 1px solid #ecebe8; padding: 8px 9px; }
+.ag-foot { position: relative; border-top: 1px solid #ecebe8; padding: 8px 9px; }
+/* @ 맥락 — 입력창 위 칩 줄(이번 질문에 붙여 보낼 것)과 '@'를 치면 뜨는 고르기 목록 */
+.ag-ctx { display: none; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; }
+.ag-ctx.on { display: flex; }
+.ag-chip { display: inline-flex; align-items: center; gap: 3px; max-width: 100%; height: 22px;
+  padding: 0 3px 0 6px; border-radius: 6px; background: #eef4fd; color: #1f5fa8; font-size: 11px;
+  border: 1px solid #d5e5f8; }
+.ag-chip .material-icons { font-size: 13px; opacity: .8; }
+.ag-chip-t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; max-width: 220px; }
+.ag-chip-x { border: none; background: none; color: inherit; cursor: pointer; font-size: 10px;
+  padding: 1px 3px; border-radius: 4px; opacity: .7; }
+.ag-chip-x:hover { opacity: 1; background: rgba(35,131,226,.14); }
+.ag-q-ctx { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.ag-q-ctx .ag-chip { height: 20px; padding-right: 6px; }
+.ag-at-btn { flex: 0 0 26px; height: 30px; border: none; background: none; color: #8a8780;
+  font: inherit; font-size: 15px; font-weight: 600; cursor: pointer; border-radius: 8px; padding: 0; }
+.ag-at-btn:hover { background: #f0efec; color: #2383e2; }
+.ag-at-btn:disabled { opacity: .4; cursor: default; }
+.ag-at { position: absolute; left: 9px; right: 9px; bottom: calc(100% - 4px); z-index: 3; display: none;
+  max-height: min(340px, 50vh); overflow-y: auto; background: #fff; border: 1px solid #e6e4e0;
+  border-radius: 10px; box-shadow: 0 -6px 24px rgba(0,0,0,.12); padding: 4px; font-size: 12px; }
+.ag-at.open { display: block; }
+.ag-at-g { padding: 6px 8px 2px; color: #97948d; font-size: 10.5px; font-weight: 600; }
+.ag-at-i { display: flex; align-items: center; gap: 7px; width: 100%; border: none; background: none;
+  font: inherit; color: inherit; text-align: left; padding: 5px 8px; border-radius: 7px; cursor: pointer; }
+.ag-at-i .material-icons { flex: 0 0 auto; font-size: 15px; color: #97948d; }
+.ag-at-i.on { background: #eef4fd; }
+.ag-at-i.on .material-icons { color: #2383e2; }
+.ag-at-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-at-s { flex: 0 0 auto; color: #97948d; font-size: 10.5px; max-width: 45%; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.ag-at-none { padding: 8px; color: #97948d; }
 .ag-sel { display: none; align-items: center; gap: 5px; font-size: 10.5px; color: #8a8780;
   margin: 0 0 6px; }
 .ag-sel.on { display: flex; }
@@ -296,17 +330,22 @@ a.chat-cite-note:hover { background: #f7cf60; }
   #md4-agent { background: #1f1f1f; border-color: #3a3a3a; color: #d4d4d4; }
   body.ag-open.ag-overlay #md4-agent { box-shadow: -12px 0 36px rgba(0,0,0,.6); }
   .ag-head, .ag-foot { border-color: #2c2c2c; }
-  .ag-model, .ag-a code, .ag-a pre, .ag-tool { background: #2c2c2c; color: #b8b8b8; }
+  .ag-chip { background: #1e2733; border-color: #2f4560; color: #8fbcf0; }
+  .ag-at { background: #262626; border-color: #3a3a3a; box-shadow: 0 -6px 24px rgba(0,0,0,.5); }
+  .ag-at-i.on { background: #24303d; }
+  .ag-at-btn:hover { background: #2c2c2c; }
+  .ag-a code, .ag-a pre, .ag-tool { background: #2c2c2c; color: #b8b8b8; }
   .ag-a blockquote { border-left-color: #3a3a3a; color: #9a9a9a; }
   .ag-a hr { border-top-color: #333; }
   .ag-tool b { color: #d0d0d0; }
-  .ag-model:hover { background: #3a3a3a; }
   .ag-btn:hover, .ag-sess:hover, .ag-mi:hover { background: #2c2c2c; }
   .ag-menu { background: #262626; border-color: #3a3a3a; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
   .ag-mi.on, .ag-q { background: #24303d; }
   .ag-msep { background: #333; }
-  .ag-empty, .ag-meta, .ag-cost, .ag-sess-c, .ag-mi-s, .ag-sel { color: #8f8f8f; }
-  .ag-input, .ag-rename input { background: #262626; border-color: #3a3a3a; }
+  .ag-empty, .ag-meta, .ag-sess-c, .ag-mi-s, .ag-sel, .ag-mi-hint { color: #8f8f8f; }
+  .ag-input { background: #262626; border-color: #3a3a3a; }
+  .ag-name-in { background: #262626; }
+  .ag-mi-hint { border-top-color: #333; }
   .ag-input:disabled { background: #232323; color: #7d7d7d; }
   .ag-turn.ag-user + .ag-turn.ag-user, .ag-turn.ag-bot + .ag-turn.ag-user { border-color: #2c2c2c; }
   .ag-appr, .ag-cap { background: #2b2618; border-color: #6b5a24; }
@@ -322,7 +361,6 @@ a.chat-cite-note:hover { background: #f7cf60; }
   .ag-appr-s.ok { background: #1f3322; color: #8fd18f; }
   .ag-appr-s.no { background: #3a2220; color: #f0a39b; }
   .ag-appr-s.skip { background: #2c2c2c; color: #a0a0a0; }
-  .ag-cost.over { color: #f0a39b; }
   .ag-job { background: #1e2733; border-color: #2f4560; color: #8fbcf0; }
   .ag-job.ok { background: #1f2a20; border-color: #34503a; color: #8fd18f; }
   .ag-job.fail { background: #2e1f1e; border-color: #5a2f2b; color: #f0a39b; }
@@ -337,10 +375,8 @@ HTML = """
 <div id="md4-agent" role="complementary" aria-label="⦃에이전트⦄">
   <div class="ag-handle" title="⦃드래그해서 너비 조절⦄"></div>
   <div class="ag-head">
-    <button type="button" class="ag-sess" title="⦃세션 — 목록 · 이름 바꾸기 · 삭제⦄"><span
+    <button type="button" class="ag-sess" title="⦃세션 목록 — 더블클릭하면 이름 바꾸기⦄"><span
       class="ag-sess-t">⦃에이전트⦄</span><span class="ag-sess-c">&#9662;</span></button>
-    <select class="ag-model" title="⦃에이전트가 쓸 모델 — 번역 설정과 별개입니다⦄"></select>
-    <span class="ag-cost" title="⦃이 세션에서 쓴 비용 (누적)⦄"></span>
     <button type="button" class="ag-btn ag-new" title="⦃새 세션⦄">+ ⦃새 세션⦄</button>
     <a class="ag-btn ag-pop" href="/agent" target="_blank" rel="noopener"
       title="⦃새 창으로 열기 — 이 창의 서랍은 닫힙니다⦄"><i class="material-icons"
@@ -352,9 +388,13 @@ HTML = """
   <div class="ag-foot">
     <div class="ag-sel"><span>⦃선택한 글 함께 보냄:⦄</span><span class="ag-sel-t"></span>
       <button type="button" class="ag-btn ag-sel-x" title="⦃선택한 글 빼기⦄">&#10005;</button></div>
+    <div class="ag-ctx" aria-label="⦃이 질문에 붙일 맥락⦄"></div>
+    <div class="ag-at" role="listbox" aria-label="⦃맥락 고르기⦄"></div>
     <div class="ag-row">
+      <button type="button" class="ag-at-btn" title="⦃맥락 넣기 — 논문·섹션·메모 탭·컬렉션 (@)⦄"
+        aria-label="⦃맥락 넣기⦄">@</button>
       <textarea class="ag-input" rows="1"
-        placeholder="⦃무엇이든 물어보세요 (Shift+Enter 줄바꿈)⦄"></textarea>
+        placeholder="⦃무엇이든 물어보세요 — @로 맥락 넣기 (Shift+Enter 줄바꿈)⦄"></textarea>
       <button type="button" class="ag-send" title="⦃전송 (Enter)⦄">&#10148;</button>
     </div>
   </div>
@@ -369,8 +409,6 @@ JS = r"""
   var list = panel.querySelector('.ag-list');
   var input = panel.querySelector('.ag-input');
   var sendBtn = panel.querySelector('.ag-send');
-  var modelSel = panel.querySelector('.ag-model');
-  var costEl = panel.querySelector('.ag-cost');
   var sessBtn = panel.querySelector('.ag-sess');
   var sessT = panel.querySelector('.ag-sess-t');
   var menu = panel.querySelector('.ag-menu');
@@ -378,6 +416,10 @@ JS = r"""
   var selBar = panel.querySelector('.ag-sel');
   var selT = panel.querySelector('.ag-sel-t');
   var popBtn = panel.querySelector('.ag-pop');
+  var ctxBar = panel.querySelector('.ag-ctx'), atBox = panel.querySelector('.ag-at');
+  var atBtn = panel.querySelector('.ag-at-btn');
+  // @ 맥락 — 다음 질문에 붙여 보낼 것(atPicked)과 고르기 목록 상태. 보내면 비운다(그 질문의 것이다)
+  var atPicked = [], atItems = [], atSel = 0, atFrom = -1, atTimer = null, atSeq = 0;
   // 단독 창(/agent)이면 서버가 이 스크립트 앞에 {session, paper, title}을 심는다 — 셸에서는 null
   var SA = window.__md4AgentStandalone || null;
   var POPOUT_PATH = '/agent', SA_POLL_MS = 10000;
@@ -521,7 +563,7 @@ JS = r"""
     if (SA)       // 단독 창 — 화면(DOM) 맥락이 없다. 넘겨받은 논문만 싣고 제목은 서버가 채운다
       return {screen: 'window', paper: paper ? {token: paper, title: SA.title || null} : null,
               lang: null, visible_rows: [], top_row: null, selection: lastSel || selNow(),
-              note_tabs: null, left_panel: null, project: null};
+              note_tabs: null, left_panel: null, project: null, mentions: atPicked.slice()};
     var review = onReview();
     var rows = review ? visibleRows() : [];
     return {
@@ -533,7 +575,8 @@ JS = r"""
       selection: lastSel || selNow(),
       note_tabs: review ? noteTabs() : null,
       left_panel: review ? leftPanel() : null,
-      project: review ? null : projectNow()
+      project: review ? null : projectNow(),
+      mentions: atPicked.slice()             // 입력창에서 @로 집어넣은 맥락 (§ui/agent/context.py Mention)
     };
   }
   window.__md4Context = ctxNow;
@@ -621,35 +664,7 @@ JS = r"""
     })();
   }
 
-  // ---- 모델 고르기 (에이전트 전용 — 번역 설정과 별개) ----
-  var PROV = {openai: 'OpenAI', anthropic: 'Anthropic', gemini: 'Gemini'};
-  function renderModels(){
-    var cur = modelInfo.model || '';
-    modelSel.innerHTML = '';
-    if (!models.length){                    // 목록을 아직 못 받았으면 이름만 (드롭다운은 비활성)
-      var o0 = document.createElement('option');
-      o0.textContent = cur; modelSel.appendChild(o0); modelSel.disabled = true;
-      return;
-    }
-    modelSel.disabled = busy;
-    var byProv = {};
-    models.forEach(function(m){ (byProv[m.provider] = byProv[m.provider] || []).push(m); });
-    Object.keys(byProv).forEach(function(prov){
-      var g = document.createElement('optgroup');
-      g.label = PROV[prov] || prov;
-      byProv[prov].forEach(function(m){
-        var o = document.createElement('option');
-        o.value = m.provider + '/' + m.model;
-        // 키 없는 제공사는 목록에 남기되 못 고르게 — 왜 안 보이는지 헤매지 않도록.
-        // 단가는 싣지 않는다 — 돈은 머리의 세션 누적 한 곳에서만 보인다
-        o.textContent = m.model + (m.has_key ? '' : '  ' + md4T('(키 없음)'));
-        o.disabled = !m.has_key;
-        if (m.model === cur && m.provider === modelInfo.provider) o.selected = true;
-        g.appendChild(o);
-      });
-      modelSel.appendChild(g);
-    });
-  }
+  // ---- 모델 (에이전트 전용 — 번역 설정과 별개). 고르는 곳은 설정 창(AI 탭)이고 여기서는 준비 상태만 안다 ----
   function modelLabel(){                    // 서버 model_label과 같은 '제공사:모델'
     return modelInfo.model ? (modelInfo.provider ? modelInfo.provider + ':' : '') + modelInfo.model : '';
   }
@@ -660,15 +675,8 @@ JS = r"""
   }
   function loadModels(){
     return api('GET', '/agent/models').then(function(j){ takeModels(j); render(); })
-      .catch(function(){ renderModels(); });
+      .catch(function(){});
   }
-  modelSel.addEventListener('change', function(){
-    var v = (modelSel.value || '').split('/');
-    if (v.length < 2) return;
-    api('PUT', '/agent/model', {provider: v[0], model: v.slice(1).join('/')})
-      .then(function(j){ takeModels(j); errMsg = null; render(); })
-      .catch(function(e){ errMsg = md4T('모델을 바꾸지 못했습니다: {e}', {e: e.message}); render(); });
-  });
 
   // ---- 세션 ----
   function shortTime(ts){
@@ -777,78 +785,109 @@ JS = r"""
     return openSession(keep).then(loadList).then(renderHead).catch(function(){});
   }
 
-  // 세션 메뉴 — 목록 · 이름 바꾸기 · 삭제(한 번 더 묻는다). 앱 창(웹뷰)에서 prompt/confirm이
-  // 막힐 수 있어 메뉴 안에서 묻는다.
+  // 세션 메뉴 — 목록뿐이다. 이름은 메모 탭처럼 제목을 더블클릭해 그 자리에서 바꾸고(머리줄·목록 줄 모두),
+  // 지우기는 줄마다 휴지통(한 번 더 눌러야 지운다). 앱 창(웹뷰)에서 prompt/confirm이 막힐 수 있어 다 제자리에서 한다.
   function closeMenu(){ menu.classList.remove('open'); menuMode = ''; }
+  function sessTitle(id){
+    if (sess && sess.id === id && sess.title) return sess.title;
+    for (var i = 0; i < sessList.length; i++) if (sessList[i].id === id) return sessList[i].title || '';
+    return '';
+  }
+  // 글자 자리(span)를 같은 크기의 입력 칸으로 바꾼다 — Enter·바깥 클릭 = 저장, Esc = 그대로
+  function renameInline(span, id, after){
+    if (!span || !id || busy) return;
+    var inp = document.createElement('input');
+    inp.className = 'ag-name-in'; inp.value = sessTitle(id); inp.placeholder = md4T('세션 이름');
+    inp.setAttribute('aria-label', md4T('세션 이름'));
+    var done = false;
+    function finish(save){
+      if (done) return; done = true;
+      var t = inp.value.trim(), old = sessTitle(id);
+      inp.replaceWith(span);
+      if (!save || !t || t === old) return after && after();
+      span.textContent = t;
+      api('PATCH', '/agent/sessions/' + encodeURIComponent(id), {title: t}).then(function(m){
+        if (sess && sess.id === id) sess.title = m.title;
+        return loadList();
+      }).then(function(){ renderHead(); if (after) after(); })
+        .catch(function(e){ errMsg = e.message; render(); });
+    }
+    // 입력 칸 안의 클릭·키가 바깥 버튼(세션 고르기·목록 열기)으로 번지지 않게
+    ['click', 'mousedown', 'dblclick'].forEach(function(n){
+      inp.addEventListener(n, function(ev){ ev.stopPropagation(); });
+    });
+    inp.addEventListener('keydown', function(ev){
+      ev.stopPropagation();
+      if (ev.key === 'Enter' && !ev.isComposing){ ev.preventDefault(); finish(true); }
+      if (ev.key === 'Escape'){ ev.preventDefault(); finish(false); }
+    });
+    inp.addEventListener('blur', function(){ finish(true); });
+    span.replaceWith(inp);
+    setTimeout(function(){ inp.focus(); inp.select(); }, 0);
+  }
+  function deleteSession(id){
+    return api('DELETE', '/agent/sessions/' + encodeURIComponent(id)).then(function(){
+      if (id !== sid) return loadList().then(renderMenu);
+      sid = null; sess = null; lsSet(LS_SESSION, null);     // 지금 세션 — 다음 최근 세션(없으면 새로)으로
+      return ensureSession().then(function(){ renderHead(); renderMenu(); });
+    }).catch(function(e){ errMsg = e.message; closeMenu(); render(); });
+  }
   function renderMenu(){
     menu.innerHTML = '';
-    if (menuMode === 'rename'){
-      var box = document.createElement('div'); box.className = 'ag-rename';
-      var inp = document.createElement('input'); inp.value = (sess && sess.title) || '';
-      inp.placeholder = md4T('세션 이름');
-      var ok = document.createElement('button'); ok.className = 'ag-btn'; ok.textContent = md4T('저장');
-      function save(){
-        var t = inp.value.trim();
-        if (!t || !sid) return closeMenu();
-        api('PATCH', '/agent/sessions/' + encodeURIComponent(sid), {title: t}).then(function(m){
-          if (sess) sess.title = m.title;
-          closeMenu(); return loadList();
-        }).then(renderHead).catch(function(e){ errMsg = e.message; closeMenu(); render(); });
-      }
-      ok.addEventListener('click', save);
-      inp.addEventListener('keydown', function(ev){
-        if (ev.key === 'Enter'){ ev.preventDefault(); save(); }
-        if (ev.key === 'Escape'){ ev.stopPropagation(); closeMenu(); }
-      });
-      box.appendChild(inp); box.appendChild(ok); menu.appendChild(box);
-      setTimeout(function(){ inp.focus(); inp.select(); }, 20);
-      return;
-    }
-    if (menuMode === 'delete'){
-      var q = document.createElement('div'); q.className = 'ag-mi';
-      q.textContent = md4T('“{title}”을(를) 지울까요? 되돌릴 수 없습니다.', {title: (sess && sess.title) || md4T('이 세션')});
-      menu.appendChild(q);
-      var yes = document.createElement('button'); yes.className = 'ag-mi ag-mi-del'; yes.textContent = md4T('삭제');
-      var no = document.createElement('button'); no.className = 'ag-mi ag-mi-act'; no.textContent = md4T('취소');
-      yes.addEventListener('click', function(){
-        var gone = sid;
-        api('DELETE', '/agent/sessions/' + encodeURIComponent(gone)).then(function(){
-          closeMenu(); sid = null; sess = null; lsSet(LS_SESSION, null);
-          return ensureSession();
-        }).then(renderHead).catch(function(e){ errMsg = e.message; closeMenu(); render(); });
-      });
-      no.addEventListener('click', function(){ menuMode = 'list'; renderMenu(); });
-      menu.appendChild(yes); menu.appendChild(no);
-      return;
-    }
     sessList.forEach(function(s){
-      var b = document.createElement('button');
+      var b = document.createElement('div');
       b.className = 'ag-mi' + (s.id === sid ? ' on' : '');
+      b.setAttribute('role', 'menuitem'); b.tabIndex = 0;
       b.innerHTML = '<span class="ag-mi-t">' + esc(s.title || md4T('새 세션')) + '</span>'
         + '<span class="ag-mi-s">' + (s.turns ? md4T('{n}문', {n: s.turns}) + ' · ' : '') + esc(shortTime(s.updated))
         + '</span>';
-      b.addEventListener('click', function(){
-        closeMenu();
-        if (s.id !== sid) openSession(s.id).then(renderHead)
-          .catch(function(e){ errMsg = e.message; render(); });
+      var x = document.createElement('button');
+      x.type = 'button'; x.className = 'ag-mi-x';
+      x.title = md4T('이 세션 지우기 — 되돌릴 수 없습니다');
+      x.setAttribute('aria-label', md4T('세션 지우기') + ' — ' + (s.title || md4T('새 세션')));
+      x.innerHTML = '<i class="material-icons" aria-hidden="true">delete_outline</i>';
+      x.addEventListener('click', function(ev){
+        ev.stopPropagation();
+        if (!x.classList.contains('arm')){       // 첫 누름은 무장만 — 빨갛게 '지우기?'
+          menu.querySelectorAll('.ag-mi-x.arm').forEach(function(o){
+            o.classList.remove('arm'); o.innerHTML = '<i class="material-icons" aria-hidden="true">delete_outline</i>';
+          });
+          x.classList.add('arm'); x.textContent = md4T('지우기?');
+          return;
+        }
+        x.disabled = true; deleteSession(s.id);
+      });
+      b.appendChild(x);
+      var tEl = b.querySelector('.ag-mi-t');
+      b.addEventListener('click', function(ev){
+        if (b.querySelector('.ag-name-in')) return;
+        if (ev.detail >= 2) return renameInline(tEl, s.id, renderMenu);   // 더블클릭 = 이름 바꾸기
+        var pick = function(){
+          if (b.querySelector('.ag-name-in')) return;
+          closeMenu();
+          if (s.id !== sid) openSession(s.id).then(renderHead)
+            .catch(function(e){ errMsg = e.message; render(); });
+        };
+        // 고르기는 더블클릭인지 볼 만큼만 미룬다 — 바로 닫으면 두 번째 클릭이 갈 줄이 없다
+        clearTimeout(b._t); b._t = setTimeout(pick, 230);
+      });
+      b.addEventListener('dblclick', function(){ clearTimeout(b._t); });
+      b.addEventListener('keydown', function(ev){
+        if (ev.key === 'Enter'){ ev.preventDefault(); b.click(); }
+        if (ev.key === 'F2'){ ev.preventDefault(); renameInline(tEl, s.id, renderMenu); }
       });
       menu.appendChild(b);
     });
-    if (sessList.length){ var sp = document.createElement('div'); sp.className = 'ag-msep'; menu.appendChild(sp); }
-    [['+ ' + md4T('새 세션'), 'new'], [md4T('이름 바꾸기'), 'rename'], [md4T('이 세션 삭제'), 'delete']].forEach(function(a){
-      var b = document.createElement('button');
-      b.className = 'ag-mi ' + (a[1] === 'delete' ? 'ag-mi-del' : 'ag-mi-act');
-      b.textContent = a[0];
-      b.disabled = a[1] !== 'new' && !sid;
-      b.addEventListener('click', function(){
-        if (a[1] === 'new') return newSession();
-        menuMode = a[1]; renderMenu();
-      });
-      menu.appendChild(b);
-    });
+    var h = document.createElement('div'); h.className = 'ag-mi-hint';
+    h.textContent = md4T('이름을 더블클릭하면 바꿀 수 있습니다');
+    menu.appendChild(h);
   }
-  sessBtn.addEventListener('click', function(){
-    if (busy) return;
+  sessBtn.addEventListener('click', function(ev){
+    if (busy || sessBtn.querySelector('.ag-name-in')) return;
+    if (ev.detail >= 2){                  // 더블클릭 = 지금 세션 이름 바꾸기 (메모 탭과 같은 손짓)
+      closeMenu();
+      return renameInline(sessT, sid, null);
+    }
     if (menu.classList.contains('open')) return closeMenu();
     menuMode = 'list';
     loadList().catch(function(){}).then(function(){ renderMenu(); menu.classList.add('open'); });
@@ -954,6 +993,7 @@ JS = r"""
       wrap.className = 'ag-turn ag-user';
       var q = document.createElement('div');
       q.className = 'ag-q'; q.textContent = t.text || '';
+      if (t.mentions && t.mentions.length) q.appendChild(ctxChips(t.mentions, false));
       wrap.appendChild(q);
       apprDone(wrap, t.id);
       // 승인 뒤 이어 돈 run이 다시 승인 대기로 끝났을 때 그 사이 부른 tool 줄 — 같은 카드가 왜 또
@@ -1103,6 +1143,7 @@ JS = r"""
     if (live.q){
       var u = document.createElement('div'); u.className = 'ag-turn ag-user';
       var q = document.createElement('div'); q.className = 'ag-q'; q.textContent = live.q;
+      if (live.mentions && live.mentions.length) q.appendChild(ctxChips(live.mentions, false));
       u.appendChild(q); frag.appendChild(u);
     }
     var w = document.createElement('div'); w.className = 'ag-turn ag-bot';
@@ -1129,18 +1170,12 @@ JS = r"""
   function renderHead(){
     if (sess && !sess.title)                  // 첫 질문이 제목이 된다 — 목록에서 받아 온다
       for (var i = 0; i < sessList.length; i++) if (sessList[i].id === sess.id) sess.title = sessList[i].title;
-    sessT.textContent = (sess && sess.title) || md4T('새 세션');
+    if (!sessBtn.querySelector('.ag-name-in')) sessT.textContent = (sess && sess.title) || md4T('새 세션');
     sessBtn.disabled = busy; newBtn.disabled = busy;
-    var c = sess && sess.usage ? Number(sess.usage.cost_usd || 0) : 0;
-    var cap = sess && sess.cost_cap ? Number(sess.cost_cap) : 0;     // 세션 비용 상한(USD) — 있으면 함께
-    costEl.textContent = '$' + c.toFixed(4) + (cap ? ' / $' + cap.toFixed(2) : '');
-    costEl.classList.toggle('over', !!cap && c >= cap);
-    costEl.title = md4T('이 세션에서 쓴 비용 (누적)') + (cap ? ' / ' + md4T('세션 상한 — 넘으면 다음 질문 전에 묻습니다') : '');
     if (popBtn) popBtn.setAttribute('href', popHref());   // 가운데 클릭·⌘클릭도 지금 세션으로
   }
   function render(){
     renderHead();
-    renderModels();
     list.innerHTML = '';
     if (!modelInfo.ready){
       var note = document.createElement('div');
@@ -1176,6 +1211,7 @@ JS = r"""
     }
     // 승인 대기 중에도 입력창은 연다 — 그냥 보내면 서버가 대기 호출을 모두 거절하고 이어 간다(건너뜀)
     input.disabled = busy || !modelInfo.ready;
+    atBtn.disabled = input.disabled;
     input.placeholder = pending ? PH_WAIT : PH_IDLE;
     sendBtn.disabled = input.disabled;
     list.scrollTop = list.scrollHeight;
@@ -1283,7 +1319,9 @@ JS = r"""
     if (busy || !sid) return;
     var q, body;
     if (again){
-      body = again; body.override = true; body.context = ctxNow();
+      var keepAt = (body = again).context && again.context.mentions;   // 막혔던 질문의 @ 맥락은 그대로
+      body.override = true; body.context = ctxNow();
+      if (keepAt) body.context.mentions = keepAt;
       q = body.message || ''; approvals = body.approvals || null;
       if (q && input.value.trim() === q){ input.value = ''; autosize(); }
     } else {
@@ -1291,7 +1329,7 @@ JS = r"""
       if (!q && !approvals) return;
       body = {message: q, context: ctxNow()};
       if (approvals) body.approvals = approvals;
-      if (q){ input.value = ''; autosize(); lastSel = null; paintSel(); }
+      if (q){ input.value = ''; autosize(); lastSel = null; paintSel(); atPicked = []; atClose(); paintCtx(); }
     }
     capRetry = null; notice = null;
     // 대기 중이던 승인 카드를 잠근다 — 승인/거절을 보냈거나, 그냥 새 질문을 보내 건너뛰었다.
@@ -1304,7 +1342,8 @@ JS = r"""
       pending = null; decisions = {};
     }
     busy = true; errMsg = null; closeMenu();
-    live = {q: q, text: '', tools: [], err: null, done: null, started: false};
+    live = {q: q, text: '', tools: [], err: null, done: null, started: false,
+            mentions: (body.context && body.context.mentions) || []};
     toolOpen.live = false;
     render();
     var at = sid;
@@ -1322,6 +1361,8 @@ JS = r"""
         if (live && !live.started){            // 스트림 전 거절(키 없음·409·비용 상한 등) — 되돌려 놓는다
           var m = e.message || String(e);
           if (q && !input.value) input.value = q;
+          var gone = (body.context && body.context.mentions) || [];   // @ 맥락도 칩으로 되돌린다
+          if (q && gone.length && !atPicked.length){ atPicked = gone.slice(); paintCtx(); }
           if (rec){                            // 카드는 아직 답을 기다린다
             var arr = apprByTurn[key] || [], k = arr.indexOf(rec);
             if (k >= 0) arr.splice(k, 1);
@@ -1377,6 +1418,134 @@ JS = r"""
         }
         live = null; render();
       });
+  }
+  // ---- @ 맥락 (입력창에서 논문·섹션·메모 탭·컬렉션을 집어넣기) ----
+  // 커서 앞의 '@글자'를 보고 서버(/agent/mentions)에 후보를 묻는다. 고르면 그 '@글자'는 지우고 칩으로.
+  // 칩은 가리키는 값(token·행 범위·탭 이름·컬렉션 id)만 싣는다 — 내용은 에이전트가 tool로 읽는다.
+  var AT_ICON = {paper: 'description', section: 'segment', note: 'sticky_note_2', collection: 'folder'};
+  var AT_GROUP = {here: md4T('이 논문'), section: md4T('섹션'), note: md4T('메모 탭'),
+                  paper: md4T('다른 논문'), collection: md4T('컬렉션')};
+  function atKeyOf(m){
+    return m.kind + ':' + (m.token || m.id || '') + ':' + (m.row == null ? '' : m.row) + ':' + (m.tab || '');
+  }
+  function atLabel(m){
+    if (m.kind === 'paper' && m.current) return md4T('이 논문') + ' · ' + (m.title || '');
+    return m.title || m.tab || '';
+  }
+  function ctxChips(ms, removable){
+    var box = document.createElement('div');
+    box.className = removable ? 'ag-ctx-in' : 'ag-q-ctx';
+    ms.forEach(function(m, i){
+      var c = document.createElement('span'); c.className = 'ag-chip';
+      c.title = atLabel(m) + (m.kind === 'section' && m.row != null
+        ? ' (r' + m.row + (m.end != null && m.end !== m.row ? '–r' + m.end : '') + ')' : '');
+      c.innerHTML = '<i class="material-icons" aria-hidden="true">' + (AT_ICON[m.kind] || 'label')
+        + '</i><span class="ag-chip-t">' + esc(atLabel(m)) + '</span>';
+      if (removable){
+        var x = document.createElement('button'); x.type = 'button'; x.className = 'ag-chip-x';
+        x.innerHTML = '&#10005;'; x.setAttribute('aria-label', md4T('맥락 빼기') + ' — ' + atLabel(m));
+        x.addEventListener('click', function(){ atPicked.splice(i, 1); paintCtx(); input.focus(); });
+        c.appendChild(x);
+      }
+      box.appendChild(c);
+    });
+    return box;
+  }
+  function paintCtx(){
+    ctxBar.innerHTML = '';
+    ctxBar.classList.toggle('on', atPicked.length > 0);
+    if (atPicked.length){
+      var inner = ctxChips(atPicked, true);
+      while (inner.firstChild) ctxBar.appendChild(inner.firstChild);
+    }
+  }
+  function atQuery(){                    // 커서 앞 '@글자' — 없으면 null (줄바꿈·40자를 넘으면 끝)
+    var p = input.selectionStart;
+    if (p == null || p !== input.selectionEnd) return null;
+    var pre = input.value.slice(0, p), i = pre.lastIndexOf('@');
+    if (i < 0 || (i > 0 && !/\s/.test(pre[i - 1]))) return null;   // 메일 주소 속 @는 아니다
+    var q = pre.slice(i + 1);
+    if (/[\n]/.test(q) || q.length > 40 || /\s\s/.test(q)) return null;
+    return {from: i, q: q};
+  }
+  function atWatch(){
+    var at = atQuery();
+    if (!at) return atClose();
+    atFrom = at.from;
+    clearTimeout(atTimer);
+    atTimer = setTimeout(function(){ atFetch(at.q); }, atBox.classList.contains('open') ? 120 : 0);
+  }
+  function atFetch(q){
+    var seq = ++atSeq, tok = (paper && (SA || onReview())) ? paper : '';
+    api('GET', '/agent/mentions?paper=' + encodeURIComponent(tok) + '&q=' + encodeURIComponent(q))
+      .then(function(j){
+        if (seq !== atSeq || !atQuery()) return;           // 그새 더 쳤거나 @를 지웠다
+        var have = {};
+        atPicked.forEach(function(m){ have[atKeyOf(m)] = 1; });
+        atItems = (j.items || []).filter(function(m){ return !have[atKeyOf(m)]; });
+        atSel = 0; atRender(); atBox.classList.add('open');
+      }).catch(function(){});
+  }
+  function atRender(){
+    atBox.innerHTML = '';
+    if (!atItems.length){
+      var n = document.createElement('div'); n.className = 'ag-at-none';
+      n.textContent = md4T('맞는 맥락이 없습니다'); atBox.appendChild(n); return;
+    }
+    var last = '';
+    atItems.forEach(function(m, i){
+      var g = m.kind === 'paper' && m.current ? 'here' : m.kind;
+      if (g !== last){
+        last = g;
+        var h = document.createElement('div'); h.className = 'ag-at-g'; h.textContent = AT_GROUP[g] || g;
+        atBox.appendChild(h);
+      }
+      var b = document.createElement('button'); b.type = 'button';
+      b.className = 'ag-at-i' + (i === atSel ? ' on' : ''); b.setAttribute('role', 'option');
+      var sub = m.kind === 'section' ? 'r' + m.row + (m.end != null && m.end !== m.row ? '–r' + m.end : '')
+        : (m.sub || '');
+      b.innerHTML = '<i class="material-icons" aria-hidden="true">' + (AT_ICON[m.kind] || 'label')
+        + '</i><span class="ag-at-t">' + (m.kind === 'section' && m.level > 1
+          ? '&nbsp;'.repeat((m.level - 1) * 2) : '') + esc(m.kind === 'paper' && m.current ? m.title : atLabel(m))
+        + '</span>' + (sub ? '<span class="ag-at-s">' + esc(sub) + '</span>' : '');
+      b.addEventListener('mousedown', function(ev){ ev.preventDefault(); });   // 입력창 초점을 지킨다
+      b.addEventListener('click', function(){ atPick(i); });
+      atBox.appendChild(b);
+    });
+    var on = atBox.querySelector('.ag-at-i.on');
+    if (on && on.scrollIntoView) on.scrollIntoView({block: 'nearest'});
+  }
+  function atPick(i){
+    var m = atItems[i], at = atQuery();
+    if (!m) return;
+    var from = at ? at.from : atFrom, p = input.selectionStart;
+    if (from >= 0 && p != null && p >= from){         // '@글자'를 지우고 칩으로
+      input.value = input.value.slice(0, from) + input.value.slice(p).replace(/^ /, '');
+      input.selectionStart = input.selectionEnd = from;
+    }
+    var keep = {kind: m.kind, token: m.token, title: m.title, row: m.row, end: m.end, tab: m.tab, id: m.id};
+    Object.keys(keep).forEach(function(k){ if (keep[k] == null) delete keep[k]; });
+    if (m.current) keep.current = true;
+    if (atPicked.length < 8) atPicked.push(keep);
+    atClose(); paintCtx(); autosize(); input.focus();
+  }
+  function atClose(){
+    clearTimeout(atTimer); atSeq++; atItems = []; atFrom = -1;
+    atBox.classList.remove('open'); atBox.innerHTML = '';
+  }
+  function atKey(ev){
+    if (!atBox.classList.contains('open') || ev.isComposing) return false;
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp'){
+      ev.preventDefault();
+      if (atItems.length){
+        atSel = (atSel + (ev.key === 'ArrowDown' ? 1 : -1) + atItems.length) % atItems.length;
+        atRender();
+      }
+      return true;
+    }
+    if ((ev.key === 'Enter' || ev.key === 'Tab') && atItems.length){ ev.preventDefault(); atPick(atSel); return true; }
+    if (ev.key === 'Escape'){ ev.preventDefault(); ev.stopPropagation(); atClose(); return true; }
+    return false;
   }
   function ask(){ send(input.value, null); }
   function autosize(){
@@ -1481,6 +1650,8 @@ JS = r"""
   window.__md4Agent = {
     toggle: function(){ if (panel.classList.contains('open')) closePanel(); else openPanel(); },
     open: openPanel, close: closePanel,
+    // 설정 창(AI 탭)에서 에이전트 모델을 바꿨다 — 준비 상태·모델 이름을 다시 받는다
+    reloadModels: function(){ return loadModels(); },
     // 화면이 바뀔 때 뷰어·홈이 부른다 — 창·대화·스트림은 그대로, 지금 논문만 바꾼다
     setPaper: function(tok){
       var prev = paper;
@@ -1497,7 +1668,19 @@ JS = r"""
   sendBtn.addEventListener('click', ask);
   input.addEventListener('input', autosize);
   input.addEventListener('keydown', function(ev){
+    if (atKey(ev)) return;               // @ 목록이 떠 있으면 위·아래·Enter·Tab·Esc는 목록 몫
     if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing){ ev.preventDefault(); ask(); }
+  });
+  input.addEventListener('input', atWatch);
+  input.addEventListener('click', atWatch);
+  input.addEventListener('blur', function(){ setTimeout(function(){
+    if (document.activeElement !== input && !atBox.contains(document.activeElement)) atClose(); }, 150); });
+  atBtn.addEventListener('click', function(){      // '@' 단추 = 커서 자리에 @를 넣고 목록을 연다
+    var p = input.selectionStart == null ? input.value.length : input.selectionStart;
+    var pre = input.value.slice(0, p), lead = pre && !/\s$/.test(pre) ? ' @' : '@';
+    input.value = pre + lead + input.value.slice(p);
+    input.focus(); input.selectionStart = input.selectionEnd = p + lead.length;
+    autosize(); atWatch();
   });
   document.addEventListener('keydown', function(ev){
     if (ev.key !== 'Escape') return;

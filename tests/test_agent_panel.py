@@ -111,7 +111,13 @@ def test_routes_used_by_panel_exist():
                  ("GET", "/agent/models"), ("PUT", "/agent/model")]:
         assert need in paths
     assert "'/agent/sessions/' + encodeURIComponent(at) + '/turns'" in JS
-    assert "api('GET', '/agent/models')" in JS and "api('PUT', '/agent/model'" in JS
+    assert "api('GET', '/agent/models')" in JS
+    # 모델 고르기는 서랍이 아니라 설정 창(AI 탭)이 한다 — 같은 [chat] 설정을 쓴다
+    assert "api('PUT', '/agent/model'" not in JS
+    from narani.ui import settings_dialog
+    src = Path(settings_dialog.__file__).read_text(encoding="utf-8")
+    assert "config.set_chat_choice(" in src and "window.__md4Agent.reloadModels()" in src
+    assert "reloadModels: function(){ return loadModels(); }" in JS
 
 
 def test_context_snapshot_fields_match_backend_model():
@@ -144,7 +150,7 @@ def test_narrow_window_rules_exist_and_override_push():
     assert "body.ag-open.ag-overlay #md4-agent { box-shadow:" in CSS
     assert "body.ag-open.ag-narrow .md4-hprev { display: none; }" in CSS
     assert "ag-tight" not in CSS and "AG_TIGHT" not in JS   # 닿지 않던 사이드바 접기 규칙은 지웠다
-    assert "#md4-agent.ag-slim .ag-cost { display: none; }" in CSS
+    assert "#md4-agent.ag-slim .ag-new { padding: 3px 5px; }" in CSS
     dark = CSS.split("@media (prefers-color-scheme: dark)")[1]
     assert "ag-overlay #md4-agent" in dark
     for cls in ("ag-overlay", "ag-narrow"):
@@ -368,9 +374,6 @@ def test_cost_cap_warning_and_override_retry():
     cap = _js_block(JS, "function capNode(")
     assert "md4T('그래도 계속')" in cap and "send(null, null, r.body)" in cap
     assert "if (capRetry) list.appendChild(capNode());" in _js_block(JS, "function render(")
-    head = _js_block(JS, "function renderHead(")
-    assert "sess.cost_cap" in head and "' / $' + cap.toFixed(2)" in head
-    assert ".ag-cost.over {" in CSS
 
 
 def test_home_refresh_rebuilds_sub_pages_only_when_home_is_shown(monkeypatch):
@@ -402,11 +405,12 @@ def test_home_refresh_rebuilds_sub_pages_only_when_home_is_shown(monkeypatch):
 # --- 비용은 머리 한 곳에만 ----------------------------------------------------
 
 
-def test_money_shows_only_in_head_session_total():
-    """쓴 돈은 머리의 세션 누적(상한 있으면 '/ 상한') 한 곳만 — 모델 단가·턴별 비용·작업 비용·토큰은 없다."""
-    assert "m.price" not in JS                         # 드롭다운에 단가를 붙이지 않는다
-    assert "(m.has_key ? '' : '  ' + md4T('(키 없음)'))" in JS     # 키 없음 표시는 남는다
-    assert "money(" not in JS                          # 작업 완료 줄의 ', $0.0016'
+def test_no_money_or_model_picker_in_drawer():
+    """머리줄은 세션만 — 모델 고르기는 설정 창으로, 쓴 돈·단가·토큰은 서랍 어디에도 없다.
+    (비용 상한에 걸린 턴의 경고 카드는 남는다 — 그건 막힌 이유다.)"""
+    assert 'class="ag-model"' not in HTML and 'class="ag-cost"' not in HTML
+    assert ".ag-model" not in CSS and ".ag-cost" not in CSS
+    assert "m.price" not in JS and "money(" not in JS and "toFixed(4)" not in JS
     turn = _js_block(JS, "function turnNode(")
     assert "cost_usd" not in turn and "toFixed" not in turn
     assert "t.model !== modelLabel()" in turn           # 모델 이름은 지금 모델과 다를 때만
@@ -414,8 +418,32 @@ def test_money_shows_only_in_head_session_total():
     assert "j.message" not in job and "j.label" in job                      # jobtools 문구엔 '(≈$…)'가 붙어 있다
     for word in ("usage.input", "usage.output", "tokens"):
         assert word not in JS
-    # 남은 한 곳 — 머리의 세션 누적
-    assert JS.count("toFixed(4)") == 1 and "costEl.textContent = '$' + c.toFixed(4)" in JS
+
+
+def test_session_rename_is_inline_like_memo_tabs():
+    """메모 탭처럼 제목을 더블클릭하면 그 자리에 입력 칸 — Enter·바깥 클릭 저장, Esc 취소."""
+    rn = _js_block(JS, "function renameInline(")
+    assert "span.replaceWith(inp)" in rn and "inp.replaceWith(span)" in rn
+    assert "ev.key === 'Enter' && !ev.isComposing" in rn and "ev.key === 'Escape'" in rn
+    assert "'blur', function(){ finish(true); }" in rn
+    assert "api('PATCH', '/agent/sessions/'" in rn
+    head = JS[JS.index("  sessBtn.addEventListener('click'"):]
+    assert head.index("ev.detail >= 2") < head.index("renameInline(sessT, sid, null)")
+    menu = _js_block(JS, "function renderMenu(")
+    assert "renameInline(tEl, s.id, renderMenu)" in menu
+    assert "menuMode === 'rename'" not in JS and "ag-rename" not in CSS
+
+
+def test_each_session_row_has_its_own_delete_icon():
+    """지우기는 줄마다 휴지통 — 첫 누름은 '지우기?'로 무장, 두 번째에 지운다(되돌릴 수 없다)."""
+    menu = _js_block(JS, "function renderMenu(")
+    assert "delete_outline" in menu and "x.classList.add('arm')" in menu
+    assert menu.index("x.classList.contains('arm')") < menu.index("deleteSession(s.id)")
+    assert "ev.stopPropagation()" in menu                 # 휴지통 누름이 세션 고르기로 번지지 않게
+    dl = _js_block(JS, "function deleteSession(")
+    assert "api('DELETE', '/agent/sessions/'" in dl and "if (id !== sid)" in dl
+    assert "이 세션 삭제" not in JS
+    assert ".ag-mi:hover .ag-mi-x" in CSS and ".ag-mi-x.arm {" in CSS
 
 
 # --- 새 창으로 (단독 창 /agent) ------------------------------------------------
@@ -579,3 +607,24 @@ def test_tool_lines_are_grouped_showing_only_the_latest():
     assert "toolGroup(live.tools, 'live')" in js
     assert "toolGroup(toolsByTurn[t.id], t.id)" in js
     assert ".ag-tools-more" in agent_panel.CSS
+
+
+# --- 입력창 @ 맥락 ---------------------------------------------------------
+
+
+def test_at_picker_owns_keys_while_open_and_sends_pointers():
+    """@ 목록이 떠 있으면 Enter는 고르기다(보내기가 아니다). 고른 것은 다음 질문 한 번에 붙는다."""
+    keys = JS[JS.index("  input.addEventListener('keydown', function(ev){"):]
+    assert keys.index("if (atKey(ev)) return;") < keys.index("ask();")
+    ak = _js_block(JS, "function atKey(")
+    assert "ev.isComposing" in ak and "ev.stopPropagation(); atClose()" in ak   # Esc가 서랍까지 닫지 않게
+    assert "api('GET', '/agent/mentions?paper='" in _js_block(JS, "function atFetch(")
+    q = _js_block(JS, "function atQuery(")
+    assert "!/\\s/.test(pre[i - 1])" in q                 # 메일 주소 속 @는 목록을 열지 않는다
+    snd = _js_block(JS, "function send(")
+    assert "atPicked = []; atClose(); paintCtx();" in snd                    # 보내면 비운다
+    assert "atPicked = gone.slice(); paintCtx();" in snd                    # 스트림 전 거절이면 되돌린다
+    assert "body.context.mentions = keepAt" in snd                           # 비용 상한 재시도도 같은 맥락
+    assert "mentions: atPicked.slice()" in _js_block(JS, "function ctxNow(")
+    assert "ctxChips(t.mentions, false)" in _js_block(JS, "function turnNode(")
+    assert 'class="ag-at-btn"' in HTML and 'class="ag-ctx"' in HTML and 'class="ag-at"' in HTML
