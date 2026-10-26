@@ -37,6 +37,14 @@ def read_index(store: Store) -> dict:
     return {"format": bmod.FORMAT, "papers": []}
 
 
+def _agent_defaults() -> dict:
+    """모바일 에이전트가 처음 고를 서비스·모델 — 데스크톱 에이전트 창과 같게. 키는 싣지 않는다(모바일에서 따로 넣는다)."""
+    from narani import config
+
+    provider, model = config.resolve_chat_choice()
+    return {"provider": provider, "model": model}
+
+
 def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dict[str, dict] | None = None,
          on_progress: Callable[[int, int, str], None] | None = None) -> dict:
     """논문들 → 저장소. extra는 논문 키 → 목록 줄에 덧붙일 값(고정·컬렉션 …).
@@ -81,7 +89,8 @@ def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dic
                 removed += 1
     else:  # 고르지 않은 예전 논문은 목록에 그대로 둔다
         entries += [e for k, e in old.items() if k not in keys]
-    index = {"format": bmod.FORMAT, "updated": time.time(), "ui_lang": i18n.ui_lang(), "papers": entries}
+    index = {"format": bmod.FORMAT, "updated": time.time(), "ui_lang": i18n.ui_lang(), "papers": entries,
+             "agent": _agent_defaults()}
     store.write(INDEX, bmod.dumps(index))
     if on_progress:
         on_progress(len(roots), len(roots), "")
@@ -89,25 +98,28 @@ def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dic
             "merged": merged, "notes": notes_sent}
 
 
-def sync_notes(store: Store, roots: Iterable[Path]) -> dict:
-    """본문은 건드리지 않고 하이라이트·메모만 주고받는다 — 목록(index.json)에 있는 논문 중 roots에 있는 것.
 
-    앱을 켤 때 뒤에서 돈다: 폰 기록을 annotations.json에 합치고, 바뀐 notes/만 올리고, 목록의 notes_hash를
-    고친다(폰이 새 메모 파일을 받아 가게). 반환: {merged, notes}.
-    """
+def remove(store: Store, roots: Iterable[Path]) -> dict:
+    """논문들을 모바일에서 뺀다 — 폰에서 단 메모를 먼저 데스크톱에 합치고(잃지 않게), 그 논문의 번들·메모
+    파일을 지우고 목록에서 뺀다. 폰은 다음에 목록을 받으면 받아 둔 사본도 지운다. 반환: {removed, merged}."""
     index = read_index(store)
     by_key = {Path(r).stem: Path(r) for r in roots}
-    merged = notes_sent = 0
+    keep: list[dict] = []
+    removed = merged = 0
     for e in index["papers"]:
-        root = by_key.get(e.get("key")) if isinstance(e, dict) else None
-        if root is None or not root.is_dir():
+        key = e.get("key") if isinstance(e, dict) else None
+        if key not in by_key:
+            keep.append(e)
             continue
-        ns = nmod.sync_paper(store, root, e.get("notes_hash", ""))
-        merged += ns["merged"]
-        if ns["wrote"]:
-            notes_sent += 1
-            e["notes_hash"] = ns["notes_hash"]
-    if notes_sent:
+        root = by_key[key]
+        if root.is_dir():
+            merged += nmod.sync_paper(store, root, e.get("notes_hash", ""))["merged"]
+        for name in (e.get("file"), nmod.notes_name(key), nmod.mobile_name(key)):
+            if name:
+                store.delete(name)
+        removed += 1
+    if removed:
+        index["papers"] = keep
         index["updated"] = time.time()
         store.write(INDEX, bmod.dumps(index))
-    return {"merged": merged, "notes": notes_sent}
+    return {"removed": removed, "merged": merged}

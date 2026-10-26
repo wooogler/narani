@@ -118,7 +118,7 @@ def test_site_files_shell_and_catalog():
     cfg = json.loads(re.search(r"window\.NARANI_CFG = (\{.*?\});</script>", html).group(1))
     assert cfg["local"] is False and cfg["google_client_id"].startswith("abc")
     assert cfg["catalogs"]["en"]["새로 고침"] == "Refresh"  # 리더 JS 문구만 실린다
-    assert "논문 목록" in cfg["catalogs"]["en"] and len(cfg["catalogs"]["en"]) < 80
+    assert "논문 목록" in cfg["catalogs"]["en"] and len(cfg["catalogs"]["en"]) < 160
     js = files["app.js"][0].decode()
     assert "function pairUp" in js and "function onSentence" in js and "function openPaper" in js
     # 껍데기가 바뀌면 서비스 워커 캐시 이름도 바뀐다
@@ -191,3 +191,25 @@ def test_write_site_adds_cname_for_pages_domain(tmp_path):
     assert (tmp_path / "a" / "CNAME").read_text() == pages.DOMAIN + "\n"
     web.write_site(tmp_path / "b", cname=None)
     assert not (tmp_path / "b" / "CNAME").exists() and (tmp_path / "b" / "index.html").exists()
+
+
+def test_index_carries_agent_defaults_without_keys(tmp_path):
+    wd = _wd(tmp_path, "bots")
+    store = LocalStore(tmp_path / "store")
+    sync.push([wd.root], store)
+    agent = json.loads(store.read("index.json"))["agent"]
+    assert set(agent) == {"provider", "model"} and agent["provider"] in ("openai", "anthropic", "gemini")
+    assert "key" not in json.dumps(agent).lower()
+
+
+def test_reader_has_toc_drawer_and_agent():
+    files = web.site_files()
+    html, js = files["index.html"][0].decode(), files["app.js"][0].decode()
+    for el_id in ('id="toc-btn"', 'id="tocd"', 'id="fab"', 'id="agent"', 'id="ag-in"', 'id="fs-pop"'):
+        assert el_id in html
+    cfg = json.loads(re.search(r"window\.NARANI_CFG = (\{.*?\});</script>", html).group(1))
+    assert cfg["ai_models"]["openai"]  # 모바일 에이전트의 모델 고르기
+    # 세 서비스에 브라우저가 직접 묻는다 — 키는 그 기기에만 (Narani 서버도 Drive도 거치지 않는다)
+    for host in ("api.openai.com", "api.anthropic.com", "generativelanguage.googleapis.com"):
+        assert host in js
+    assert "anthropic-dangerous-direct-browser-access" in js and "narani:ai" in js

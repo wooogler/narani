@@ -39,6 +39,9 @@ from pathlib import Path
 
 from narani.i18n import N_, t
 from narani import config, langs, library, projects
+from narani.phone import gdrive
+from narani.phone import pages
+from narani.phone import service as phone_service
 from narani.ui import (
     agent_panel, batch_translate_dialog, collection_glossary_dialog, desktop, find_bar, jobs, jump_back,
     scroll_memory, settings_dialog, spa, split_view, tabstore, translate_job, update_banner,
@@ -48,6 +51,9 @@ from narani.workdir import WorkDir
 # 카드를 사이드바로 끌 때 dataTransfer에 싣는 형식 — 파일 끌기('Files')와 섞이지 않게 따로 둔다
 PAPER_MIME = "text/x-md4-paper"
 COLL_MIME = "text/x-md4-collection"  # 사이드바 컬렉션 행을 끌 때 — 다른 컬렉션 아래로 옮긴다
+# 사이드바 '모바일' — 컬렉션이 아니라 모바일 리더에 보낸 논문(§phone.service)을 모아 보는 범위.
+# 기억하지 않는다(projects.set_active가 모르는 값은 '모든 논문'으로 돌린다) — 다음 실행엔 모든 논문부터.
+MOBILE = "__mobile__"
 
 HOME_CSS = """
 /* 홈 = 뷰어와 같은 2단. 높이·여백은 _CHROME_CSS의 .md4-body 규칙이 맡는다(창 전체는 스크롤되지 않는다). */
@@ -588,7 +594,8 @@ def build_home(state: dict) -> None:
     meta_lock = asyncio.Lock()  # 칸을 연달아 고칠 때 paper_meta.json 읽고-쓰기가 겹쳐 앞의 값을 잃지 않게
     loads: dict = {}  # (root, 종류, 언어) → asyncio.Task — 같은 것을 두 번 읽지 않게(EN/KO 토글이 즉시)
     preview = _preview_module()
-    data: dict = {"rows": [], "by_root": {}, "projs": [], "names": {}, "tree": [], "up": {}, "sub": {}}
+    data: dict = {"rows": [], "by_root": {}, "projs": [], "names": {}, "tree": [], "up": {}, "sub": {},
+                  "mobile": {}}  # mobile: 모바일에 있는 논문 키 → 목록 줄 (마지막으로 본 Drive 목록)
 
     # ===== 한 번 훑기 — 사이드바 편수와 목록이 같은 결과를 쓴다 =====
     def load_projects() -> None:
@@ -602,7 +609,7 @@ def build_home(state: dict) -> None:
         valid = data["names"]
         for r in data["rows"]:  # 없어진 프로젝트는 어디서나 미분류로 (projects.normalize_many와 같은 규칙)
             r["pids"] = [p for p in dict.fromkeys(_stored_pids(r)) if p in valid]
-        if view["scope"] not in (projects.ALL, projects.NONE) and view["scope"] not in valid:
+        if view["scope"] not in (projects.ALL, projects.NONE, MOBILE) and view["scope"] not in valid:
             view["scope"] = projects.ALL  # 보던 프로젝트가 지워졌으면 전체로
 
     def scan() -> None:
@@ -611,6 +618,7 @@ def build_home(state: dict) -> None:
         rows = recent_workdirs(ws(), limit=100_000, include_hidden=True)
         data["rows"] = rows
         data["by_root"] = {str(r["root"]): r for r in rows}
+        data["mobile"] = phone_service.on_mobile()
         load_projects()
         selected.intersection_update(data["by_root"])  # 사라진 논문은 선택에서도
 
@@ -631,6 +639,8 @@ def build_home(state: dict) -> None:
             return True
         if scope == projects.NONE:
             return not r["pids"]
+        if scope == MOBILE:
+            return r["name"] in data["mobile"]
         sub = data["sub"].get(scope) or {scope}
         return any(p in sub for p in r["pids"])
 
@@ -642,11 +652,13 @@ def build_home(state: dict) -> None:
     def counts() -> dict[str, int]:
         """사이드바 편수 — 숨긴 논문은 빼고(목록에 보이는 것과 같게). 컬렉션은 하위 컬렉션까지 합친
         **고유** 편수(상위·하위 둘 다에 든 논문은 한 번만)."""
-        n = {projects.ALL: 0, projects.NONE: 0}
+        n = {projects.ALL: 0, projects.NONE: 0, MOBILE: 0}
         for r in live_rows():
             if r["hidden"]:
                 continue
             n[projects.ALL] += 1
+            if r["name"] in data["mobile"]:
+                n[MOBILE] += 1
             if not r["pids"]:
                 n[projects.NONE] += 1
             hit: set[str] = set()
@@ -978,58 +990,91 @@ def build_home(state: dict) -> None:
         name, payload = bulk_zip(roots, which, config.resolve_export_target())
         await desktop.deliver(name, payload)
 
-    async def connect_drive() -> bool:
-        """폰 리더용 Google Drive 연결 — 브라우저에서 로그인·허용을 마치면 True."""
-        from narani.phone import gdrive, service
+    # ===== 모바일 (§phone) — Google Drive를 거쳐 모바일 리더(웹앱)에서 읽는다 =====
+    def mobile_changed() -> None:
+        data["mobile"] = phone_service.on_mobile()
+        refresh_views()
 
-        n = ui.notification(t("브라우저에서 Google 로그인을 마치세요 — 폰 리더가 쓸 Narani 폴더를 Drive에 만듭니다."),
+    async def connect_drive() -> bool:
+        """모바일용 Google Drive 연결 — 브라우저에서 로그인·허용을 마치면 True."""
+        n = ui.notification(t("브라우저에서 Google 로그인을 마치세요 — 모바일 리더가 쓸 Narani 폴더를 Drive에 만듭니다."),
                             spinner=True, timeout=None)
         try:
-            who = await run.io_bound(service.connect)
+            who = await run.io_bound(phone_service.connect)
         except gdrive.DriveError as e:
             ui.notify(t("Google Drive에 연결하지 못했습니다: {e}", e=e), type="negative")
             return False
         finally:
             n.dismiss()
         ui.notify(t("Google Drive에 연결했습니다: {who}", who=who or "?"), type="positive")
+        mobile_changed()
         return True
 
-    async def send_to_phone(roots: list[Path]) -> None:
-        """논문들을 폰 리더로 (§phone) — Drive의 Narani 폴더에 올린다. 하이라이트·메모도 이때 오간다."""
-        from narani.phone import gdrive, service
+    async def mobile_call(fn, roots: list[Path], busy: str):  # noqa: ANN001, ANN202 — service 함수 하나
+        """연결을 확인하고(없으면 연결부터) fn(roots)를 돌린다. 승인이 만료됐으면 한 번 다시 연결한다."""
+        if not phone_service.configured():
+            ui.notify(t("모바일용 Google 클라이언트 설정이 없습니다 — README의 '모바일에서 읽기'를 보세요."),
+                      type="warning")
+            return None
+        if not phone_service.connected() and not await connect_drive():
+            return None
+        for attempt in (0, 1):
+            n = ui.notification(busy, spinner=True, timeout=None)
+            try:
+                return await run.io_bound(fn, roots)
+            except gdrive.NotConnected:
+                gdrive.token_path().unlink(missing_ok=True)
+                if attempt or not await connect_drive():
+                    return None
+            except Exception as e:  # noqa: BLE001
+                ui.notify(t("모바일과 주고받지 못했습니다: {e}", e=e), type="negative")
+                return None
+            finally:
+                n.dismiss()
+        return None
 
+    async def send_to_mobile(roots: list[Path]) -> None:
+        """논문들을 모바일로 — Drive의 Narani 폴더에 올린다. 하이라이트·메모도 이때 오간다."""
         if not roots:
             ui.notify(t("보낼 논문이 없습니다."), type="warning")
             return
-        if not service.configured():
-            ui.notify(t("폰 리더용 Google 클라이언트 설정이 없습니다 — README의 '폰에서 읽기'를 보세요."), type="warning")
+        s = await mobile_call(phone_service.send, roots, t("모바일로 보내는 중… ({n}편)", n=len(roots)))
+        if s is None:
             return
-        if not service.connected() and not await connect_drive():
-            return
-        for attempt in (0, 1):
-            n = ui.notification(t("폰으로 보내는 중… ({n}편)", n=len(roots)), spinner=True, timeout=None)
-            try:
-                s = await run.io_bound(service.send, roots)
-                break
-            except gdrive.NotConnected:  # 승인이 만료됐거나 Google 계정에서 지웠다 — 한 번 다시 연결
-                gdrive.token_path().unlink(missing_ok=True)
-                if attempt or not await connect_drive():
-                    return
-            except Exception as e:  # noqa: BLE001
-                ui.notify(t("폰으로 보내지 못했습니다: {e}", e=e), type="negative")
-                return
-            finally:
-                n.dismiss()
-        msg = t("폰으로 보냄 — 새로 {up}편 · 그대로 {same}편", up=s["uploaded"], same=s["skipped"])
+        msg = t("모바일로 보냄 — 새로 {up}편 · 그대로 {same}편", up=s["uploaded"], same=s["skipped"])
         if s["merged"]:
-            msg += t(" · 폰에서 단 메모 {n}개를 합쳤습니다", n=s["merged"])
+            msg += t(" · 모바일에서 단 메모 {n}개를 합쳤습니다", n=s["merged"])
         ui.notify(msg, type="positive")
+        mobile_changed()
+
+    async def remove_from_mobile(roots: list[Path]) -> None:
+        """모바일에서 빼기 — 모바일에서 단 메모는 먼저 이 컴퓨터에 합친다. 논문 파일은 그대로."""
+        roots = [r for r in roots if Path(r).stem in data["mobile"]]
+        if not roots:
+            ui.notify(t("모바일에 있는 논문이 아닙니다."), type="warning")
+            return
+        s = await mobile_call(phone_service.remove, roots, t("모바일에서 빼는 중… ({n}편)", n=len(roots)))
+        if s is None:
+            return
+        msg = t("모바일에서 {n}편을 뺐습니다", n=s["removed"])
+        if s["merged"]:
+            msg += t(" · 모바일에서 단 메모 {n}개를 합쳤습니다", n=s["merged"])
+        ui.notify(msg, type="positive")
+        mobile_changed()
+
+    async def sync_mobile_now() -> None:
+        """모바일에 있는 논문 맞추기 — 바뀐 논문 다시 올리기, 메모 주고받기 (앱을 켤 때도 저절로 한다)."""
+        s = await mobile_call(lambda _: phone_service.refresh(), [], t("모바일과 맞추는 중…"))
+        if s is None:
+            return
+        ui.notify(t("모바일과 맞췄습니다 — 다시 올림 {up}편 · 메모 {m}개 합침", up=s["uploaded"], m=s["merged"]),
+                  type="positive")
+        mobile_changed()
 
     async def disconnect_drive() -> None:
-        from narani.phone import gdrive
-
-        await run.io_bound(gdrive.forget)
-        ui.notify(t("폰 리더의 Google Drive 연결을 끊었습니다 (Drive의 파일은 그대로)."))
+        await run.io_bound(phone_service.disconnect)
+        ui.notify(t("모바일의 Google Drive 연결을 끊었습니다 (Drive의 파일은 그대로)."))
+        mobile_changed()
 
     async def save_to_library(roots: list[Path]) -> None:
         """논문들을 각자의 자리(소속 프로젝트 폴더들 > 공통 저장 위치)로 내보내기."""
@@ -1192,6 +1237,8 @@ def build_home(state: dict) -> None:
     def sidebar_rows() -> None:
         n = counts()
         prow(projects.ALL, t("모든 논문"), n[projects.ALL], "library_books")
+        # 모바일은 컬렉션이 아니라 '어디서 읽는가'로 거르는 보기 — 모든 논문 바로 아래, 컬렉션 머리글 위
+        prow(MOBILE, t("모바일"), n[MOBILE], "smartphone")
         # '컬렉션' 캡 — 컬렉션 행을 여기에 놓으면 맨 위로 올라간다
         cap = ui.label(t("컬렉션")).classes("md4-panel-title md4-hcap")
         cap.on("dragover", js_handler=(
@@ -1228,7 +1275,31 @@ def build_home(state: dict) -> None:
     # ===== 오른쪽 — 머리 =====
     def scope_label() -> str:
         s = view["scope"]
+        if s == MOBILE:
+            return t("모바일")
         return t("모든 논문") if s == projects.ALL else (t("미분류") if s == projects.NONE else name_of(s))
+
+    def mobile_head() -> None:
+        """'모바일'을 고르면 머리에 — 연결 계정·편수·용량·마지막 동기화, 지금 맞추기·연결."""
+        i = phone_service.info()
+        with ui.row().classes("items-center gap-2 w-full md4-hpath"):
+            ui.icon("cloud_done" if i["connected"] else "cloud_off", size="15px").classes("text-grey-5")
+            if i["connected"]:
+                bits = [t("Google Drive: {who}", who=i["account"] or "?"),
+                        t("{n}편 · {mb:.1f}MB", n=i["count"], mb=i["bytes"] / 1e6)]
+                if i["synced"]:
+                    bits.append(t("{when} 맞춤", when=_relative_time(i["synced"])))
+                ui.label(" · ".join(bits)).classes("truncate")
+                ui.button(t("지금 맞추기"), icon="sync", color=None, on_click=sync_mobile_now) \
+                    .props("flat dense no-caps size=sm").classes("text-grey-7") \
+                    .tooltip(t("바뀐 논문을 다시 올리고 하이라이트·메모를 주고받습니다 — 앱을 켤 때도 저절로 합니다"))
+                ui.button(t("연결 끊기"), icon="link_off", color=None, on_click=disconnect_drive) \
+                    .props("flat dense no-caps size=sm").classes("text-grey-7")
+            else:
+                ui.label(t("Google Drive에 연결하지 않았습니다 — 연결하면 모바일 리더({site})에서 읽을 수 있습니다.",
+                           site=pages.DOMAIN)).classes("truncate")
+                ui.button(t("Google Drive 연결"), icon="link", color=None, on_click=connect_drive) \
+                    .props("flat dense no-caps size=sm").classes("text-primary")
 
     @ui.refreshable
     def head() -> None:
@@ -1246,7 +1317,9 @@ def build_home(state: dict) -> None:
                     .tooltip((t("지금 목록에 보이는 {n}편을 한꺼번에 풀기", n=len(roots)) if every
                               else t("지금 목록에 보이는 {n}편을 한꺼번에 체크", n=len(roots)))
                              + t(" — 일괄 동작(번역·zip·컬렉션)은 오른쪽 칸에"))
-        if s not in (projects.ALL, projects.NONE):
+        if s == MOBILE:
+            mobile_head()
+        elif s not in (projects.ALL, projects.NONE):
             root = projects.folder_of(s)  # 하위 컬렉션은 상위 폴더를 물려받는다
             heir = projects.inherited_from(s)
             if data["up"].get(s):  # 하위 컬렉션이면 어디 밑인지 먼저
@@ -1297,13 +1370,9 @@ def build_home(state: dict) -> None:
             ui.menu_item(t("이 목록의 논문을 폴더로 저장"),
                          on_click=lambda: save_to_library([r["root"] for r in visible_rows()])).props("dense")
             ui.separator()
-            ui.menu_item(t("번역한 논문을 모두 폰으로 보내기"),
-                         on_click=lambda: send_to_phone([r["root"] for r in visible_rows() if r["has_ko"]])) \
+            ui.menu_item(t("이 목록의 번역한 논문을 모두 모바일로 보내기"),
+                         on_click=lambda: send_to_mobile([r["root"] for r in visible_rows() if r["has_ko"]])) \
                 .props("dense")
-            from narani.phone import service as phone_service
-
-            if phone_service.connected():
-                ui.menu_item(t("폰 리더 연결 끊기"), on_click=disconnect_drive).props("dense")
 
     def toggle_hidden_view() -> None:
         view["show_hidden"] = not view["show_hidden"]
@@ -1519,6 +1588,9 @@ def build_home(state: dict) -> None:
                 if s == projects.NONE:
                     ui.label(t("미분류 논문이 없습니다 — 모든 논문이 컬렉션에 들어가 있습니다.")) \
                         .classes("text-xs text-gray-400")
+                elif s == MOBILE:
+                    ui.label(t("모바일에 보낸 논문이 없습니다 — 논문을 체크하고 '모바일로 보내기'를 누르세요.")) \
+                        .classes("text-xs text-gray-400")
                 elif s:
                     ui.label(t("'{v}' 컬렉션에 아직 논문이 없습니다 — 여기서 올리거나, 다른 목록의 카드를 왼쪽 이 컬렉션 행으로 끌어 놓으세요.", v=name_of(s))).classes("text-xs text-gray-400")
                 else:
@@ -1590,6 +1662,9 @@ def build_home(state: dict) -> None:
                         if r["hidden"]:
                             ui.badge(t("숨김"), color="grey").props("outline")
                         ui.label(_relative_time(r["mtime"])).classes("md4-pmeta")
+                        if r["name"] in data["mobile"]:
+                            ui.icon("smartphone", size="14px").classes("text-grey-6") \
+                                .tooltip(t("모바일에 있음 — 바뀌면 앱을 켤 때 다시 올립니다"))
                         # 소속 프로젝트 = 이 논문의 저장 폴더까지 정하는 값이라 카드에서 바로 바꾼다.
                         tags_box = ui.element("div").classes("md4-ptags")
                         paint_tags(tags_box, r)
@@ -2214,10 +2289,16 @@ def build_home(state: dict) -> None:
                     .props("outline dense no-caps")
                 ui.button(t("번역 zip"), icon="download", on_click=lambda: download_bulk("ko")) \
                     .props("outline dense no-caps")
-                ui.button(t("폰으로 보내기"), icon="smartphone",
-                          on_click=lambda: send_to_phone([Path(p) for p in selected])) \
+                ui.button(t("모바일로 보내기"), icon="smartphone",
+                          on_click=lambda: send_to_mobile([Path(p) for p in selected])) \
                     .props("outline dense no-caps") \
-                    .tooltip(t("Google Drive를 거쳐 폰 리더(웹앱)에서 읽습니다 — 폰에서 단 하이라이트·메모도 이때 합칩니다"))
+                    .tooltip(t("Google Drive를 거쳐 모바일 리더({site})에서 읽습니다 — 모바일에서 단 하이라이트·메모도 이때 합칩니다",
+                               site=pages.DOMAIN))
+                if any(Path(p).stem in data["mobile"] for p in selected):
+                    ui.button(t("모바일에서 빼기"), icon="phonelink_erase",
+                              on_click=lambda: remove_from_mobile([Path(p) for p in selected])) \
+                        .props("outline dense no-caps") \
+                        .tooltip(t("모바일 목록에서 뺍니다 — 모바일에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 논문 파일은 그대로"))
                 # 추가 = 다른 소속은 그대로 두고 더하기, 빼기 = 그 소속만 떼기(그 폴더의 사본도 정리)
                 with ui.button(t("컬렉션에 추가 ▾"), icon="playlist_add").props("outline dense no-caps"):
                     project_pick_menu(lambda v: bulk_member(v, True), with_new=True)
@@ -2237,7 +2318,7 @@ def build_home(state: dict) -> None:
         with ui.column().classes("md4-pv-body md4-scroll gap-2 w-full"):
             ui.label(scope_label()).classes("md4-pv-title")
             ui.label(t("{n}편 · 번역 {n_ko}편", n=len(rows), n_ko=n_ko)).classes("md4-pv-stat")
-            if s not in (projects.ALL, projects.NONE):
+            if s not in (projects.ALL, projects.NONE, MOBILE):
                 root = projects.folder_of(s)  # 하위 컬렉션은 상위 폴더를 물려받는다
                 with ui.row().classes("items-start gap-1 no-wrap w-full"):
                     ui.icon("folder" if root else "folder_off", size="15px").classes("text-grey-5 q-mt-xs")
@@ -2356,7 +2437,7 @@ def build_home(state: dict) -> None:
                         .props('accept=".pdf,.md,.markdown"').classes("md4-upload") \
                         .tooltip(t("PDF·마크다운 고르기 — 창 위로 끌어다 놓아도 됩니다"))
                 with ui.button(icon="more_horiz", color=None).props("flat dense round").classes("text-grey-7") \
-                        .tooltip(t("숨긴 논문 · 내보내기 형식 · 이 목록 저장 · 폰으로 보내기")):
+                        .tooltip(t("숨긴 논문 · 내보내기 형식 · 이 목록 저장 · 모바일로 보내기")):
                     more_menu()
                 pv["btn"] = ui.button(icon="view_sidebar", color=None, on_click=toggle_preview) \
                     .props("flat dense round").classes("text-primary") \

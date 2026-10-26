@@ -8,7 +8,9 @@ import pytest
 
 pytest.importorskip("nicegui", reason="웹 UI 의존성(ui extra) 미설치")
 
-from test_phone import _wd  # noqa: E402
+from test_phone import KO, _wd  # noqa: E402
+
+KO_CHANGED = KO.replace("중요하다", "매우 중요하다")
 
 from narani.phone import notes, sync  # noqa: E402
 from narani.phone.store import LocalStore  # noqa: E402
@@ -80,42 +82,77 @@ def test_no_annotations_means_no_notes_file_and_prune_cleans_up(tmp_path):
     assert store.read(notes.notes_name("alpha")) is None and store.read(notes.mobile_name("alpha")) is None
 
 
-def test_sync_notes_only_moves_notes_and_updates_index(tmp_path):
-    wd = _wd(tmp_path, "bots")
+def test_remove_merges_phone_notes_then_deletes(tmp_path):
+    a, b = _wd(tmp_path, "alpha"), _wd(tmp_path, "beta")
     store = LocalStore(tmp_path / "store")
-    sync.push([wd.root], store)
-    bundle_before = store.read(json.loads(store.read("index.json"))["papers"][0]["file"])
-    assert sync.sync_notes(store, [wd.root]) == {"merged": 0, "notes": 0}
-    store.write(notes.mobile_name("bots"), json.dumps({"ops": [
-        {"op": "put", "ts": 50.0, "item": _item("p1", "phone")}]}).encode())
-    out = sync.sync_notes(store, [wd.root, tmp_path / "gone.md4"])
-    assert out == {"merged": 1, "notes": 1}
-    e = json.loads(store.read("index.json"))["papers"][0]
-    assert e["notes_hash"] and json.loads(store.read(notes.notes_name("bots")))["items"][0]["note"] == "phone"
-    assert store.read(e["file"]) == bundle_before  # 본문 번들은 그대로
-    assert [it["id"] for it in annotations.load(wd)] == ["p1"]
+    sync.push([a.root, b.root], store)
+    store.write(notes.mobile_name("alpha"), json.dumps({"ops": [
+        {"op": "put", "ts": 9.0, "item": _item("p1", "phone note")}]}).encode())
+    file_a = json.loads(store.read("index.json"))["papers"][0]["file"]
+    out = sync.remove(store, [a.root])
+    assert out == {"removed": 1, "merged": 1}
+    assert [it["note"] for it in annotations.load(a)] == ["phone note"]  # 빼기 전에 합쳤다
+    assert [e["key"] for e in json.loads(store.read("index.json"))["papers"]] == ["beta"]
+    for name in (file_a, notes.notes_name("alpha"), notes.mobile_name("alpha")):
+        assert store.read(name) is None
+    assert sync.remove(store, [a.root]) == {"removed": 0, "merged": 0}
 
 
-def test_service_startup_sync_is_quiet(tmp_path, monkeypatch):
+def _service(tmp_path, monkeypatch, rows, store):
     from narani.phone import gdrive, service
 
-    wd = _wd(tmp_path, "bots")
-    store = LocalStore(tmp_path / "store")
-    sync.push([wd.root], store)
-    store.write(notes.mobile_name("bots"), json.dumps({"ops": [
-        {"op": "put", "ts": 7.0, "item": _item("p1", "phone")}]}).encode())
-    monkeypatch.setattr(service, "_rows", lambda: [{"root": wd.root, "name": "bots", "pinned": False,
-                                                     "has_ko": True, "hidden": False}])
+    monkeypatch.setattr(service.config, "CONFIG_DIR", tmp_path / "cfg")
+    monkeypatch.setattr(service, "_rows", lambda: rows)
     monkeypatch.setattr(service, "configured", lambda: True)
-    monkeypatch.setattr(service, "connected", lambda: False)
-    assert service.sync_notes_quietly() is None  # 연결 전이면 아무것도 안 한다
     monkeypatch.setattr(service, "connected", lambda: True)
     monkeypatch.setattr(gdrive, "open_store", lambda: store)
-    assert service.sync_notes_quietly() == {"merged": 1, "notes": 1}
-    assert service.translated_roots() == [wd.root]
+    return service
+
+
+def _row(wd, name):
+    return {"root": wd.root, "name": name, "pinned": False, "has_ko": True, "hidden": False}
+
+
+def test_service_send_remove_and_cache(tmp_path, monkeypatch):
+    a, b = _wd(tmp_path, "alpha"), _wd(tmp_path, "beta")
+    store = LocalStore(tmp_path / "store")
+    service = _service(tmp_path, monkeypatch, [_row(a, "alpha"), _row(b, "beta")], store)
+    assert service.on_mobile() == {}
+    service.send([a.root, b.root])
+    assert set(service.on_mobile()) == {"alpha", "beta"}
+    i = service.info()
+    assert i["count"] == 2 and i["bytes"] > 0 and i["synced"] > 0
+    service.remove([b.root])
+    assert set(service.on_mobile()) == {"alpha"}
+    monkeypatch.setattr(service, "connected", lambda: False)
+    assert service.on_mobile() == {} and service.info()["count"] == 0  # 끊으면 표시도 없다
+
+
+def test_service_refresh_reuploads_changed_and_merges_notes(tmp_path, monkeypatch):
+    a, b = _wd(tmp_path, "alpha"), _wd(tmp_path, "beta")
+    store = LocalStore(tmp_path / "store")
+    service = _service(tmp_path, monkeypatch, [_row(a, "alpha"), _row(b, "beta")], store)
+    service.send([a.root])  # beta는 모바일에 없다
+    out = service.refresh()
+    assert (out["uploaded"], out["skipped"]) == (0, 1)
+    a.ko_md.write_text(KO_CHANGED, encoding="utf-8")  # 데스크톱에서 다시 번역했다
+    store.write(notes.mobile_name("alpha"), json.dumps({"ops": [
+        {"op": "put", "ts": 3.0, "item": _item("p1", "phone")}]}).encode())
+    out = service.refresh()
+    assert out["uploaded"] == 1 and out["merged"] == 1
+    assert set(service.on_mobile()) == {"alpha"}  # 모바일에 없던 논문은 올리지 않는다
+
+
+def test_service_refresh_quietly_skips_when_offline(tmp_path, monkeypatch):
+    from narani.phone import gdrive
+
+    service = _service(tmp_path, monkeypatch, [], LocalStore(tmp_path / "store"))
+    monkeypatch.setattr(service, "connected", lambda: False)
+    assert service.refresh_quietly() is None  # 연결 전이면 아무것도 안 한다
+    monkeypatch.setattr(service, "connected", lambda: True)
 
     def offline():
         raise gdrive.DriveError("offline")
 
     monkeypatch.setattr(gdrive, "open_store", offline)
-    assert service.sync_notes_quietly() is None  # 오프라인이어도 앱 켜기를 막지 않는다
+    assert service.refresh_quietly() is None  # 오프라인이어도 앱 켜기를 막지 않는다

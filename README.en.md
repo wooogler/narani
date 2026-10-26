@@ -464,37 +464,51 @@ remembered.
 
 ---
 
-## Reading on your phone
+## Reading on mobile
 
-Read the papers you translated on the desktop from your phone, and carry highlights and notes both ways. There is
-no server — papers travel through **a `Narani` folder in your own Google Drive**, and the phone reads them in a web app
-(**https://narani.sangwooklee.info/**). The desktop can be off, and downloaded papers open on a plane. The only
-permission is `drive.file` (files Narani created), so it can't see the rest of your Drive, and LLM keys never leave the desktop.
+Read the papers you translated on the desktop from your phone or tablet, and carry highlights and notes both ways.
+There is no server — papers travel through **a `Narani` folder in your own Google Drive**, and the mobile side reads them
+in a web app (**https://narani.sangwooklee.info/**). The desktop can be off, and downloaded papers open on a plane. The
+only permission is `drive.file` (files Narani created), so it can't see the rest of your Drive, and the desktop's LLM keys
+never leave the desktop.
 
 **Once**
-1. On the desktop Home, tick papers and press **Send to phone** (or list ⋯ → **Send all translated papers to phone**).
-   A Google sign-in opens in your browser — sign in and allow, and a `Narani` folder appears in your Drive.
+1. On the desktop Home, tick papers and press **Send to mobile**. A Google sign-in opens in your browser — sign in and
+   allow, and a `Narani` folder appears in your Drive (or connect first from **Mobile** in the left sidebar → **Connect Google Drive**).
 2. On iPhone, open the address above in Safari → **Share → Add to Home Screen**, and open it from that icon from then on
    (the home-screen app and Safari tabs keep separate storage, so connect and save offline inside the icon app).
 3. In the app, **Connect Google Drive** with the same account as the desktop.
 
-**Day to day**
-- **Send**: **Send to phone** on Home — only changed papers are uploaded again. On the phone, open the app or **Refresh**.
-- **Read**: Translation / Source / Both at the top, A−/A+ for size. Tap a sentence for its counterpart, a citation for
-  the reference. **Save all offline** to read without a connection.
+**Managing it from the desktop**
+- **Send / remove**: tick papers → **Send to mobile** / **Remove from mobile**, or list ⋯ → **Send all translated papers in
+  this list to mobile**. Removing keeps the paper's files; notes made on mobile are merged into this computer first.
+- **What's on mobile**: a 📱 mark on the card, and **Mobile** in the left sidebar lists them. Its header shows the
+  connected account, count, size, last sync, plus **Sync now** and **Disconnect**.
+- **Automatic sync**: when the desktop app **starts**, papers on mobile that changed on the desktop (re-translated,
+  edited) are uploaded again, mobile notes are merged, and desktop notes are uploaded. The mobile side picks them up when opened.
+
+**Reading on mobile**
+- Translation / Source / Both at the top, A−/A+ for size. Tap a sentence for its counterpart, a citation for the
+  reference. **Save all offline** to read without a connection.
 - **Highlights and notes**: tap a sentence, pick a color or **Add note** — both sides of the sentence pair are marked
   (the same shape as the desktop viewer's double-click highlight), with ✎ when there's a note. The list sits under
-  **Highlights & notes** at the top of the paper. Changes made offline wait on the phone and upload when you're back online.
-- **When they sync**: the desktop merges phone notes and uploads its own when the app **starts** and when you
-  **Send to phone**. The phone picks them up when you open it. If the paper was already open in the desktop viewer, reopen it.
+  **Highlights & notes** at the top of the paper. Changes made offline wait on the device and upload when you're back online.
+- **Contents**: ☰ in the top bar opens the table of contents from the left, with the current section marked. Tap to jump.
+- **Ask (assistant)**: the ✦ button at the bottom right asks about the paper you're reading. Tap an [r12]-style citation
+  in the answer to jump to that paragraph. The first time, enter **your own AI API key** (OpenAI, Anthropic or Gemini) on
+  that device — it's stored only in that browser, and questions send the paper's text and your highlights and notes
+  directly to the service you chose (billed to that key's account). The default service and model follow the desktop
+  assistant's choice.
 
 **Good to know**
+- If the paper was open in the desktop viewer while syncing, reopen it to see mobile notes.
 - Papers whose source and translation have different section counts (not aligned side by side) can't take new highlights
-  on the phone; desktop highlights still show.
-- The phone's Google sign-in may ask you to **Reconnect** after about an hour — downloaded papers stay readable.
-- To disconnect: list ⋯ → **Disconnect phone reader** (files in Drive stay). CLI: `narani phone connect | push --drive | disconnect`.
+  on mobile; desktop highlights still show.
+- The Google sign-in on mobile may ask you to **Reconnect** after about an hour — downloaded papers stay readable.
 - How Google data is used: [Privacy Policy](https://narani.sangwooklee.info/privacy.html) · [About](https://narani.sangwooklee.info/about.html).
-- To use your own Google Cloud project, put `google_desktop_client_id`, `google_desktop_client_secret` and `google_web_client_id` under `[phone]` in `config.toml` (they take precedence over the built-in defaults).
+- CLI: `narani phone connect | push --drive | disconnect`. To use your own Google Cloud project, put
+  `google_desktop_client_id`, `google_desktop_client_secret` and `google_web_client_id` under `[phone]` in `config.toml`
+  (they take precedence over the built-in defaults).
 
 ## Export — which format, and where it goes
 
