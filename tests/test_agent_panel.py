@@ -2,7 +2,7 @@
 
 창은 순수 클라이언트라 파이썬 로직이 얇다. 그래서 검증 표면은 (1) 셸에 남는 id·전역 API·이벤트
 이름이 서버 쪽(app.py·spa·백엔드 칩 마크업)과 한 이름을 가리킨다는 것, (2) 레이아웃 규칙(본문 밀기·
-층 순서), (3) 옛 서랍에서 옮겨 온 '읽던 자리로' 알약의 순서가 곧 동작인 몇 줄이다.
+층 순서), (3) 칩이 본문을 옮기기 전에 읽던 자리를 쌓는 순서(알약 자체는 §tests/test_jump_back.py).
 """
 
 from __future__ import annotations
@@ -108,10 +108,17 @@ def test_routes_used_by_panel_exist():
     for need in [("GET", "/agent/sessions"), ("POST", "/agent/sessions"),
                  ("GET", "/agent/sessions/{sid}"), ("PATCH", "/agent/sessions/{sid}"),
                  ("DELETE", "/agent/sessions/{sid}"), ("POST", "/agent/sessions/{sid}/turns"),
-                 ("GET", "/agent/models"), ("PUT", "/agent/model")]:
+                 ("GET", "/agent/models"), ("PUT", "/agent/model"),
+                 ("POST", "/agent/sessions/{sid}/title"), ("GET", "/agent/mentions")]:
         assert need in paths
     assert "'/agent/sessions/' + encodeURIComponent(at) + '/turns'" in JS
-    assert "api('GET', '/agent/models')" in JS and "api('PUT', '/agent/model'" in JS
+    assert "api('GET', '/agent/models')" in JS
+    # 모델 고르기는 서랍이 아니라 설정 창(AI 탭)이 한다 — 같은 [chat] 설정을 쓴다
+    assert "api('PUT', '/agent/model'" not in JS
+    from narani.ui import settings_dialog
+    src = Path(settings_dialog.__file__).read_text(encoding="utf-8")
+    assert "config.set_chat_choice(" in src and "window.__md4Agent.reloadModels()" in src
+    assert "reloadModels: function(){ return loadModels(); }" in JS
 
 
 def test_context_snapshot_fields_match_backend_model():
@@ -144,7 +151,7 @@ def test_narrow_window_rules_exist_and_override_push():
     assert "body.ag-open.ag-overlay #md4-agent { box-shadow:" in CSS
     assert "body.ag-open.ag-narrow .md4-hprev { display: none; }" in CSS
     assert "ag-tight" not in CSS and "AG_TIGHT" not in JS   # 닿지 않던 사이드바 접기 규칙은 지웠다
-    assert "#md4-agent.ag-slim .ag-cost { display: none; }" in CSS
+    assert "#md4-agent.ag-slim .ag-new { padding: 3px 5px; }" in CSS
     dark = CSS.split("@media (prefers-color-scheme: dark)")[1]
     assert "ag-overlay #md4-agent" in dark
     for cls in ("ag-overlay", "ag-narrow"):
@@ -177,12 +184,6 @@ def test_width_clamps_to_viewport_on_open_resize_and_drag():
     assert "window.innerWidth - AG_KEEP" in _js_block(JS, "function agCap(")
 
 
-def test_jump_back_pill_avoids_overlay_drawer():
-    place = _js_block(JS, "function jbPlace(")
-    assert "classList.contains('ag-overlay')" in place
-    assert "panel.getBoundingClientRect().left" in place
-
-
 def test_panel_z_matches_memo_drawer():
     """메모 서랍과 같은 층 — 번갈아 열리는 같은 자리다."""
     z = int(re.search(r"z-index:\s*(\d+)", _rule(CSS, "#md4-agent")).group(1))
@@ -200,10 +201,6 @@ def test_storage_keys():
     assert re.findall(r"var LS_SESSION = '([^']+)', LS_W = '([^']+)', LS_OPEN = '([^']+)'", JS) == [
         ("md4agent.session", "md4agent.w", "md4agent.open")]
     assert "var SS_GOTO = 'md4agent.goto'" in JS
-    # '읽던 자리' 핀은 메모리에만 산다 — 리로드하면 뷰어는 맨 위에서 다시 시작하므로 지난 생애의
-    # 핀은 도움보다 혼란이다
-    jb = JS[JS.index("// ---- '읽던 자리로'"):JS.index("// ---- 모델 고르기")]
-    assert "Storage" not in jb and "lsSet" not in jb
 
 
 # --- 설치 -----------------------------------------------------------------
@@ -238,77 +235,22 @@ def test_install_puts_css_html_script_once_and_registers_nav(monkeypatch):
     assert events == [agent_panel.NAV_EVENT] * 2
 
 
-# --- '읽던 자리로' 오버레이 (옛 챗봇 서랍에서 옮김) ---------------------------
-
-
-def test_jump_back_markup_sits_outside_the_drawer():
-    """서랍 안에 두면 서랍을 닫는 순간 함께 사라진다 — 접고 본문만 읽는 사람에게도 복귀는 필요하다."""
-    assert HTML.index('class="ag-foot"') < HTML.index('id="md-jump-back"')
-    seg = HTML[HTML.index('<div id="md4-agent"'):HTML.index('<div id="md-jump-back"')]
-    assert seg.count("<div") == seg.count("</div>")
-
-
-def test_jump_back_constants_are_single_sourced():
-    assert f'id="{agent_panel.JUMP_BACK_ID}"' in HTML
-    assert f"#{agent_panel.JUMP_BACK_ID}" in CSS
-    assert f"z-index: {agent_panel.JUMP_BACK_Z}" in CSS
-    assert JS.count(f"window.{agent_panel.JUMP_BACK_API} =") == 1
-    assert f"JB_EDGE = {agent_panel.JUMP_EDGE_PX}" in JS
-
-
-def test_jump_back_z_index_between_find_bar_and_drawers():
-    """알약은 본문 층 위, 서랍·찾기 바 아래여야 한다."""
-    from narani.ui import find_bar
-
-    find_z = max(int(v) for v in re.findall(r"z-index:\s*(\d+)", find_bar.CSS))
-    assert 100 < agent_panel.JUMP_BACK_Z < min(agent_panel.PANEL_Z, find_z)
-
-
-def test_jump_back_has_dark_mode_override():
-    dark = CSS.split("@media (prefers-color-scheme: dark)")[1]
-    assert "#md-jump-back" in dark and "background: #262626" in dark and "--mjb-ring" in dark
-
-
-def test_jump_back_marks_before_every_programmatic_scroll():
-    """무장이 스크롤 뒤로 가면 애니메이션 중간값을 집어 앵커가 목적지 쪽으로 끌려간다."""
-    for head in ("function gotoRow(", "function gotoNote("):
-        piece = _js_block(JS, head)
-        assert piece.index("jbMark(") < piece.index("scrollIntoView(")
-
-
-def test_jump_back_container_lookup_is_gated():
-    """단독 `.sbs-grid`는 번역 탭 결과 그리드까지 잡는다 — [data-row]로 뷰어 것만 가려낸다."""
-    assert "'.sbs-grid, .vpane'" in JS and "matches('[data-row]')" in JS
-
-
-def test_jump_back_buttons_are_real_and_labelled():
-    seg = HTML[HTML.index('<div id="md-jump-back"'):]
-    assert seg.count('type="button"') == 2
-    assert seg.count("aria-label=") == 2 and seg.count('aria-hidden="true"') == 1
-    assert 'role="status"' in seg
-
-
-def test_jump_back_thresholds_have_hysteresis_and_grace():
-    arm = float(re.search(r"JB_ARM = ([\d.]+)", JS).group(1))
-    home = float(re.search(r"JB_HOME = ([\d.]+)", JS).group(1))
-    arm_min = int(re.search(r"JB_ARM_MIN = (\d+)", JS).group(1))
-    home_min = int(re.search(r"JB_HOME_MIN = (\d+)", JS).group(1))
-    assert arm > home and arm_min > home_min
-    assert int(re.search(r"JB_GRACE = (\d+)", JS).group(1)) >= 500
-    assert "Date.now() - jbJumpAt > JB_GRACE" in JS
-
-
-def test_jump_back_flash_is_not_the_citation_flash():
-    """"여기가 근거다"(파랑)와 "여기로 돌아왔다"(무채색)는 다른 말이다."""
-    assert ".mjb-flash" in CSS and "@keyframes mdJumpFlash" in CSS and "'mjb-flash'" in JS
-    assert ".chat-cite-flash" in CSS and "'chat-cite-flash'" in JS and "'md-anno-flash'" in JS
-    assert "'wheel'" in JS and "{passive: false}" in JS
-
-
 def test_escape_yields_to_other_overlays_then_pin_then_drawer():
     seg = JS[JS.index("document.addEventListener('keydown'"):]
     assert "#md-img-zoom.open" in seg and "#md-anno-pop.open" in seg and "#md4-find.on" in seg
-    assert seg.index("jbDismiss()") < seg.index("panel.classList.remove('open')")
+    assert seg.index("jb.dismiss()") < seg.index("panel.classList.remove('open')")
+
+
+def test_chip_jumps_stack_reading_place_before_scrolling():
+    """쌓기가 스크롤 뒤로 가면 애니메이션 중간값을 집어 앵커가 목적지 쪽으로 끌려간다."""
+    # 칩은 직접 스크롤하지 않고 알약의 입구(go: 쌓기 → 두 뷰어면 아래 칸으로 → 스크롤)를 거친다
+    for head in ("function gotoRow(", "function gotoNote("):
+        piece = _js_block(JS, head)
+        assert "jbGo(" in piece and "scrollIntoView(" not in piece
+    # 단독 창(/agent)에는 알약이 없다 — 칩 코드가 그 부재를 견뎌야 한다
+    go = _js_block(JS, "function jbGo(")
+    assert "var jb = window.__mdJumpBack;" in go and go.index("jb.go(") < go.index("scrollIntoView(")
+    assert 'id="md-jump-back"' not in HTML
 
 
 # --- 승인 카드 (쓰기 tool) ---------------------------------------------------
@@ -435,9 +377,6 @@ def test_cost_cap_warning_and_override_retry():
     cap = _js_block(JS, "function capNode(")
     assert "md4T('그래도 계속')" in cap and "send(null, null, r.body)" in cap
     assert "if (capRetry) list.appendChild(capNode());" in _js_block(JS, "function render(")
-    head = _js_block(JS, "function renderHead(")
-    assert "sess.cost_cap" in head and "' / $' + cap.toFixed(2)" in head
-    assert ".ag-cost.over {" in CSS
 
 
 def test_home_refresh_rebuilds_sub_pages_only_when_home_is_shown(monkeypatch):
@@ -469,11 +408,12 @@ def test_home_refresh_rebuilds_sub_pages_only_when_home_is_shown(monkeypatch):
 # --- 비용은 머리 한 곳에만 ----------------------------------------------------
 
 
-def test_money_shows_only_in_head_session_total():
-    """쓴 돈은 머리의 세션 누적(상한 있으면 '/ 상한') 한 곳만 — 모델 단가·턴별 비용·작업 비용·토큰은 없다."""
-    assert "m.price" not in JS                         # 드롭다운에 단가를 붙이지 않는다
-    assert "(m.has_key ? '' : '  ' + md4T('(키 없음)'))" in JS     # 키 없음 표시는 남는다
-    assert "money(" not in JS                          # 작업 완료 줄의 ', $0.0016'
+def test_no_money_or_model_picker_in_drawer():
+    """머리줄은 세션만 — 모델 고르기는 설정 창으로, 쓴 돈·단가·토큰은 서랍 어디에도 없다.
+    (비용 상한에 걸린 턴의 경고 카드는 남는다 — 그건 막힌 이유다.)"""
+    assert 'class="ag-model"' not in HTML and 'class="ag-cost"' not in HTML
+    assert ".ag-model" not in CSS and ".ag-cost" not in CSS
+    assert "m.price" not in JS and "money(" not in JS and "toFixed(4)" not in JS
     turn = _js_block(JS, "function turnNode(")
     assert "cost_usd" not in turn and "toFixed" not in turn
     assert "t.model !== modelLabel()" in turn           # 모델 이름은 지금 모델과 다를 때만
@@ -481,8 +421,32 @@ def test_money_shows_only_in_head_session_total():
     assert "j.message" not in job and "j.label" in job                      # jobtools 문구엔 '(≈$…)'가 붙어 있다
     for word in ("usage.input", "usage.output", "tokens"):
         assert word not in JS
-    # 남은 한 곳 — 머리의 세션 누적
-    assert JS.count("toFixed(4)") == 1 and "costEl.textContent = '$' + c.toFixed(4)" in JS
+
+
+def test_session_rename_is_inline_like_memo_tabs():
+    """메모 탭처럼 제목을 더블클릭하면 그 자리에 입력 칸 — Enter·바깥 클릭 저장, Esc 취소."""
+    rn = _js_block(JS, "function renameInline(")
+    assert "span.replaceWith(inp)" in rn and "inp.replaceWith(span)" in rn
+    assert "ev.key === 'Enter' && !ev.isComposing" in rn and "ev.key === 'Escape'" in rn
+    assert "'blur', function(){ finish(true); }" in rn
+    assert "api('PATCH', '/agent/sessions/'" in rn
+    head = JS[JS.index("  sessBtn.addEventListener('click'"):]
+    assert head.index("ev.detail >= 2") < head.index("renameInline(sessT, sid, null)")
+    menu = _js_block(JS, "function renderMenu(")
+    assert "renameInline(tEl, s.id, renderMenu)" in menu
+    assert "menuMode === 'rename'" not in JS and "ag-rename" not in CSS
+
+
+def test_each_session_row_has_its_own_delete_icon():
+    """지우기는 줄마다 휴지통 — 첫 누름은 '지우기?'로 무장, 두 번째에 지운다(되돌릴 수 없다)."""
+    menu = _js_block(JS, "function renderMenu(")
+    assert "delete_outline" in menu and "x.classList.add('arm')" in menu
+    assert menu.index("x.classList.contains('arm')") < menu.index("deleteSession(s.id)")
+    assert "ev.stopPropagation()" in menu                 # 휴지통 누름이 세션 고르기로 번지지 않게
+    dl = _js_block(JS, "function deleteSession(")
+    assert "api('DELETE', '/agent/sessions/'" in dl and "if (id !== sid)" in dl
+    assert "이 세션 삭제" not in JS
+    assert ".ag-mi:hover .ag-mi-x" in CSS and ".ag-mi-x.arm {" in CSS
 
 
 # --- 새 창으로 (단독 창 /agent) ------------------------------------------------
@@ -560,13 +524,13 @@ def test_install_registers_popout_only_in_app_window_mode(monkeypatch):
 
 
 def test_standalone_mode_css_hides_drawer_chrome():
-    """단독 창 — 서랍을 화면 전체로 펴고 닫기·너비 드래그·새 창 단추·'읽던 자리로' 알약은 숨긴다."""
+    """단독 창 — 서랍을 화면 전체로 펴고 닫기·너비 드래그·새 창 단추는 숨긴다."""
     assert agent_panel.STANDALONE_CLASS == "ag-standalone"
     assert "document.body.classList.add('ag-standalone')" in JS
     r = _rule(CSS, "body.ag-standalone #md4-agent")
     assert "top: 0" in r and "left: 0" in r and "width: auto" in r
     hide = CSS.split("body.ag-standalone .ag-handle,", 1)[1].split("}", 1)[0]
-    for sel in (".ag-x", ".ag-pop", "#md-jump-back"):
+    for sel in (".ag-x", ".ag-pop"):
         assert f"body.ag-standalone {sel}" in hide
     assert "display: none !important" in hide
     assert "--ag-top: 0px" in _rule(CSS, "body.ag-standalone")
@@ -646,3 +610,32 @@ def test_tool_lines_are_grouped_showing_only_the_latest():
     assert "toolGroup(live.tools, 'live')" in js
     assert "toolGroup(toolsByTurn[t.id], t.id)" in js
     assert ".ag-tools-more" in agent_panel.CSS
+
+
+# --- 입력창 @ 맥락 ---------------------------------------------------------
+
+
+def test_at_picker_owns_keys_while_open_and_sends_pointers():
+    """@ 목록이 떠 있으면 Enter는 고르기다(보내기가 아니다). 고른 것은 다음 질문 한 번에 붙는다."""
+    keys = JS[JS.index("  input.addEventListener('keydown', function(ev){"):]
+    assert keys.index("if (atKey(ev)) return;") < keys.index("ask();")
+    ak = _js_block(JS, "function atKey(")
+    assert "ev.isComposing" in ak and "ev.stopPropagation(); atClose()" in ak   # Esc가 서랍까지 닫지 않게
+    assert "api('GET', '/agent/mentions?paper='" in _js_block(JS, "function atFetch(")
+    q = _js_block(JS, "function atQuery(")
+    assert "!/\\s/.test(pre[i - 1])" in q                 # 메일 주소 속 @는 목록을 열지 않는다
+    snd = _js_block(JS, "function send(")
+    assert "atPicked = []; atClose(); paintCtx();" in snd                    # 보내면 비운다
+    assert "atPicked = gone.slice(); paintCtx();" in snd                    # 스트림 전 거절이면 되돌린다
+    assert "body.context.mentions = keepAt" in snd                           # 비용 상한 재시도도 같은 맥락
+    assert "mentions: atPicked.slice()" in _js_block(JS, "function ctxNow(")
+    assert "ctxChips(t.mentions, false)" in _js_block(JS, "function turnNode(")
+    assert 'class="ag-at-btn"' in HTML and 'class="ag-ctx"' in HTML and 'class="ag-at"' in HTML
+
+
+def test_first_turn_asks_server_to_name_the_session():
+    """새 세션의 첫 질문이 끝나면 제목을 지어 달라고 한다 — 두 번째 질문부터는 부르지 않는다."""
+    snd = _js_block(JS, "function send(")
+    assert "if (L.q && nUser === 1) autoTitle(at);" in snd
+    at = _js_block(JS, "function autoTitle(")
+    assert "'/title'" in at and "sess.title = m.title" in at and ".catch(function(){})" in at

@@ -20,7 +20,7 @@ from narani import notes as notes_io
 from narani.ir import Flavor, GlossaryEntry
 from narani.ui import (
     agent_panel, annotations, desktop, figrefs, figure_crop, figure_ko, find_bar, formula_pop, jobs,
-    live_preview, mdrender, pdf_zoom, reanchor,
+    jump_back, live_preview, split_view, mdrender, pdf_zoom, reanchor,
     scroll_memory, sentpair, spa, tabstore, term_examples, translate_job, update_banner,
 )
 from narani.ui.controller import LEVEL_OPTIONS, RUNIN_LEVEL_OPTIONS, UIController
@@ -522,7 +522,16 @@ _ANNO_HTML = """
   window.addEventListener('beforeunload', function(){ if (timer) flush(); });
 
   // ---- 셀 평문 기준 오프셋 ----
-  function scopes(){ return [].slice.call(document.querySelectorAll('.anno-scope')); }
+  // 아래 칸(위아래 두 뷰어의 복제, §ui/split_view.py)은 빼고 센다 — 앵커는 위 칸에서 한 번만 풀고,
+  // 같은 결과를 아래 칸의 같은 셀(행·쪽)에 그대로 칠한다(twinOf). 아래 칸에서 고른 글도 행·쪽·오프셋이 같다.
+  function scopes(){ return [].slice.call(document.querySelectorAll('.anno-scope'))
+    .filter(function(c){ return !c.closest('.sbs-clone'); }); }
+  function twinScopes(){ return [].slice.call(document.querySelectorAll('.sbs-clone .anno-scope')); }
+  function twinOf(scope){
+    var cl = document.querySelector('.sbs-clone');
+    return cl ? cl.querySelector('.anno-scope[data-row="' + scope.getAttribute('data-row')
+      + '"][data-side="' + scope.getAttribute('data-side') + '"]') : null;
+  }
   function scopeOf(node){
     var el = node && (node.nodeType === 1 ? node : node.parentElement);
     return el && el.closest ? el.closest('.anno-scope') : null;
@@ -581,6 +590,7 @@ _ANNO_HTML = """
     // 같은 행에 다시 마우스를 올려도 "이미 그 행"으로 보고 문장 처리를 건너뛴다.
     setPair(null); hoverRow = null;
     for (i = 0; i < sc.length; i++) unwrap(sc[i]);
+    twinScopes().forEach(unwrap);
     if (!sc.length){ renderPanel(); return; }   // 텍스트 패널이 안 보임(PDF만) — 목록만 유지
     var placed = [], has = {}, repaired = false;   // placed: [{item, anchor, sc, s, e}]
     var later = [], wide = wideNext; wideNext = false;
@@ -677,7 +687,10 @@ _ANNO_HTML = """
     for (i = 0; i < sc.length; i++){
       var hits = [];
       for (j = 0; j < placed.length; j++) if (placed[j].sc === sc[i]) hits.push({a: placed[j].it, s: placed[j].s, e: placed[j].e});
-      if (hits.length) paint(sc[i], hits);
+      if (!hits.length) continue;
+      paint(sc[i], hits);
+      var tw = twinOf(sc[i]);                 // 아래 칸에도 같은 자리에
+      if (tw) paint(tw, hits);
     }
     renderPanel();
     if (repaired){ repairedSince = true; save(); }
@@ -956,7 +969,9 @@ _ANNO_HTML = """
     }
     var ms = marksFor(id);
     if (!ms.length){ openPop(id); return; }
-    ms[0].scrollIntoView({behavior: 'smooth', block: 'center'});
+    // 읽던 자리를 쌓고 옮긴다 — 두 뷰어면 아래 칸으로 (§ui/jump_back.py)
+    if (window.__mdJumpBack) window.__mdJumpBack.go(ms[0], 'center', 'smooth');
+    else ms[0].scrollIntoView({behavior: 'smooth', block: 'center'});
     for (var i = 0; i < ms.length; i++){
       ms[i].classList.remove('md-anno-flash'); void ms[i].offsetWidth; ms[i].classList.add('md-anno-flash');
     }
@@ -2156,6 +2171,11 @@ def _auto_rename(wd: WorkDir, workspace: Path) -> WorkDir:
         return wd
 
 
+def _jump_js(el_expr: str, behavior: str) -> str:
+    """본문을 그 요소의 위끝으로 옮기는 JS — 읽던 자리를 쌓고, 위아래 두 뷰어면 아래 칸으로(§ui/jump_back.py)."""
+    return jump_back.go_js(el_expr, "start", behavior)
+
+
 def _review_url(root: Path) -> str:
     """워크디렉토리를 URL 쿼리에 담은 리뷰 페이지 주소 (브라우저 히스토리·뒤로가기용)."""
     from urllib.parse import quote
@@ -2215,6 +2235,15 @@ _CHROME_CSS = """
 .md4-chip.todo { background: #fff; color: #2383e2; font-weight: 600; }
 .md4-chip.todo:hover { background: #f3f8ff; }
 .md4-chip.warn { background: #f59e0b; color: #fff; }
+/* 헤더 맨 오른쪽 에이전트 단추 — 홈·뷰어 같은 자리. 상태 칩과 같은 높이·바닥선, 서랍이 열리면
+   흰 바닥(활성 탭과 같은 말)으로 '지금 열려 있다'를 보인다. */
+.md4-agentbtn { align-self: flex-end; margin: 0 2px 3px 0; display: inline-flex; align-items: center;
+  gap: 6px; height: 26px; padding: 0 11px 0 9px; border: none; border-radius: 13px; cursor: pointer;
+  font: inherit; font-size: 12px; font-weight: 600; white-space: nowrap; flex: 0 0 auto;
+  color: #fff; background: rgba(255,255,255,.16); transition: background .12s ease; }
+.md4-agentbtn:hover { background: rgba(255,255,255,.28); }
+.md4-agentbtn:focus-visible { outline: 2px solid #fff; outline-offset: 1px; }
+body.ag-open .md4-agentbtn { background: #fff; color: #2383e2; }
 /* 본문 = 레일 + (작업 패널 | 캔버스). 높이는 헤더(44px)와 페이지 여백(16px×2)을 뺀 나머지. */
 /* 리뷰 화면은 앱처럼 창 끝까지 채운다 — 페이지 여백(16px)·자식 간격을 걷어 레일이 왼쪽 끝, 본문이 아래
    끝에 닿게. 여백을 남기면 아래에 어중간한 빈 띠가 생기고, 높이를 잘못 빼면 창 전체가 따로 스크롤된다. */
@@ -2467,6 +2496,23 @@ async def _spawn_path(path: str, state: dict, title: str, *, dup_note: str) -> N
                   type="negative", timeout=6000)
 
 
+def agent_button() -> None:
+    """헤더 맨 오른쪽 에이전트 단추 — 홈·뷰어 어디서나 같은 자리.
+
+    에이전트는 논문 하나가 아니라 앱 전체의 기능이라(대화는 전역 세션, §ui/agent_panel.py) 화면마다
+    다른 곳(홈 탭 줄 끝·뷰어 툴바)에 두지 않고 늘 같은 자리에 둔다. 서랍은 헤더 아래에서 열리므로
+    단추는 열린 서랍 바로 위에 남아 닫는 손잡이도 된다. 열림 표시는 body.ag-open(서랍이 붙인다)이 맡는다.
+    """
+    from nicegui import ui
+
+    b = ui.element("button").classes("md4-agentbtn").props('type="button"')
+    with b:
+        ui.icon("forum", size="16px")
+        ui.label(t("에이전트")).classes("md4-agentbtn-t")
+    b.on("click", js_handler="() => window.__md4Agent && window.__md4Agent.toggle()")
+    b.tooltip(t("에이전트 — 이 논문·라이브러리에 묻고, 근거 문단으로 이동"))
+
+
 def tab_bar(state: dict, here: Path | None, here_title: str = "", tools=None):  # noqa: ANN001, ANN201
     """헤더의 탭 줄 — 맨 앞 '홈' 탭 + 연 논문 탭들(×까지 유지) + '+'(변환된 논문 골라 열기).
 
@@ -2495,11 +2541,6 @@ def tab_bar(state: dict, here: Path | None, here_title: str = "", tools=None):  
             .tooltip(t("논문 열기 — 변환된 논문을 골라 새 탭으로"))
         with ui.row().classes("items-center gap-0 no-wrap md4-tabtools"):
             jobs_menu()
-            if here_key is None:  # 홈 — 에이전트 창 여는 단추 (뷰어는 캔버스 툴바의 forum 단추가 맡는다)
-                ui.button(icon="forum", color=None, on_click=lambda: ui.run_javascript(
-                    "window.__md4Agent && window.__md4Agent.toggle()")) \
-                    .props("flat dense round size=sm text-color=white").classes("md4-agentbtn") \
-                    .tooltip(t("에이전트 — 라이브러리의 논문을 찾아 읽고 답합니다"))
             if tools is not None:
                 tools()
 
@@ -2749,6 +2790,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         paper_tabs = tab_bar(state, ctrl.wd.root, _title, tools=review_tools)
         ui.space()
         chip_slot = ui.row().classes("items-center no-wrap md4-chipslot")  # 상태 칩은 아래에서 채운다
+        agent_button()  # 맨 오른쪽 — 홈과 같은 자리
 
     # 화면은 하나의 캔버스다 — 원문|번역|PDF 그리드(또는 편집기|프리뷰)와 목차가 같은 en.md/ko.md를
     # 읽으므로, 문서가 바뀌면 이 둘을 함께 다시 그린다. (옛 변환 프리뷰·번역 결과·뷰어가 각자 그리던
@@ -3103,6 +3145,8 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
 
     ui.on("md4-fx-apply", on_formula_apply)
     spa.add_body_html(f"<script>{agent_panel.init_js(tok)}</script>")  # 에이전트 창(셸에 붙음)에 지금 논문을 알린다
+    spa.add_body_html(f"<script>{jump_back.init_js(tok)}</script>")  # 읽던 자리는 이 논문의 것 — 바뀌면 비운다
+    spa.add_body_html(f"<script>{split_view.init_js(tok)}</script>")  # 두 뷰어도 논문마다 (창 안 기억)
 
     def push_cite_tips() -> None:
         """참고문헌을 (재)파싱한 뒤 클라이언트 툴팁 맵을 갱신한다."""
@@ -3429,12 +3473,11 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                 return last
         return None
 
-    def _row_scroll_js(k: int) -> str:  # 정렬 그리드의 k번째 행으로 스크롤
-        return (f"document.querySelector('.sbs-grid [data-row=\"{k}\"]')"
-                "?.scrollIntoView({behavior:'smooth', block:'start'})")
+    def _row_scroll_js(k: int, behavior: str = "smooth") -> str:  # 정렬 그리드의 k번째 행으로 스크롤
+        return _jump_js(f"document.querySelector('.sbs-grid [data-row=\"{k}\"]')", behavior)
 
     def _sec_scroll_js(sid: str) -> str:  # 폴백 패널 — sec 앵커로 스크롤
-        return f"document.getElementById('sec-{sid}')?.scrollIntoView({{behavior:'smooth', block:'start'}})"
+        return _jump_js(f"document.getElementById('sec-{sid}')", "smooth")
 
     def _edit_goto_js(sid: str) -> str:
         """편집 중 섹션 이동 — 편집기를 그 섹션 헤더 줄로(커서도 그리로), 옆이 PDF면 그 쪽으로도.
@@ -3531,8 +3574,10 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     (function(){
       var g=document.querySelector('.sbs-grid.sbs-two'), h=document.querySelector('.vcol-handle');
       var f = window.__sbsEnFrac || 0.5;
-      function apply(){ var gg=document.querySelector('.sbs-grid.sbs-two'), hh=document.querySelector('.vcol-handle');
-        if(gg) gg.style.setProperty('--sbs-cols', f+'fr '+(1-f)+'fr'); if(hh) hh.style.left=(f*100)+'%'; }
+      function apply(){ var hh=document.querySelector('.vcol-handle');  // 위아래 두 뷰어면 두 그리드 모두
+        [].forEach.call(document.querySelectorAll('.sbs-grid.sbs-two'), function(gg){
+          gg.style.setProperty('--sbs-cols', f+'fr '+(1-f)+'fr'); });
+        if(hh) hh.style.left=(f*100)+'%'; }
       apply();
       if(h && !h.dataset.bound){ h.dataset.bound='1';
         h.addEventListener('mousedown', function(e){ window.__sbsDrag=true; e.preventDefault(); document.body.style.userSelect='none'; }); }
@@ -3623,25 +3668,18 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     # 컨테이너는 재렌더마다 새 요소라 리스너가 쌓이지 않는다(요소당 1회).
     def _pdf_sync_js(scroll_sel: str) -> str:
         return ("""
-        (function bind(attempt){
-          // 재렌더와 같은 메시지로 오므로 새 패널이 DOM에 붙기 전에 돌 수 있다 — 그때 그냥 돌아가면
-          // PDF를 켜도 싱크가 영영 안 붙어 1쪽에 머문다. 생길 때까지 잠깐씩 다시 시도한다(~3초).
-          var sc=document.querySelector('%s');
-          var cells=sc ? [].slice.call(sc.querySelectorAll('[data-page]')) : [];
-          if(!sc || !document.querySelector('.vpdf') || !cells.length){
-            if(attempt<60) setTimeout(function(){ bind(attempt+1); }, 50);
-            return;
-          }
-          if(sc.dataset.pdfsync){
-            // 재렌더 메시지가 새 칸보다 먼저 오면 아직 붙어 있는 옛 칸(이미 묶임)을 본다 — 잠깐 더 기다린다
-            if(attempt<20) setTimeout(function(){ bind(attempt+1); }, 50);
-            return;
-          }
+        // 텍스트 칸 하나에 싱크를 붙인다 — 위아래 두 뷰어(§ui/split_view.py)면 아래 칸(복제)에도 붙이고,
+        // 마지막으로 손댄 칸(__md4Split.leads)만 PDF를 움직인다. 손으로 굴린 PDF의 쉼(HOLD)은 칸끼리 함께 쓴다.
+        window.__md4PdfSyncBind = function(sc){
+          if(sc.dataset.pdfsync) return;
           sc.dataset.pdfsync='1';
+          var cells=[].slice.call(sc.querySelectorAll('[data-page]'));
           var READ=0.33, HOLD=4000;
+          var S=window.__md4PdfS || (window.__md4PdfS={ours: 0, manualUntil: 0});
+          function leads(){ return !window.__md4Split || window.__md4Split.leads(sc); }
           // PDF 칸은 그때그때 찾는다 — 화면을 다시 그리면 칸이 바뀌는데, 붙잡아 둔 옛 칸을 움직이면 아무 일도 안 일어난다
           function P(){ return document.querySelector('.vpdf'); }
-          var ours=0, manualUntil=0, tick=false;
+          var tick=false;
           // 제목 자리 → '쪽 단위 좌표'(쪽 + 쪽 안 높이). 3.6 = 4쪽(0-based 3)의 6할 지점
           function at(c){ return +c.dataset.page + Math.min(0.999, +c.dataset.py || 0); }
           function nPages(){ var pv=P(); return pv ? pv.querySelectorAll('img[id^="pdfpage-"]').length : 0; }
@@ -3668,7 +3706,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             // 이미 보인다 → 그대로: 쪽이 통째로 칸 안에 있거나, 칸보다 큰 쪽(확대 등)이면 그 쪽이 칸을 채우고 있을 때
             if(!force && ((top>=-2 && bottom<=h+2) || (r.height>h && top<=2 && bottom>=h-2))) return;
             var want=Math.max(0, Math.min(pv.scrollTop+top-6, pv.scrollHeight-h));
-            ours=Date.now(); pv.scrollTop=want;
+            S.ours=Date.now(); pv.scrollTop=want;
             if(force && Math.abs(pv.scrollTop-want)>2 && (tries||0)<100)
               setTimeout(function(){ move(true, (tries||0)+1); }, 30);
           }
@@ -3677,16 +3715,33 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             document.addEventListener('scroll', function(e){
               var t=e.target; if(t && t.classList && t.classList.contains('vpdf') && window.__md4PdfHand)
                 window.__md4PdfHand(); }, true); }
-          window.__md4PdfHand=function(){ if(Date.now()-ours>250) manualUntil=Date.now()+HOLD; };
+          window.__md4PdfHand=function(){ if(Date.now()-S.ours>250) S.manualUntil=Date.now()+HOLD; };
           sc.addEventListener('scroll', function(){
-            if(tick) return; tick=true;
-            setTimeout(function(){ tick=false; if(Date.now()>=manualUntil) move(false); }, 16);
+            if(tick || !leads()) return; tick=true;
+            setTimeout(function(){ tick=false; if(Date.now()>=S.manualUntil && leads()) move(false); }, 16);
           });
-          move(true);
+          sc.__md4PdfMove=function(){ if(Date.now()>=S.manualUntil) move(false); };   // 이끄는 칸이 바뀌었을 때
+          if(leads()) move(true);
+        };
+        (function bind(attempt){
+          // 재렌더와 같은 메시지로 오므로 새 패널이 DOM에 붙기 전에 돌 수 있다 — 그때 그냥 돌아가면
+          // PDF를 켜도 싱크가 영영 안 붙어 1쪽에 머문다. 생길 때까지 잠깐씩 다시 시도한다(~3초).
+          var sc=document.querySelector('%s');
+          var cells=sc ? [].slice.call(sc.querySelectorAll('[data-page]')) : [];
+          if(!sc || !document.querySelector('.vpdf') || !cells.length){
+            if(attempt<60) setTimeout(function(){ bind(attempt+1); }, 50);
+            return;
+          }
+          if(sc.dataset.pdfsync){
+            // 재렌더 메시지가 새 칸보다 먼저 오면 아직 붙어 있는 옛 칸(이미 묶임)을 본다 — 잠깐 더 기다린다
+            if(attempt<20) setTimeout(function(){ bind(attempt+1); }, 50);
+            return;
+          }
+          window.__md4PdfSyncBind(sc);
         })(0);
         """ % scroll_sel)
 
-    _PDF_SYNC_JS = _pdf_sync_js(".sbs-grid")  # 뷰어 정렬 그리드용
+    _PDF_SYNC_JS = _pdf_sync_js(".sbs-grid:not(.sbs-clone)")  # 뷰어 정렬 그리드용 (아래 칸은 split_view가 붙인다)
 
     def _md_sync_js(cm_id: int, pv_sel: str) -> str:
         """에디터(CodeMirror 6) ↔ 프리뷰([data-line]) 양방향 스크롤 싱크.
@@ -4118,6 +4173,12 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                           on_click=lambda: _vtoggle("sync")).props(
                     "flat dense round " + ("color=primary" if viewer_state["sync"] else "color=grey-6")) \
                     .tooltip(t("스크롤 시 PDF 페이지 따라오기 (켜짐)") if viewer_state["sync"] else t("스크롤 시 PDF 페이지 따라오기 (꺼짐)"))
+            if not edit_state["on"] and (viewer_state["en"] or (viewer_state["ko"] and has_ko)):
+                # 같은 논문을 위아래 두 뷰어로 — 켜고 끄는 상태는 클라이언트(§ui/split_view.py)만 안다
+                ui.button(icon="horizontal_split", on_click=lambda: ui.run_javascript(
+                    f"window.{split_view.SPLIT_API} && window.{split_view.SPLIT_API}.toggle()")) \
+                    .props("flat dense round color=grey-7").classes("md4-split-btn") \
+                    .tooltip(t("위아래 두 뷰어 — 아래 칸에서 다른 곳을 보며 위 칸은 읽던 자리 그대로"))
             if has_ko and viewer_state["en"] != viewer_state["ko"]:  # 한 언어만 볼 때 — 문장 짝 툴팁 (클릭)
                 ui.button(icon="translate", on_click=lambda: _vtoggle("stip")).props(
                     "flat dense round " + ("color=primary" if viewer_state["stip"] else "color=grey-6")) \
@@ -4128,9 +4189,6 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                 "window.__mdAnnoTogglePanel && window.__mdAnnoTogglePanel()")) \
                 .props("flat dense round color=grey-7").classes("md4-anno-btn") \
                 .tooltip(t("하이라이트 · 메모 목록 — 드래그하면 그 자리에, 문장을 더블클릭하면 원문·번역 양쪽에"))
-            ui.button(icon="forum", on_click=lambda: ui.run_javascript(
-                "window.__md4Agent && window.__md4Agent.toggle()")).props(
-                "flat dense round color=grey-7").tooltip(t("에이전트 — 이 논문·라이브러리에 묻고, 근거 문단으로 이동"))
             ui.space()
             library_button()
             if ctrl.source_pdf():  # 내보내기와 같은 '이 논문 파일을 바깥으로' 묶음 — 앱 안 PDF 칸은 왼쪽 토글
@@ -4254,12 +4312,13 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         if ex_dialog["dlg"] is not None:
             ex_dialog["dlg"].close()
         ui.run_javascript(
-            "setTimeout(function(){var els=document.querySelectorAll('.sbs-grid .sbs-cell[data-row=\"%d\"]');"
-            "if(!els.length) els=document.querySelectorAll('[data-row=\"%d\"]');if(!els.length) return;"
-            "els[0].scrollIntoView({behavior:'smooth',block:'center'});"
+            ("setTimeout(function(){var els=document.querySelectorAll('.sbs-grid .sbs-cell[data-row=\"%d\"]');"
+             "if(!els.length) els=document.querySelectorAll('[data-row=\"%d\"]');if(!els.length) return;"
+             % (row, row))
+            + jump_back.go_js("els[0]") + ";"
             "els.forEach(function(el){el.classList.remove('chat-cite-flash');void el.offsetWidth;"
             "el.classList.add('chat-cite-flash');setTimeout(function(){el.classList.remove('chat-cite-flash');},1400);});"
-            "}, 250);" % (row, row))
+            "}, 250);")
 
     def example_toggle(term: str, refresh) -> None:  # noqa: ANN001 — ui.refreshable
         from narani.translate.glossary import term_key
@@ -4762,8 +4821,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         if show_text:
             k = row_for_section(sid)
             if k is not None:
-                js += (f"document.querySelector('.sbs-grid [data-row=\"{k}\"]')"
-                       "?.scrollIntoView({behavior:'instant', block:'start'});")
+                js += _row_scroll_js(k, "instant") + ";"
         # 나란히(PDF도 표시)면 클릭 스크롤은 sync 이벤트를 확실히 못 태우므로 PDF도 직접 옮긴다
         if show_pdf and pg is not None:
             js += f" document.getElementById('pdfpage-{pg}')?.scrollIntoView({{behavior:'instant', block:'start'}});"
@@ -6291,6 +6349,9 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
         agent_panel.install(state, popout=(lambda path: _spawn_path(
             path, state, t(agent_panel.WINDOW_TITLE), dup_note=t("이 대화는 이미 다른 창에 떠 있습니다.")))
             if desktop.active() else None)
+        # 읽던 자리 알약·위아래 두 뷰어도 하위 화면보다 먼저 — 첫 화면이 부르는 setPaper가 닿게
+        jump_back.install()  # '읽던 자리로' 알약 — 본문을 옮기는 모든 길이 함께 쓴다
+        split_view.install()  # 같은 논문을 위아래 두 뷰어로 (알약의 '같이 보기'·툴바 단추)
         # w-full: 없으면 sub_pages 상자가 내용 폭으로 줄어(큰 화면에서 1275px) 변환·번역 탭 splitter가 좁아진다
         ui.sub_pages({"/": index_view, "/home": home_view, "/review": review_view}).classes("w-full")
         update_banner.install(state)  # 새 버전 알림 — 셸에 붙어 탭을 옮겨도 남는다

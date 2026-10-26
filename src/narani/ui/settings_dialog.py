@@ -211,7 +211,47 @@ def _ai_panel(ui, provider_name, key_hint, model_options, short_provider) -> Non
         test_btn = ui.button(t("연결 테스트"), icon="wifi_tethering", on_click=test_ai) \
             .props("dense outline").tooltip(t("입력/저장된 키로 아주 작은 호출을 보내 즉시 확인"))
         key_status_row()
+    _agent_model_row(ui, short_provider)
     ui.label(t("키는 {CONFIG_PATH}에 소유자만 읽는 권한(0600)으로 저장되고, 선택한 AI 서비스로만 전송됩니다. 환경변수(OPENAI_API_KEY 등)가 있으면 그게 우선합니다.", CONFIG_PATH=config.CONFIG_PATH)).classes("text-xs text-gray-400")
+
+
+def _agent_model_row(ui, short_provider) -> None:  # noqa: ANN001
+    """에이전트 창이 쓸 모델 — 번역 설정과 별개. 예전엔 서랍 머리줄의 드롭다운이었는데, 머리줄은 세션만
+    남기고 고르는 일은 여기로 모았다(자주 바꾸는 값이 아니다). 키 없는 서비스의 모델은 보이되 못 고른다."""
+    from narani.ui.agent import routes as agent_routes
+
+    def options() -> dict:
+        out = {"": t("AI 서비스 기본 모델을 따름")}
+        for m in agent_routes.model_options():
+            label = f"{short_provider(m['provider'])} · {m['model']}"
+            out[f"{m['provider']}/{m['model']}"] = label if m["has_key"] else label + "  " + t("(키 없음)")
+        return out
+
+    def current() -> str:
+        prov = config.load_config().get("chat", {}).get("provider")
+        return "/".join(config.resolve_chat_choice()) if prov else ""
+
+    def pick(e) -> None:  # noqa: ANN001
+        v = e.value or ""
+        prov, _, mid = v.partition("/")
+        if prov:
+            keys = config.key_status()
+            if not keys.get(prov):
+                ui.notify(t("{v} 키가 없습니다 — 위에서 키를 먼저 저장하세요.", v=short_provider(prov)),
+                          type="warning")
+                sel.set_value(current())
+                return
+        try:
+            config.set_chat_choice(prov or None, mid or None)
+        except ValueError as err:
+            ui.notify(str(err), type="negative")
+            return
+        ui.run_javascript("window.__md4Agent && window.__md4Agent.reloadModels()")
+        ui.notify(t("에이전트 모델: {m}", m=options().get(v, v)), type="positive", timeout=1600)
+
+    ui.label(t("에이전트")).classes("md4-setsub")
+    sel = ui.select(options(), value=current(), on_change=pick,
+                    label=t("에이전트가 쓸 모델 — 번역 설정과 별개")).props("dense outlined").classes("w-full")
 
 
 def _library_panel(ui, run, state, on_change, can_pick, recent_workdirs) -> None:  # noqa: ANN001

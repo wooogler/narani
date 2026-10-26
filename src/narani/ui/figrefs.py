@@ -389,7 +389,9 @@ HTML = """
   }
   function hideSoon(){ clearTimeout(hideT); hideT = setTimeout(function(){ tip.classList.remove('open'); cur = null; }, 180); }
   function jump(h){
-    h.scrollIntoView({behavior: 'smooth', block: 'start'});
+    // 읽던 자리를 쌓고 옮긴다 — 두 뷰어면 아래 칸의 같은 헤더로 (§ui/jump_back.py)
+    if (window.__mdJumpBack) h = window.__mdJumpBack.go(h, 'start', 'smooth') || h;
+    else h.scrollIntoView({behavior: 'smooth', block: 'start'});
     h.classList.remove('md-sec-flash'); void h.offsetWidth; h.classList.add('md-sec-flash');
     setTimeout(function(){ h.classList.remove('md-sec-flash'); }, 1700);
   }

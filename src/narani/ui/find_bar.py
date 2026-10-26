@@ -72,6 +72,9 @@ HTML = """
         var p = n.parentElement;
         // 앱 크롬(헤더 탭·찾기 바)은 건너뛴다 — 늘 붙어 있어 스크롤할 자리가 없고 개수만 부풀린다.
         if (!p || p.closest('#md4-find, header, script, style, noscript, textarea, .cm-editor')) return NodeFilter.FILTER_REJECT;
+        // 위아래 두 뷰어면 이끄는 칸(마지막으로 손댄 칸)에서만 — 같은 글이 두 번 세지지 않게(§ui/split_view.py)
+        var sp = window.__md4Split, g = sp && sp.isOn() ? p.closest('.sbs-grid') : null;
+        if (g && g !== sp.activeGrid()) return NodeFilter.FILTER_REJECT;
         // 숨은 탭 패널·접힌 패널: display 뿐 아니라 visibility·opacity로 감춘 것도 제외한다.
         var shown = p.checkVisibility
           ? p.checkVisibility({visibilityProperty: true, opacityProperty: true})
@@ -140,6 +143,8 @@ HTML = """
       var st = getComputedStyle(e);
       if (!/(auto|scroll|overlay)/.test(st.overflowY) || e.scrollHeight <= e.clientHeight + 1) continue;
       var box = e.getBoundingClientRect();
+      // 본문으로 가는 결과면 읽던 자리를 쌓는다 — 연달아 다음 결과로 가면 한 번만(§ui/jump_back.py)
+      if (window.__mdJumpBack) window.__mdJumpBack.mark(el, 'center');
       e.scrollTop += (rect.top + rect.height / 2) - (box.top + box.height / 2);
       break;
     }

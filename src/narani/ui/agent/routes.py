@@ -31,6 +31,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import threading
 import time
 from collections.abc import Callable
@@ -68,6 +69,115 @@ def model_options() -> list[dict]:
                         "price": (f"${pr[0]:g}/${pr[1]:g}" if pr else ""),
                         "has_key": bool(keys.get(prov))})
     return out
+
+
+MENTION_PAPERS = 8      # @ 후보에 보일 다른 논문 수 (글자를 치면 그 글자로 거른다)
+
+
+def mention_candidates(wd_for: Callable[[str], WorkDir | None], register_token: Callable[[WorkDir], str],
+                       workspace: Path | None, paper: str = "", q: str = "") -> list[dict]:
+    """입력창 `@` 후보 — 이 논문(그 섹션·메모 탭) → 다른 논문 → 컬렉션 순.
+
+    값만 싣는다(§context.Mention). 섹션은 retrieval의 헤더 행으로 범위를 정한다 — 다음 같은·윗
+    레벨 헤더 앞까지. q는 제목·저자·학회(논문), 이름(섹션·탭·컬렉션)에 든 글자로 거른다.
+    """
+    from narani import notes, projects
+    from narani.ui.agent import retrieval
+    from narani.workdir import paper_title, recent_workdirs
+
+    qq = " ".join((q or "").split()).lower()
+
+    def hit(*texts: str) -> bool:
+        return not qq or any(qq in (t or "").lower() for t in texts)
+
+    out: list[dict] = []
+    wd = wd_for(paper) if paper else None
+    if wd is not None:
+        title = " ".join(paper_title(wd.root).split())[:120]
+        if hit(title, "이 논문", "this paper"):
+            out.append({"kind": "paper", "token": paper, "title": title, "current": True})
+        try:
+            chunks = retrieval.paper(wd).chunks
+        except Exception:  # noqa: BLE001 — 본문을 못 읽어도 다른 후보는 보인다
+            chunks = []
+        heads = [c for c in chunks if c.head_level]
+        last = chunks[-1].row if chunks else 0
+        for i, c in enumerate(heads):
+            nxt = next((h for h in heads[i + 1:] if h.head_level <= c.head_level), None)
+            if hit(c.heading):
+                out.append({"kind": "section", "token": paper, "title": c.heading[:120],
+                            "row": c.row, "end": (nxt.row - 1) if nxt else last,
+                            "level": c.head_level})
+        try:
+            tabs = notes.tab_names(wd)
+        except Exception:  # noqa: BLE001
+            tabs = []
+        out += [{"kind": "note", "token": paper, "title": n, "tab": n} for n in tabs if hit(n)]
+    ws = workspace or config.resolve_workspace()
+    names = {p["id"]: p["name"] for p in projects.all_projects()}
+    shown = 0
+    for r in recent_workdirs(Path(ws), limit=100_000):
+        if shown >= MENTION_PAPERS:
+            break
+        t = str(r.get("title") or r.get("name") or "")
+        if not hit(t, " ".join(r.get("authors") or []), str(r.get("venue") or "")):
+            continue
+        tok = register_token(WorkDir(Path(r["root"])))
+        if tok == paper:
+            continue
+        authors = ", ".join((r.get("authors") or [])[:2])
+        sub = " · ".join(b for b in (str(r.get("year") or ""), authors) if b)
+        out.append({"kind": "paper", "token": tok, "title": " ".join(t.split())[:120], "sub": sub})
+        shown += 1
+    out += [{"kind": "collection", "id": i, "title": n} for i, n in names.items() if hit(n)]
+    return out
+
+
+TITLE_SYSTEM = (
+    "You name a chat session from its first question and answer. Reply with the title only: "
+    "one short noun phrase (at most 6 words, or 20 characters in Korean/Japanese/Chinese), "
+    "in the same language as the question, no quotes, no trailing period.")
+TITLE_INPUT_MAX = 600   # 질문·답에서 제목을 짓는 데 넘기는 글자 수 (각각)
+
+
+def title_provider():  # noqa: ANN201 — llm.base.Provider
+    """제목 짓기용 LLM — 에이전트가 쓰는 서비스의 가장 싼 모델(한 줄짜리 일에 비싼 모델은 아깝다)."""
+    prov, _model = config.resolve_chat_choice()
+    tiers = config.MODEL_TIERS.get(prov) or ()
+    return config.build_provider(prov, tiers[0] if tiers else None)
+
+
+def clean_title(raw: str) -> str:
+    """모델 답 → 제목 한 줄 (따옴표·'제목:' 머리·끝 마침표를 떼고 세션 제목 길이로 자른다)."""
+    line = next((x for x in (raw or "").splitlines() if x.strip()), "")
+    wrap = "\"'“”‘’「」『』*#"
+    line = line.strip().strip(wrap).strip()
+    line = re.sub(r"^(title|제목)\s*[:：]\s*", "", line, flags=re.I)
+    line = line.strip(wrap).strip().rstrip(".。").strip(wrap).strip()
+    return sessions.default_title(line) if line else ""
+
+
+def suggest_title(s: sessions.Session, make: Callable[[], object] = title_provider) -> str | None:
+    """첫 질문·답으로 지은 제목. 이름을 사용자가 이미 바꿨거나(첫 질문 기본 제목과 다름) 짓지 못하면 None."""
+    users = [t for t in s.turns if t.get("role") == "user" and (t.get("text") or "").strip()]
+    if not users:
+        return None
+    first = users[0]["text"]
+    if s.title and s.title != sessions.default_title(first):
+        return None
+    i = s.turns.index(users[0])
+    answer = next((t.get("text") or "" for t in s.turns[i + 1:] if t.get("role") == "assistant"), "")
+    try:
+        llm = make()
+        raw = llm.complete(TITLE_SYSTEM, f"Question:\n{first[:TITLE_INPUT_MAX]}\n\n"
+                                         f"Answer (start):\n{answer[:TITLE_INPUT_MAX]}", max_tokens=40)
+    except Exception:  # noqa: BLE001 — 키 없음·네트워크 — 질문 앞머리 제목이 남는다
+        return None
+    title = clean_title(raw)
+    if not title:
+        return None
+    s.usage["cost_usd"] = float(s.usage.get("cost_usd") or 0.0) + float(getattr(llm, "cost", lambda: 0.0)())
+    return title
 
 
 def readiness(make: Callable[[], object] | None = None) -> tuple[bool, str]:
@@ -117,7 +227,8 @@ def register_routes(fastapi_app, wd_for: Callable[[str], WorkDir | None],  # noq
                     register_token: Callable[[WorkDir], str],
                     build_agent: Callable[[], object] | None = None,
                     workspace: Callable[[], Path] | None = None,
-                    build_job_provider: Callable | None = None) -> None:
+                    build_job_provider: Callable | None = None,
+                    build_title_provider: Callable[[], object] | None = None) -> None:
     """`/agent/...` 라우트 등록.
 
     wd_for: 토큰 → WorkDir (모르면 None; 폴백 금지).
@@ -126,6 +237,7 @@ def register_routes(fastapi_app, wd_for: Callable[[str], WorkDir | None],  # noq
     workspace: list_papers가 훑을 작업 폴더를 돌려주는 함수 (기본: config 작업 폴더).
     build_job_provider: 비용 tool의 LLM 공장 `(purpose, WorkDir) → Provider`
         (기본: `jobtools.default_job_provider` — 앱의 번역 설정). 테스트는 FakeProvider를 끼운다.
+    build_title_provider: 세션 제목 짓기 LLM 공장 (기본: `title_provider` — 에이전트 서비스의 가장 싼 모델).
     """
     from fastapi.responses import JSONResponse, StreamingResponse
     from pydantic import ValidationError
@@ -181,6 +293,15 @@ def register_routes(fastapi_app, wd_for: Callable[[str], WorkDir | None],  # noq
             raise HTTPException(status_code=404)
         return s.meta()
 
+    @fastapi_app.post("/agent/sessions/{sid}/title")
+    def _auto_title(sid: str):  # noqa: ANN202 — 첫 질문·답으로 제목 짓기 (창이 첫 턴 뒤에 부른다)
+        s = _load_or_404(sid)
+        title = suggest_title(s, build_title_provider or title_provider)
+        if title:
+            s.title = title
+            sessions.save(s)
+        return s.meta()
+
     @fastapi_app.delete("/agent/sessions/{sid}")
     def _delete(sid: str):  # noqa: ANN202 — 세션 지우기
         if not sessions.delete(sid):
@@ -204,6 +325,9 @@ def register_routes(fastapi_app, wd_for: Callable[[str], WorkDir | None],  # noq
         tok = ctx.token
         if tok and wd_for(tok) is None:
             raise HTTPException(status_code=404, detail="알 수 없는 논문 token")
+        # @ 맥락 — 모르는 논문을 가리키는 것은 조용히 뺀다(재시작 뒤 옛 창이 보낸 token 등)
+        ctx.mentions = [m for m in ctx.mentions
+                        if m.kind == "collection" or (m.token and wd_for(m.token) is not None)]
 
         approvals = body.get("approvals")
         deferred = None
@@ -266,6 +390,11 @@ def register_routes(fastapi_app, wd_for: Callable[[str], WorkDir | None],  # noq
         return StreamingResponse(stream(), media_type="text/event-stream",
                                  headers={"Cache-Control": "no-cache",
                                           "X-Accel-Buffering": "no"})
+
+    @fastapi_app.get("/agent/mentions")
+    def _mentions(paper: str = "", q: str = ""):  # noqa: ANN202 — 입력창 @ 후보
+        return {"items": mention_candidates(wd_for, register_token,
+                                            workspace() if workspace else None, paper, q)}
 
     @fastapi_app.get("/agent/models")
     def _models():  # noqa: ANN202 — 모델 목록 + 지금 선택 + 키 준비 상태
