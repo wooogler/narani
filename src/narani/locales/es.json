@@ -1316,5 +1316,6 @@
  "AI로 채우기": "Completar con IA",
  "{n}번 나옴": "aparece {n} veces",
  "논문마다 저장해 둔 발음 용어집으로 읽습니다.": "Cada artículo se lee con su glosario de pronunciación guardado.",
- "말투 지시 (영어가 잘 들어요 · 비우면 기본 말투)": "Indicación de estilo (mejor en inglés · vacío = estilo por defecto)"
+ "말투 지시 (영어가 잘 들어요 · 비우면 기본 말투)": "Indicación de estilo (mejor en inglés · vacío = estilo por defecto)",
+ "그림·표가 없는 논문이에요.": "Este artículo no tiene figuras ni tablas."
 }

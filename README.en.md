@@ -330,7 +330,8 @@ Sent papers get a 📱 mark on their card and are listed under **Mobile** in the
 
 - **List** — the papers you sent from the desktop. **Refresh** reloads the list from Drive.
 - **Offline mode** — turn on **Offline mode — save all** above the list to keep every paper and its desktop highlights and notes on the phone; each time the app opens it fetches only what's new or changed (planes, subways). Papers you've opened are kept either way. Without internet the list says so, and papers that aren't saved are dimmed.
-- **Top bar** — **‹** back to the list. Tap the **title** to slide out the **table of contents** from the left, with the current section marked. **Translation ⇄** switches between translation and source; **A** changes the text size.
+- **Top bar** — **‹** back to the list. Tap the **title** to slide out the **table of contents** from the left, with the current section marked. **Translation ⇄** switches between translation and source; **A** changes the text size. The drawer's **Figures & tables** tab lists every figure and table with a preview.
+- **Jumps and getting back** — tap a reference like "Figure 3" or "Table 1" in the text to go to it. After jumping elsewhere from the contents, figures, citations or notes list, a **↩ Back to reading** pill appears at the bottom; tap it to return to where you were.
 - **Tap a sentence** and its **counterpart** (the source, if you're reading the translation) slides up from the bottom. Tap a citation to see the reference.
 - **Your notes** — the **Notes** tab of the **💬** button at the bottom right lists this paper's highlights and notes in reading order (filter with **Notes only**); tap one to jump there. The number on the button is the count.
 

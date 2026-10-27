@@ -254,3 +254,12 @@ def test_phone_app_has_voice_talk():
     assert "function tkAsk" in js and "resume_listening" in js and "if (TK) talkEnd(" in js
     assert 'id="fab-ask"' in html and 'id="ag-mic"' in html and 'id="talkbar"' in html
     assert "OpenAI Realtime API" in files["privacy.html"][0].decode()
+
+
+def test_phone_reader_has_jumps_and_back_pill():
+    # 데스크톱처럼 — 목차 서랍의 '그림·표' 칸, 본문 그림·표 참조 링크, 건너뛴 뒤 '읽던 자리로' 알약
+    files = web.site_files(local=True)
+    js, html = files["app.js"][0].decode(), files["index.html"][0].decode()
+    assert 'id="tocd-t-fig"' in html and 'id="jback"' in html
+    assert "function indexFigs" in js and "function linkFigRefs" in js and "function beforeJump" in js
+    assert "beforeJump()" in js.split("function onLink", 1)[1].split("function ", 1)[0]   # 참조·인용 이동도 자리를 집는다
