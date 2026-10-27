@@ -1440,7 +1440,7 @@
   // Media Session, 섹션 이동은 파일 안에서 seek). 파일은 처음 들을 때 받아 Cache Storage에 두고 blob URL로 꽂는다.
   var AC = 'narani-audio', au = doc.getElementById('pl-au'), player = doc.getElementById('player');
   var AU = {e: null, key: null, tl: null, url: null, ready: false, cur: -1, sec: -1, lastSave: 0, lastPS: 0,
-            lastTU: 0, userScroll: 0, want: null, busy: false};
+            lastTU: 0, userScroll: 0, want: null, busy: false, follow: false};
   var HL = !!(window.CSS && CSS.highlights && window.Highlight);
   function audioOf(e){ return e && e.audio && e.audio.file ? e.audio : null; }
   function fmtT(s){ s = Math.max(0, Math.floor(s || 0)); var h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
@@ -1614,6 +1614,10 @@
     };
     if (AU.ready) go(); else prime(true).then(go, function(){});
   }
+  function seekTo(t){   // 막대·±15초·섹션 이동 — 옮긴 자리로 화면도 데려간다(멈춰 있어도)
+    AU.follow = true; AU.userScroll = 0; AU.cur = -1;
+    au.currentTime = Math.max(0, Math.min((AU.tl && AU.tl.duration) || au.duration || 1e9, t));
+  }
   function jumpSec(dir, why){
     if (!AU.tl) return;
     var t = au.currentTime, k = secAt(t), S = SEC(), target = null, i;
@@ -1624,7 +1628,7 @@
       if (target == null) target = k;
     }
     if (target == null){ au.pause(); return; }
-    au.currentTime = S[target].start;
+    seekTo(S[target].start);
   }
   function savePos(){
     if (!AU.tl || !AU.key || !au.currentTime) return;
@@ -1639,8 +1643,8 @@
     if (!AU.ready){ prime(true).then(function(){ startAt(null); }, function(){}); return; }
     if (au.paused) startAt(null); else au.pause();
   };
-  doc.getElementById('pl-back').onclick = function(){ au.currentTime = Math.max(0, au.currentTime - 15); };
-  doc.getElementById('pl-fwd').onclick = function(){ au.currentTime = Math.min(au.duration || 1e9, au.currentTime + 15); };
+  doc.getElementById('pl-back').onclick = function(){ seekTo(au.currentTime - 15); };
+  doc.getElementById('pl-fwd').onclick = function(){ seekTo(au.currentTime + 15); };
   doc.getElementById('pl-prev').onclick = function(){ jumpSec(-1); };
   doc.getElementById('pl-next').onclick = function(){ jumpSec(1); };
   doc.getElementById('pl-range').onclick = function(){ if (AU.tl) rangeSheet(); };
@@ -1659,7 +1663,7 @@
   doc.getElementById('pl-spd').onclick = function(){ var v = au.playbackRate, i = SPEEDS.indexOf(v); setSpd(SPEEDS[(i + 1) % SPEEDS.length]); };
   var seekEl = doc.getElementById('pl-seek');
   seekEl.oninput = function(){ setText('pl-cur', fmtT(+seekEl.value)); };
-  seekEl.onchange = function(){ au.currentTime = +seekEl.value; };
+  seekEl.onchange = function(){ seekTo(+seekEl.value); };
 
   function meta(k){
     if (!('mediaSession' in navigator) || !AU.tl) return;
@@ -1716,11 +1720,20 @@
     }
     if (!rect){ nowRow = row; row.classList.add('tts-row'); rect = row.getBoundingClientRect(); }
     // 화면을 보고 있으면 따라 내려간다 — 손으로 스크롤한 뒤 몇 초는 두고, 이미 보이면 움직이지 않는다
-    var bottom = window.innerHeight - player.offsetHeight - 16;
-    if (doc.visibilityState === 'visible' && Date.now() - AU.userScroll > 4000 && (rect.top < 70 || rect.bottom > bottom))
-      window.scrollBy({top: rect.top - window.innerHeight * 0.3, behavior: 'smooth'});
+    var bottom = window.innerHeight - player.offsetHeight - 16, follow = AU.follow;
+    AU.follow = false;
+    if (doc.visibilityState === 'visible' && (follow || Date.now() - AU.userScroll > 4000) && (rect.top < 70 || rect.bottom > bottom))
+      window.scrollBy({top: rect.top - window.innerHeight * 0.3, behavior: follow ? 'auto' : 'smooth'});
   }
-  ['touchmove', 'wheel'].forEach(function(ev){ window.addEventListener(ev, function(){ AU.userScroll = Date.now(); }, {passive: true}); });
+  ['touchmove', 'wheel'].forEach(function(ev){ window.addEventListener(ev, function(e){
+    if (e.target && e.target.closest && e.target.closest('#player')) return;   // 재생 막대를 끄는 손가락은 본문 스크롤이 아니다
+    AU.userScroll = Date.now();
+  }, {passive: true}); });
+  au.addEventListener('seeked', function(){
+    if (!AU.tl || !body.classList.contains('listening')) return;
+    var si = sentAtT(au.currentTime);
+    if (si !== AU.cur || AU.follow){ AU.cur = si; markNow(si); }
+  });
   au.addEventListener('timeupdate', function(){
     if (!AU.tl) return;
     var t = au.currentTime, now = Date.now(), k = secAt(t), S = SEC();
