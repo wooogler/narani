@@ -6346,6 +6346,11 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
     @ui.page("/home")
     @ui.page("/review")
     def shell() -> None:
+        # 첫 실행이면 OS 언어(웹뷰가 보낸 Accept-Language)로 화면 언어를 먼저 정한다 — 무엇이든 그리기 전에
+        from narani.ui import setup_wizard
+
+        req = getattr(ui.context.client, "request", None)
+        setup_wizard.preselect_language(req.headers.get("accept-language") if req is not None else None)
         ui.add_head_html(spa.HEAD_HTML + _PREPAINT_HTML + i18n.head_html())  # 화면 언어 카탈로그(md4T)
         spa.make_header()
         # 에이전트 창 — 셸에 붙어 화면을 갈아 끼워도 대화가 남는다. 하위 화면보다 **먼저** 넣어야
