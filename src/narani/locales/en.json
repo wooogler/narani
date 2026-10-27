@@ -1317,5 +1317,10 @@
  "{n}번 나옴": "appears {n} times",
  "논문마다 저장해 둔 발음 용어집으로 읽습니다.": "Each paper is read with its saved pronunciation glossary.",
  "말투 지시 (영어가 잘 들어요 · 비우면 기본 말투)": "Style instruction (English works best · empty = default delivery)",
- "그림·표가 없는 논문이에요.": "This paper has no figures or tables."
+ "그림·표가 없는 논문이에요.": "This paper has no figures or tables.",
+ "경과 {e}": "Elapsed {e}",
+ " · 남은 약 {r}": " · about {r} left",
+ "멈추는 중…": "Stopping…",
+ "멈추기": "Stop",
+ "'{t}' 음성 만들기를 멈췄습니다 — 이미 만든 섹션은 남아 다음에 이어서 만듭니다.": "Stopped making audio for '{t}' — sections already made are kept, so next time picks up where it left off."
 }

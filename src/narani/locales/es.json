@@ -1317,5 +1317,10 @@
  "{n}번 나옴": "aparece {n} veces",
  "논문마다 저장해 둔 발음 용어집으로 읽습니다.": "Cada artículo se lee con su glosario de pronunciación guardado.",
  "말투 지시 (영어가 잘 들어요 · 비우면 기본 말투)": "Indicación de estilo (mejor en inglés · vacío = estilo por defecto)",
- "그림·표가 없는 논문이에요.": "Este artículo no tiene figuras ni tablas."
+ "그림·표가 없는 논문이에요.": "Este artículo no tiene figuras ni tablas.",
+ "경과 {e}": "Transcurrido {e}",
+ " · 남은 약 {r}": " · quedan unos {r}",
+ "멈추는 중…": "Deteniendo…",
+ "멈추기": "Detener",
+ "'{t}' 음성 만들기를 멈췄습니다 — 이미 만든 섹션은 남아 다음에 이어서 만듭니다.": "Se detuvo el audio de '{t}': las secciones ya hechas se conservan y la próxima vez continúa desde ahí."
 }
