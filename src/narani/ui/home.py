@@ -453,6 +453,8 @@ def audio_label(a: dict) -> str:
     if v.startswith("gemini:"):
         _, model, name = (v.split(":") + ["", ""])[:3]
         who = f"Gemini {'flash-lite' if 'lite' in model else 'flash'} · {name}"
+    elif v.startswith("qwen:"):
+        who = "Qwen3 · " + (v.split(":") + ["", ""])[2]
     elif v.startswith("mac:"):
         who = "Mac · " + re.sub(r"\s+\([^()]*\([^()]*\)\)$", "", v[4:].split("@")[0])
     else:
@@ -1090,7 +1092,7 @@ def build_home(state: dict) -> None:
         return None
 
     async def make_mobile_audio(roots: list[Path]) -> None:
-        """모바일에서 들을 음성 — 무료 Mac 목소리 또는 Gemini(유료, 내 키)로 만들어 Drive에 올린다.
+        """모바일에서 들을 음성 — 무료 Mac 목소리, 무료 로컬 Qwen3(Apple Silicon), Gemini(유료, 내 키)로 만들어 Drive에 올린다.
 
         논문 하나면 넣을 섹션을 고른다. Gemini는 길이로 어림한 비용을 먼저 보여 준다."""
         from narani.phone import tts
@@ -1112,6 +1114,7 @@ def build_home(state: dict) -> None:
         per = [await run.io_bound(phone_service.sections, r) for r in roots]
         secs = per[0] if len(roots) == 1 else []
         gc = phone_service.gemini_choice()
+        qs = await run.io_bound(phone_service.qwen_status)
         picked = {"go": False}
 
         def go() -> None:
@@ -1127,11 +1130,22 @@ def build_home(state: dict) -> None:
             if eng.value == "mac":
                 subprocess.Popen(["say", "-v", voice.value, "--", sample])
                 return
+            if eng.value == "qwen" and not qs["ready"]:
+                ui.notify(t("먼저 Qwen3를 설치하세요."), type="warning")
+                return
+            n = ui.notification(t("목소리를 준비하는 중…"), spinner=True, timeout=None) if eng.value == "qwen" else None
             try:
-                wav = await run.io_bound(phone_service.gemini_preview, gvoice.value, gmodel.value, sample)
+                if eng.value == "qwen":
+                    wav = await run.io_bound(phone_service.voice_preview, "qwen", qvoice.value, langs[0], sample)
+                else:
+                    wav = await run.io_bound(phone_service.gemini_preview, gvoice.value, gmodel.value, sample)
             except Exception as e:  # noqa: BLE001
+                if n:
+                    n.dismiss()
                 ui.notify(t("들어 보기 실패: {e}", e=e), type="negative")
                 return
+            if n:
+                n.dismiss()
             f = Path(tempfile.gettempdir()) / "narani-voice-preview.wav"
             f.write_bytes(wav)
             subprocess.Popen(["afplay", str(f)])
@@ -1141,6 +1155,8 @@ def build_home(state: dict) -> None:
             ui.label(t("번역 본문을 읽은 음성을 만들어 Drive의 Narani 폴더에 올립니다(시간당 약 15MB). 그림·표·수식·인용 "
                        "표기·참고문헌은 건너뛰고, 섹션 제목은 알립니다.")).classes("text-xs text-gray-500")
             opts = {"mac": t("무료 — Mac 목소리")}
+            if qs["supported"]:
+                opts["qwen"] = t("Qwen3 — 무료·로컬, 자연스러움")
             if gem_ok:
                 opts["gemini"] = t("Gemini — 더 자연스러움 (유료)")
             eng = ui.toggle(opts, value="gemini" if (gem_ok and len(langs) == 1 and not names) else "mac") \
@@ -1156,6 +1172,29 @@ def build_home(state: dict) -> None:
                 if not names:
                     voice.set_visibility(False)
                     ui.label(t("논문 언어마다 지난번 목소리(처음이면 기본 목소리)로 만듭니다.")).classes("text-xs")
+            with ui.column().classes("gap-1 w-full") as qwen_col:
+                async def install_qwen() -> None:
+                    ib.disable()
+                    n = ui.notification(t("Qwen3 설치하는 중… (수백 MB, 1~2분)"), spinner=True, timeout=None)
+                    try:
+                        await run.io_bound(phone_service.qwen_install)
+                    except Exception as e:  # noqa: BLE001
+                        ui.notify(t("Qwen3를 설치하지 못했습니다: {e}", e=e), type="negative", timeout=10000)
+                        ib.enable()
+                        return
+                    finally:
+                        n.dismiss()
+                    qs["ready"] = True
+                    ui.notify(t("Qwen3를 설치했습니다 — 처음 만들 때 모델(약 2.5GB)을 한 번 받습니다."), type="positive")
+                    total()
+                with ui.row().classes("items-center gap-2 w-full no-wrap") as qwen_inst:
+                    ui.label(t("이 Mac에 Qwen3 로컬 목소리를 설치합니다 — 앱과 따로 두는 작은 환경(수백 MB)이고, 처음 만들 때 "
+                               "모델(약 2.5GB)을 한 번 받습니다. 인터넷 없이·무료로 돌지만 Mac 목소리보다 느립니다(한 시간 분량에 약 50분).")) \
+                        .classes("text-xs grow")
+                    ib = ui.button(t("설치하기"), icon="download", on_click=install_qwen).props("unelevated dense no-caps")
+                with ui.row().classes("items-center gap-2 w-full no-wrap") as qwen_row:
+                    qvoice = ui.select(list(tts.QWEN_SPEAKERS), value=phone_service.qwen_choice(langs[0]), label=t("목소리")) \
+                        .props("dense outlined").classes("grow")
             with ui.row().classes("items-center gap-2 w-full no-wrap") as gem_row:
                 gmodel = ui.select({m: (t("flash-lite — 더 쌈") if "lite" in m else t("flash — 더 자연스러움"))
                                     for m in tts.GEMINI_MODELS}, value=gc["model"], label=t("모델")) \
@@ -1172,12 +1211,17 @@ def build_home(state: dict) -> None:
                 m = sum(sec["minutes"] for sec in chosen)
                 mac_row.set_visibility(eng.value == "mac")
                 gem_row.set_visibility(eng.value == "gemini")
+                qwen_col.set_visibility(eng.value == "qwen")
+                qwen_inst.set_visibility(not qs["ready"])
+                qwen_row.set_visibility(qs["ready"])
                 txt = t("약 {m}분", m=round(m))
                 if eng.value == "gemini":
                     req = tts.gemini_requests([round(sec["minutes"] * 60 * tts.CPS) for sec in chosen])
                     txt += t(" · 예상 비용 약 ${c} (내 Gemini 키의 계정에 청구)",
                              c=f"{tts.gemini_cost(gmodel.value, m * 60):.2f}")
                     txt += t(" · 요청 약 {n}번 — 무료 등급 키는 TTS가 하루 10번쯤이라 모자랄 수 있어요", n=req)
+                elif eng.value == "qwen":
+                    txt += t(" · 무료 · 만드는 데 약 {w}분 (이 Mac에서, 처음엔 모델 받기 더)", w=round(m / tts.QWEN_SPEED))
                 else:
                     txt += t(" · 무료")
                 est.set_text(txt)
@@ -1213,7 +1257,11 @@ def build_home(state: dict) -> None:
         if not phone_service.connected() and not await connect_drive():
             return
         engine = eng.value
-        opts_ = {"voice": gvoice.value if engine == "gemini" else (voice.value if names else None),
+        if engine == "qwen" and not qs["ready"]:
+            ui.notify(t("먼저 Qwen3를 설치하세요."), type="warning")
+            return
+        opts_ = {"voice": gvoice.value if engine == "gemini" else (qvoice.value if engine == "qwen"
+                                                                   else (voice.value if names else None)),
                  "model": gmodel.value if engine == "gemini" else None}
         started = 0
         for root in roots:

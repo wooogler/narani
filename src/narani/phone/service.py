@@ -156,6 +156,53 @@ def gemini_choice() -> dict:
     return {"voice": voice, "model": model}
 
 
+def qwen_status() -> dict:
+    """Qwen3 로컬 목소리 — 이 Mac에서 되는지(Apple Silicon), 깔려 있는지."""
+    from narani.phone import tts
+
+    return {"supported": tts.qwen_supported(), "ready": tts.qwen_ready()}
+
+
+def qwen_install() -> None:
+    from narani.phone import tts
+
+    tts.qwen_install()
+
+
+def qwen_choice(lang: str) -> str:
+    """지난번 Qwen 화자 (처음이면 언어마다 기본 — 한국어 Sohee)."""
+    from narani.phone import tts
+
+    q = load_cache().get("qwen") or {}
+    sp = q.get("speaker")
+    return sp if sp in tts.QWEN_SPEAKERS else tts.QWEN_DEFAULT_SPEAKER.get(lang, "Ryan")
+
+
+def voice_preview(engine: str, voice: str, lang: str, text: str, model: str | None = None) -> bytes:
+    """목소리 들어 보기 — 한 문장을 WAV 바이트로. gemini는 몇 원어치, qwen은 처음이면 모델을 올리느라 몇십 초."""
+    import io
+    import wave
+
+    from narani.phone import tts
+
+    if engine == "qwen":
+        v = tts.QwenVoice(voice, lang)
+        try:
+            pcm = v.synth_units([tts.Unit(0, 0, 0, text, end_of_block=True)])[0]
+        finally:
+            v.close()
+        rate = v.sample_rate
+    else:
+        return gemini_preview(voice, model or "", text)
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(rate)
+        w.writeframes(pcm)
+    return buf.getvalue()
+
+
 def gemini_preview(voice: str, model: str, text: str) -> bytes:
     """목소리 들어 보기 — 한 문장을 만들어 WAV 바이트로 (몇 원어치)."""
     import io
@@ -203,7 +250,7 @@ def make_audio(roots: list[Path], voice: str | None = None, include: list[int] |
     sync.push(roots, store, prune=False, extra=_extra(_rows()))
     jobs = []
     chosen: dict[str, str] = {}
-    gem = None
+    gem = qwen = None
     if engine == "gemini":
         g = gemini_choice()
         gem = {"voice": voice or g["voice"], "model": model or g["model"]}
@@ -211,6 +258,13 @@ def make_audio(roots: list[Path], voice: str | None = None, include: list[int] |
         inc = include if len(roots) == 1 else None
         if gem:
             jobs.append((Path(root), tts.GeminiVoice(gem["voice"], gem["model"]), inc))
+            continue
+        if engine == "qwen":
+            if not tts.qwen_ready():
+                raise RuntimeError("Qwen3 로컬 목소리가 설치되지 않았습니다")
+            lang = paper_lang(root)
+            qwen = {"speaker": voice or qwen_choice(lang)}
+            jobs.append((Path(root), tts.QwenVoice(qwen["speaker"], lang), inc))
             continue
         lang = paper_lang(root)
         name = voice or (voices(lang) or [""])[0]
@@ -220,7 +274,7 @@ def make_audio(roots: list[Path], voice: str | None = None, include: list[int] |
         jobs.append((Path(root), tts.MacVoice(name), inc))
     out = sync.push_audio(store, jobs, on_progress)
     c = load_cache()
-    extra = {"gemini": gem} if gem else {}
+    extra = {"gemini": gem} if gem else ({"qwen": qwen} if qwen else {})
     _remember(sync.read_index(store), voices={**(c.get("voices") or {}), **chosen}, **extra)
     return out
 
@@ -233,7 +287,7 @@ def remove_audio(roots: list[Path]) -> int:
 
 
 def _remake_stale_audio(store) -> int:  # noqa: ANN001
-    """본문이 바뀌어 옛 판이 된 무료(Mac) 음성을 다시 만든다 — 섹션 캐시로 바뀐 섹션만. 유료 음성은 건드리지 않는다."""
+    """본문이 바뀌어 옛 판이 된 무료 음성(Mac·Qwen)을 다시 만든다 — 섹션 캐시로 바뀐 섹션만. 유료(Gemini)는 건드리지 않는다."""
     from narani.phone import tts
 
     if not tts.MacVoice.available():
@@ -242,12 +296,16 @@ def _remake_stale_audio(store) -> int:  # noqa: ANN001
     jobs = []
     for e in sync.read_index(store)["papers"]:
         a = e.get("audio") if isinstance(e, dict) else None
-        if not a or a.get("src") == e.get("hash") or not str(a.get("voice", "")).startswith("mac:"):
+        voice = str((a or {}).get("voice", ""))
+        if not a or a.get("src") == e.get("hash") or e.get("key") not in rows:
             continue
-        if e["key"] in rows:
-            v = a["voice"][4:]
-            name, _, rate = v.partition("@")
-            jobs.append((rows[e["key"]], tts.MacVoice(name, int(rate) if rate else None), a.get("include")))
+        root = rows[e["key"]]
+        if voice.startswith("mac:"):
+            name, _, rate = voice[4:].partition("@")
+            jobs.append((root, tts.MacVoice(name, int(rate) if rate else None), a.get("include")))
+        elif voice.startswith("qwen:") and tts.qwen_ready():
+            _, size, speaker = (voice.split(":") + ["", ""])[:3]
+            jobs.append((root, tts.QwenVoice(speaker, paper_lang(root), size), a.get("include")))
     return sync.push_audio(store, jobs)["made"] if jobs else 0
 
 

@@ -393,3 +393,56 @@ def test_finished_audio_jobs_are_reported_once():
         j.seen = True
     assert jobs.finished_unseen("mobile_audio") == []
     jobs.reset()
+
+
+# ---- Qwen (로컬) — 진짜 mlx-audio 대신 같은 약속(JSON 줄 → WAV 파일)을 지키는 가짜 일꾼 ----
+_FAKE_WORKER = r'''
+import json, sys, wave
+cfg = json.loads(sys.stdin.readline())
+print("some library chatter on stdout")
+print(json.dumps({"ready": True, "rate": 24000}), flush=True)
+for line in sys.stdin:
+    job = json.loads(line)
+    if job["text"] == "boom":
+        print(json.dumps({"error": "RuntimeError: boom"}), flush=True)
+        continue
+    with wave.open(job["out"], "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(24000)
+        w.writeframes(b"\x01\x00" * (240 * len(job["text"])))
+    print(json.dumps({"ok": True, "lang": job["language"], "speaker": job["speaker"]}), flush=True)
+'''
+
+
+def test_qwen_voice_talks_to_worker_sentence_by_sentence(tmp_path, monkeypatch):
+    import sys
+
+    monkeypatch.setattr(tts, "_QWEN_WORKER", _FAKE_WORKER)
+    monkeypatch.setenv("NARANI_QWEN_PYTHON", sys.executable)
+    monkeypatch.setattr(tts, "qwen_dir", lambda: tmp_path / "local-tts")
+    monkeypatch.setattr(tts, "qwen_supported", lambda: True)
+    assert tts.qwen_ready()
+    v = tts.QwenVoice("Sohee", "ko")
+    assert v.id == "qwen:0.6b:Sohee" and v.language == "Korean" and tts.QwenVoice("x", "ja").language == "Japanese"
+    ticks = []
+    out = v.synth_units([tts.Unit(0, 0, 3, "가나다", end_of_block=True), tts.Unit(1, 0, 2, "라마")], lambda: ticks.append(1))
+    assert [len(p) for p in out] == [2 * 240 * 3, 2 * 240 * 2] and len(ticks) == 2 and v.sample_rate == 24000
+    with pytest.raises(RuntimeError, match="boom"):
+        v.synth_units([tts.Unit(0, 0, 4, "boom")])
+    v.close()
+    assert v._proc is None
+
+
+@needs_afconvert
+def test_switching_voices_keeps_the_other_voices_cache(tmp_path):
+    wd = _wd(tmp_path)
+    b = bundle.build_paper(wd.root)
+    cache = wd.root / "audio"
+    a, g = FakeVoice(), FakeVoice()
+    g.id = "fake:other"
+    tts.build(b, a, cache)
+    n_a = len(list(cache.glob("*.m4a")))
+    tts.build(b, g, cache)                       # 다른 목소리로 — 처음 목소리 캐시는 남는다
+    assert len(list(cache.glob("*.m4a"))) == 2 * n_a
+    calls = a.calls
+    tts.build(b, a, cache)                       # 돌아오면 다시 합성하지 않는다
+    assert a.calls == calls
