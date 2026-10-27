@@ -1121,7 +1121,8 @@ def build_home(state: dict) -> None:
             picked["go"] = True
             dlg.close()
 
-        sample = (secs[1]["title"] if len(secs) > 1 else "") or "Narani"
+        # 들어 보기는 첫 논문의 첫 본문 문장으로 — 보통 초록의 첫 문장 (창에 그 문장을 보여 준다)
+        sample = next((sec["first"] for sec in (per[0] if per else []) if sec.get("first")), "") or "Narani"
 
         async def preview() -> None:
             import subprocess
@@ -1201,7 +1202,9 @@ def build_home(state: dict) -> None:
                     .props("dense outlined").classes("grow")
                 gvoice = ui.select(list(tts.GEMINI_VOICES), value=gc["voice"], label=t("목소리")) \
                     .props("dense outlined").classes("grow")
-            ui.button(t("들어 보기"), icon="volume_up", on_click=preview).props("flat dense no-caps")
+            with ui.row().classes("items-center gap-1 w-full no-wrap"):
+                ui.button(t("들어 보기"), icon="volume_up", on_click=preview).props("flat dense no-caps")
+                ui.label(f"“{sample}”").classes("text-xs text-gray-500 truncate min-w-0").tooltip(sample)
             est = ui.label().classes("text-xs text-gray-600")
             checks: list = []
 
