@@ -178,7 +178,16 @@ def qwen_choice(lang: str) -> str:
     return sp if sp in tts.QWEN_SPEAKERS else tts.QWEN_DEFAULT_SPEAKER.get(lang, "Ryan")
 
 
-def voice_preview(engine: str, voice: str, lang: str, text: str, model: str | None = None) -> bytes:
+def qwen_style() -> str:
+    """지난번 Qwen 말투 지시 (처음이면 기본 — 팟캐스트 진행자처럼 밝게). 빈 문자열이면 지시 없이."""
+    from narani.phone import tts
+
+    q = load_cache().get("qwen") or {}
+    return q["style"] if isinstance(q.get("style"), str) else tts.QWEN_STYLE
+
+
+def voice_preview(engine: str, voice: str, lang: str, text: str, model: str | None = None,
+                  style: str | None = None) -> bytes:
     """목소리 들어 보기 — 한 문장을 WAV 바이트로. gemini는 몇 원어치, qwen은 처음이면 모델을 올리느라 몇십 초."""
     import io
     import wave
@@ -186,7 +195,7 @@ def voice_preview(engine: str, voice: str, lang: str, text: str, model: str | No
     from narani.phone import tts
 
     if engine == "qwen":
-        v = tts.QwenVoice(voice, lang)
+        v = tts.QwenVoice(voice, lang, style=style)
         try:
             pcm = v.synth_units([tts.Unit(0, 0, 0, text, end_of_block=True)])[0]
         finally:
@@ -261,7 +270,8 @@ def suggest_speech_terms(root: Path, terms: list[str]) -> dict[str, str]:
 
 
 def make_audio(roots: list[Path], voice: str | None = None, include: list[int] | None = None,
-               on_progress=None, engine: str = "mac", model: str | None = None) -> dict:  # noqa: ANN001
+               on_progress=None, engine: str = "mac", model: str | None = None,
+               style: str | None = None) -> dict:  # noqa: ANN001
     """논문들의 듣기 음성을 만들어 올린다 — 먼저 번들·메모를 맞추고(send), 음성은 바뀐 섹션만 새로 만든다.
 
     engine: mac(무료 — voice가 없으면 논문 언어마다 지난번 목소리) | gemini(유료 — 사용자 키, voice·model).
@@ -286,8 +296,8 @@ def make_audio(roots: list[Path], voice: str | None = None, include: list[int] |
             if not tts.qwen_ready():
                 raise RuntimeError("Qwen3 로컬 목소리가 설치되지 않았습니다")
             lang = paper_lang(root)
-            qwen = {"speaker": voice or qwen_choice(lang)}
-            jobs.append((Path(root), tts.QwenVoice(qwen["speaker"], lang), inc))
+            qwen = {"speaker": voice or qwen_choice(lang), "style": qwen_style() if style is None else style}
+            jobs.append((Path(root), tts.QwenVoice(qwen["speaker"], lang, style=qwen["style"]), inc))
             continue
         lang = paper_lang(root)
         name = voice or (voices(lang) or [""])[0]
@@ -327,8 +337,11 @@ def _remake_stale_audio(store) -> int:  # noqa: ANN001
             name, _, rate = voice[4:].partition("@")
             jobs.append((root, tts.MacVoice(name, int(rate) if rate else None), a.get("include")))
         elif voice.startswith("qwen:") and tts.qwen_ready():
-            _, size, speaker = (voice.split(":") + ["", ""])[:3]
-            jobs.append((root, tts.QwenVoice(speaker, paper_lang(root), size), a.get("include")))
+            _, size, speaker, tag = (voice.split(":") + ["", "", ""])[:4]
+            style = qwen_style() if tag else None   # 말투 지시는 지문만 남으니 지금 저장된 지시가 그 지문일 때만
+            if tag and tts.qwen_style_tag(style) != tag:
+                continue
+            jobs.append((root, tts.QwenVoice(speaker, paper_lang(root), size, style=style), a.get("include")))
     return sync.push_audio(store, jobs)["made"] if jobs else 0
 
 

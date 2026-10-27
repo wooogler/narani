@@ -410,6 +410,9 @@ for line in sys.stdin:
     with wave.open(job["out"], "wb") as w:
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(24000)
         w.writeframes(b"\x01\x00" * (240 * len(job["text"])))
+    if job.get("instruct") == "fail-if-instruct":
+        print(json.dumps({"error": "RuntimeError: got instruct"}), flush=True)
+        continue
     print(json.dumps({"ok": True, "lang": job["language"], "speaker": job["speaker"]}), flush=True)
 '''
 
@@ -431,6 +434,12 @@ def test_qwen_voice_talks_to_worker_sentence_by_sentence(tmp_path, monkeypatch):
         v.synth_units([tts.Unit(0, 0, 4, "boom")])
     v.close()
     assert v._proc is None
+    # 말투 지시 — 일꾼에 같이 가고, 섹션 캐시 열쇠가 달라진다(지시 없는 옛 음성은 열쇠 그대로)
+    s = tts.QwenVoice("Sohee", "ko", style="fail-if-instruct")
+    assert s.id == "qwen:0.6b:Sohee:" + tts.qwen_style_tag("fail-if-instruct") and tts.QwenVoice("Sohee", "ko", style="  ").id == v.id
+    with pytest.raises(RuntimeError, match="got instruct"):
+        s.synth_units([tts.Unit(0, 0, 2, "가나")])
+    s.close()
 
 
 @needs_afconvert
