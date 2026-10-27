@@ -80,6 +80,7 @@ class Section:
     title: str
     row: int
     units: list[Unit] = field(default_factory=list)
+    level: int = 1              # 제목 단계(h1=1, h2=2 …) — 음성 만들기 창의 섹션 나무. 논문 제목·초록은 1
 
     def chars(self) -> int:
         return sum(len(u.text) for u in self.units)
@@ -243,7 +244,7 @@ def plan(bundle: dict) -> tuple[str, list[Section]]:
             front = bool(_FRONT.match(title))
             if front:
                 continue
-            cur = Section(title=title, row=row)
+            cur = Section(title=title, row=row, level=int(heads[0][0][1]))
             secs.append(cur)
         elif cur is None:
             continue
@@ -339,7 +340,7 @@ def apply_terms(sections: list[Section], terms: dict[str, str] | None) -> list[S
     if not rx:
         return sections
     return [Section(s.title, s.row, [Unit(u.row, u.s, u.e, speak_text(u.text, terms, rx), u.head, u.end_of_block)
-                                     for u in s.units]) for s in sections]
+                                     for u in s.units], s.level) for s in sections]
 
 
 def suggest_readings(terms: list[str], lang: str, provider=None) -> dict[str, str]:  # noqa: ANN001

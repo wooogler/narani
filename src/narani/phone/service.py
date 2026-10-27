@@ -229,12 +229,12 @@ def paper_lang(root: Path) -> str:
 
 
 def sections(root: Path) -> list[dict]:
-    """논문 하나의 읽을 섹션 — 음성 만들기 창의 고르기 목록. [{row, title, minutes, first(첫 본문 문장)}]"""
+    """논문 하나의 읽을 섹션 — 음성 만들기 창의 고르기 나무. [{row, title, level, minutes, first(첫 본문 문장)}]"""
     from narani.phone import bundle as bmod
     from narani.phone import tts
 
     _side, secs = tts.plan(bmod.build_paper(Path(root)))
-    return [{"row": s.row, "title": s.title, "minutes": tts.minutes([s]),
+    return [{"row": s.row, "title": s.title, "level": s.level, "minutes": tts.minutes([s]),
              "first": next((u.text for u in s.units if not u.head), "")} for s in secs]
 
 
