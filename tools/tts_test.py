@@ -59,21 +59,22 @@ def pick_text(bundle: dict, minutes: float, per_section: int) -> list[dict]:
         ko = _KO.search(body)
         if not ko or _SKIP.search(ko.group(1)):
             continue
+        blocks = [(tag, _plain(inner)) for tag, inner in _BLOCK.findall(ko.group(1))]
         if sec:
-            title = _plain(ko.group(1))
-            if _FRONT.match(title):
+            # 섹션 행: 첫 제목만 섹션 이름. 같은 셀에 본문이 붙어 오기도 한다(초록 제목 + 초록) — 그건 문단으로
+            head = next((t for tag, t in blocks if tag != "p"), None) or _plain(ko.group(1))
+            if _FRONT.match(head):
                 continue
-            if re.match(r"(참고\s*문헌|references|부록|appendix|감사의)", title, re.I):
+            if re.match(r"(참고\s*문헌|references|부록|appendix|감사의)", head, re.I):
                 break                                  # 본문 끝
             if used > budget:
                 break
             started, in_sec = True, 0
-            out.append({"kind": "head", "row": row, "text": title})
+            out.append({"kind": "head", "row": row, "text": head})
+            blocks = [(tag, t) for tag, t in blocks if t != head]
+        if not started or in_sec >= per_section or not blocks:
             continue
-        if not started or in_sec >= per_section:
-            continue
-        for tag, inner in _BLOCK.findall(ko.group(1)):
-            t = _plain(inner)
+        for tag, t in blocks:
             if len(t) < 2 or _FRONT.match(t):
                 continue
             out.append({"kind": "head" if tag != "p" else "para", "row": row, "text": t})
