@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="대화 시험">
+<link rel="manifest" href="realtime-test.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Narani 대화 시험</title>
+<style>
+:root { --bg: #fbfaf7; --fg: #24211c; --muted: #6b6862; --line: #e4e0d8; --card: #fff; --accent: #2f6fd6; --hl: #ffe08a; --bad: #b3261e; --ok: #1e7a3c; }
+@media (prefers-color-scheme: dark) { :root { --bg: #161615; --fg: #ecebe8; --muted: #a09d97; --line: #34322e; --card: #1f1e1c; --accent: #6aa0ff; --hl: #6b5a12; --bad: #ff8a80; --ok: #7ed39a; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+  padding: env(safe-area-inset-top) 16px calc(40px + env(safe-area-inset-bottom)); }
+h1 { font-size: 1.15em; margin: 16px 0 4px; }
+.sub { color: var(--muted); font-size: .85em; margin: 0 0 12px; }
+details { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; margin: 10px 0; }
+summary { font-weight: 600; cursor: pointer; }
+label.f { display: block; font-size: .8em; color: var(--muted); margin: 10px 0 4px; }
+input, select { width: 100%; font: inherit; font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+button.b { font: inherit; font-size: .9em; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+button.b.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+.hint { color: var(--muted); font-size: .82em; }
+/* 듣기 */
+.listen { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin: 12px 0; }
+.listen .now { font-size: .92em; min-height: 3em; }
+.listen .sec { font-size: .78em; color: var(--muted); }
+.listen .ctl { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+.listen .ctl button { font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 10px; padding: 6px 10px; }
+.listen .t { margin-left: auto; font-size: .8em; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* 대화 */
+#talk { width: 100%; font: inherit; font-size: 1.15em; font-weight: 700; border: 0; border-radius: 18px; padding: 22px 12px;
+  background: var(--accent); color: #fff; margin: 6px 0; }
+#talk.on { background: var(--bad); }
+#state { text-align: center; font-weight: 600; margin: 6px 0; min-height: 1.6em; }
+#state .lv { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); margin-right: 6px; vertical-align: middle; }
+#state.listening .lv { background: var(--ok); } #state.speaking .lv { background: var(--accent); } #state.thinking .lv { background: #e6a700; }
+.meter { display: flex; gap: 12px; justify-content: center; font-size: .78em; color: var(--muted); font-variant-numeric: tabular-nums; }
+#chat { margin: 10px 0; }
+#chat .m { margin: 0 0 8px; padding: 8px 12px; border-radius: 12px; white-space: pre-wrap; }
+#chat .u { background: var(--card); border: 1px solid var(--line); margin-left: 15%; }
+#chat .a { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+#chat .s { color: var(--muted); font-size: .8em; text-align: center; background: none; padding: 2px; }
+#chat a.rr { font-size: .85em; }
+#paper p { margin: 0 0 8px; font-size: .9em; } #paper p.h { font-weight: 700; margin-top: 14px; }
+#paper p.hl { background: var(--hl); border-radius: 6px; }
+#paper p.cur { box-shadow: inset 3px 0 0 var(--accent); padding-left: 6px; }
+ol.check { padding-left: 1.3em; margin: 8px 0; font-size: .92em; }
+ol.check li { margin: 6px 0; }
+ol.check .st { display: inline-flex; gap: 4px; margin-left: 4px; vertical-align: middle; }
+ol.check .st button { font: inherit; font-size: .8em; padding: 2px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+ol.check .st button.on.y { background: var(--ok); border-color: var(--ok); color: #fff; }
+ol.check .st button.on.n { background: var(--bad); border-color: var(--bad); color: #fff; }
+textarea.memo { width: 100%; font: inherit; font-size: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); padding: 6px 8px; }
+#log { font: 12px/1.45 ui-monospace, Menlo, monospace; white-space: pre-wrap; max-height: 40vh; overflow-y: auto; margin: 8px 0 0; }
+.env { font-size: .8em; color: var(--muted); word-break: break-all; }
+</style></head><body>
+<h1>Narani 대화 시험</h1>
+<p class="sub" id="sub"></p>
+
+<details id="setup"><summary>설정 — OpenAI 키·모델·목소리</summary>
+<label class="f" for="key">OpenAI API 키 (이 기기의 브라우저에만 저장 · 요금은 이 키의 계정에)</label>
+<input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…">
+<label class="f" for="model">모델</label>
+<select id="model"><option value="gpt-realtime-2.1-mini">gpt-realtime-2.1-mini (싸다)</option><option value="gpt-realtime-2.1">gpt-realtime-2.1 (더 똑똑)</option></select>
+<label class="f" for="voice">목소리</label>
+<select id="voice"></select>
+<div class="row"><label style="font-size:.9em"><input type="checkbox" id="resume" checked style="width:auto"> 대화가 끝나면 이어 듣기</label></div>
+<p class="hint">질문하면 이 논문의 번역 본문, 지금 듣던 위치, 대화가 OpenAI로 직접 갑니다(서버 없음). 조용히 20초가 지나면 대화를 끝냅니다.</p>
+</details>
+
+<div class="listen">
+  <div class="sec" id="l-sec"></div>
+  <div class="now" id="l-now"></div>
+  <div class="ctl"><button id="l-back">−15</button><button id="l-pp">▶ 듣기</button><button id="l-fwd">+15</button><span class="t" id="l-t">0:00</span></div>
+  <audio id="au" preload="metadata"></audio>
+</div>
+
+<button id="talk">🎙 질문하기</button>
+<div id="state"><span class="lv"></span><span id="st">대기</span></div>
+<div class="meter"><span id="m-lat">지연 —</span><span id="m-time">0:00</span><span id="m-cost">$0.000</span></div>
+<div id="chat"></div>
+<audio id="remote" autoplay playsinline></audio>
+
+<details><summary>시험 순서</summary>
+<p style="font-size:.9em;margin:6px 0">홈 화면에 추가한 앱으로, 차에서(CarPlay 또는 블루투스) 해 보세요. 듣기를 틀어 두고 🎙을 눌러 묻고, 끝나면 이어 듣기까지. ✓/✗를 누르고 <b>결과 복사</b>로 붙여 주세요.</p>
+<ol class="check" id="check"></ol>
+<textarea class="memo" id="memo" rows="2" placeholder="메모 (차종·iOS 버전·느낀 점)"></textarea>
+<div class="row"><button class="b pri" id="copy">결과 복사</button><button class="b" id="reset">결과·기록 지우기</button></div>
+<div class="env" id="env"></div>
+</details>
+<details><summary>AI가 보는 논문 본문</summary><div id="paper"></div></details>
+<details><summary>기록</summary><div id="log"></div></details>
+
+<script>
+(function(){
+  var P = {"title": "Hedwig: 개별 맥락에 따른 감독하에서 코딩 에이전트의 동적 자율성", "rows": [{"r": 0, "t": "Hedwig: 개별 맥락에 따른 감독하에서 코딩 에이전트의 동적 자율성", "h": true}, {"r": 8, "t": "초록 코딩 에이전트가 점점 더 복잡한 작업을 처리하는 능력이 발전했지만, 코드 검토를 빠져나가는 의도치 않은 편집, 미묘한 버그, 범위 이탈을 지속적으로 유발하는 경향 때문에 개발자는 여전히 에이전트에 어느 정도의 자율성을 부여할지 결정해야 한다. 그러나 정적 권한 설정이나 지침 파일처럼 에이전트의 자율성 수준을 설정하는 기존 접근법은 에이전트 자율성에 대한 개발자의 선호가 작업마다, 또 시간의 흐름에 따라 달라질 수 있다는 점을 반영하지 못한다. 코딩 에이전트를 사용하는 소프트웨어 엔지니어 21명을 대상으로 형성적 설문조사를 실시한 결과, 이들은 자율성 조정에 어려움을 겪으며 감독 수준에 대한 선호도 변화한다는 사실을 확인했다. 이러한 통찰을 바탕으로 세션 전반의 개발자-에이전트 상호작용을 토대로 자율성 수준을 동적으로 조정하는 CLI 코딩 에이전트 Hedwig을 제시한다. Hedwig은 전역적이고 고정된 자율성 설정으로 작동하는 대신, 개발자의 결정과 피드백으로부터 변화하는 행동 지침을 학습한다. 이를 통해 에이전트가 신뢰를 얻은 작업에서는 마찰을 줄이고, 익숙하지 않은 영역에서 작동할 때는 감독을 강화한다. Hedwig은 능동적이고 종단적인 협업을 통해 사용자 신뢰에 따라 자율성 수준을 지능적으로 조정하는 새로운 패러다임의 가능성을 보여준다.", "h": true}, {"r": 9, "t": "1 서론", "h": true}, {"r": 10, "t": "코딩 에이전트는 일상적인 프로그래밍 관행에 점점 더 깊이 통합되고 있다. 최신 코딩 에이전트는 저장소를 살펴보고, 여러 파일을 편집하고, 명령을 실행하며, 오류를 디버깅한다. 이러한 기능을 수행하려면 개발자의 작업 환경에 대한 깊은 접근 권한이 필요하며, 의도하지 않은 편집, 미묘한 버그 또는 보안 문제를 일으킬 수 있다. 전문 개발자에 대한 현장 관찰 결과, 에이전트를 효과적으로 사용하는 데는 실제로 상당한 통제가 따른다는 점이 확인되었다. 개발자는 설계 결정, 검증, 코드 검토에 대한 책임을 유지하며, 처음부터 끝까지의 자율성을 위임하지 않는다. 따라서 코딩 에이전트와 협업하는 일은 출력의 정확성을 판단하는 것뿐만 아니라 자율성 수준을 전략적으로 조정하여 에이전트를 효과적으로 관리하는 일이기도 하다.", "h": false}, {"r": 11, "t": "그러나 원하는 자율성 수준은 개발자, 작업, 일정, 프로젝트에 따라 달라질 수 있다. 일부 개발자는 모든 편집을 검토하고 싶어 하는 반면, 다른 개발자는 주요 단계나 최종 결과물을 평가할 때만 개입하기를 선호한다. 오늘날의 코딩 에이전트는 일반적으로 유용한 개발자 선호를 반영하도록 설계된 대규모 사후 학습 및 정렬 과정을 통해 형성되지만, 이러한 기본 설정은 특정 프로젝트 맥락에 있는 특정 사용자의 자율성에 대한 기대에 부합하지 않는 경우가 많다 [;; ]. 따라서 인간-AI 협업의 목표는 자동화를 극대화하는 것이 아니라 각 개발자의 위험 감수 성향, 작업의 중요도, 에이전트에 대한 변화하는 신뢰 수준에 맞춰 의미 있는 인간의 감독을 유지하는 것이어야 한다. 이를 위해서는 사용자와 작업에 따라 감독 행동이 실제로 어떻게 달라지는지 이해해야 한다.", "h": false}, {"r": 12, "t": "연구자와 실무자는 에이전트의 자율성을 조정하는 여러 접근법을 탐구해 왔다. 코딩 에이전트는 위험한 작업을 수행하기 전에 설명이나 허가를 요청하도록 설계되는 경우가 많지만, 이러한 중간 확인 요청의 적절한 빈도와 시점을 정하는 일은 쉽지 않다. 경험적 연구에 따르면 모든 확인을 작업 종료 시점까지 미루는 것은 최선이 아니다. 최근 48명의 참가자를 대상으로 한 연구에서는 사용자의 81%가 중간 점검 시점을 선호했다. 반면 잦은 개입은 작업 흐름을 방해하고 부담을 줄 수 있다. 개발자는 지침 파일(예: AGENTS.md), 프로필 설정 또는 향후 상호작용을 안내하는 저장된 기억을 통해 행동 선호를 지정할 수도 있다. 그러나 이러한 접근법은 사용자가 선호하는 자율성 수준이 안정적이며 사전에 명시될 수 있다고 가정하는 경우가 많다. 실제로는 사용자가 에이전트에 대한 신뢰를 얻거나 잃고, 중요도가 다른 작업을 오가거나, 서로 다른 제약 아래에서 작업함에 따라 자율성 선호가 시간이 지나면서 달라진다. 이를 위해서는 인간 개발자의 수준 높은 피드백이 사전 선호만으로 얻는 신호보다 더 신뢰할 수 있다. 이는 상호작용을 통해 지능적으로 학습하고 자율성 수준을 지속적으로 조정할 수 있는 코딩 에이전트가 필요함을 보여준다.", "h": false}, {"r": 13, "t": "본 논문에서는 개발자와의 상호작용을 바탕으로 자율성 수준을 동적으로 조정하는 CLI 코딩 에이전트인 Hedwig을 제시한다. Hedwig은 코딩 에이전트를 사용한 풍부한 경험이 있는 전문 프로그래머 21명을 대상으로 실시한 탐색적 설문조사의 통찰을 바탕으로 설계했다. Hedwig은 자율성을 특정 설정으로 고정하는 대신, 개발자가 실제로 에이전트와 상호작용하는 방식을 바탕으로 시간이 지남에 따라 자율성 수준을 추론하고 조정한다.", "h": false}, {"r": 14, "t": "Hedwig은 두 가지 주요 구성 요소로 이루어진다. 첫째, 개발자-에이전트 상호작용을 기록하고 이를 두 개의 거버넌스 계층으로 분류한다. 하나는 CLI가 직접 적용하는 강제 제약이고, 다른 하나는 관련성이 있을 때 검색되어 모델의 현재 작업 수행 방식을 형성하는 행동 지침이다. 행동 지침은 관련된 과거 작업에서 얻은 간결한 피드백 조각과 논리 메모로 저장된다. 여기에는 개발자의 수정, 아키텍처 결정, 이전 추론이 담기며, 현재 작업과 관련이 있을 때 향후 프롬프트에 검색되어 모델이 이전 결정과 수정을 재사용할 수 있도록 한다. 둘째, 코딩 에이전트가 읽기, 계획, 중간 확인 요청 또는 코드 업데이트를 제안하면 Hedwig은 활성화된 강제 제약, 검색된 행동 맥락, 현재 작업과 명세, 그리고 승인·거부·수정과 같은 상호작용 이력에 비추어 해당 제안을 감사한다. 시간이 지남에 따라 이 이력은 유사한 미래 작업에 중간 확인 요청이 필요한 시점을 조정하는 온라인 정책을 학습시킨다. 지침 파일 방식과 달리 강제 제약은 모델의 추론과 독립적으로 CLI 계층에서 적용되며, 세션 종료 요약은 정책에 의해 유발된 중간 확인 요청과 모델에 의해 유발된 중간 확인 요청을 구분하여 각 감독 결정을 개발자가 이해할 수 있도록 한다.", "h": false}, {"r": 15, "t": "2 동기와 설계 목표", "h": true}, {"r": 16, "t": "2.1 개발자 설문을 통한 동기", "h": true}, {"r": 17, "t": "선택적이고 이해하기 쉬운 감독이 필요하다는 점을 확인하기 위해 코딩 에이전트를 사용하는 숙련자 21명을 대상으로 형성적 설문을 실시했다. 응답자는 대부분 숙련된 엔지니어였다. 응답자 21명 중 20명은 프로그래밍 경력이 8년 이상이라고 답했으며, 21명 중 20명은 코딩 에이전트를 적어도 매주 사용했다. 가장 큰 우려 사항은 검토를 통과하는 미묘한 버그(13/21), 코드베이스에 대한 자신의 이해도 저하(12/21), 보안 취약점(10/21), 오래되거나 부정확한 맥락(9/21)이었다. 동시에 응답자들은 지속적인 방해를 원하지 않았다. 21명 중 11명은 주요 단계에서 중간 확인 요청을 선호했고, 나머지 응답자 중 일부는 위험하거나 예상치 못한 일이 발생했을 때만 중간 확인 요청을 선호했다. 이러한 결과는 동일한 설계 요건을 보여준다. 코딩 에이전트의 감독은 일률적으로 엄격하거나 일률적으로 관대하기보다는 선택적이고 이해하기 쉬우며 조정 가능해야 한다[;;;; ]. 본 연구는 워싱턴 대학교 IRB의 심사를 거쳐 승인을 받았다.", "h": false}, {"r": 18, "t": "2.2 설계 목표", "h": true}, {"r": 19, "t": "개발자 설문 결과에서 얻은 통찰을 바탕으로 세 가지 설계 목표를 도출했으며, 이는 Hedwig의 설계와 개발 방향을 제시한다.", "h": false}, {"r": 20, "t": "DG1: 개발자와 코딩 에이전트 간 상호작용을 통해 적응형 자율성을 지원한다. 최근 코딩 에이전트는 프로젝트 지침을 지속적으로 저장하고(예: AGENTS.md) 선호 사항에 관한 메모를 축적할 수 있지만(예: Claude Code Auto Memory), 이러한 메커니즘은 주로 일반적인 기존 지침을 모델의 맥락으로 다시 불러온다. 개발자가 실제로 보인 상호작용을 런타임 감독의 신호로 직접 활용하지는 않는다. 그러나 실제로 개발자는 에이전트와 장기간 협업한 뒤에야 자신이 선호하는 감독 수준을 파악하는 경우가 많다. 신뢰가 형성되거나 실수를 겪거나 중요도가 다른 작업으로 옮겨 가면서 선호 사항이 달라질 수 있다. 따라서 개발자가 원하는 자율성 수준을 사전에 완전히 명시하기는 어렵다. 대신 에이전트는 실제 상황에서 개발자가 에이전트의 행동에 어떻게 반응하는지를 바탕으로 시간에 따라 적응해야 한다.", "h": false}, {"r": 21, "t": "DG2: 감독을 전략적으로 조정하고 그 이유를 전달한다. 현재 코딩 에이전트는 일반적으로 두 가지 방식으로 감독을 지원한다. 런타임에서 중단을 강제하거나(예: 에이전트가 터미널 명령을 실행해야 할 때마다), 모델에 도움을 요청하도록 지시하는 방식이다(예: 명확화를 위한 질문). 설문 결과가 시사하듯, 에이전트가 사용자에게 중간 확인 요청을 하는 시점은 개인별 선호나 사용 패턴에 맞춰져 있지 않은 경우가 많고, 이러한 중단의 근거도 불투명할 수 있다. 에이전트는 상호작용 이력을 활용해 불필요한 중단을 줄이면서도 중요한 의사결정을 드러내고, 사용자에게 언제 관여를 요청할지, 언제 자율적으로 진행할지를 더욱 전략적으로 결정해야 한다. 또한 중간 확인 요청이 필요한 이유나 익숙한 상황에서 감독이 덜 필요한 이유를 전달해야 한다.", "h": false}, {"r": 22, "t": "DG3: 에이전트가 자율성 수준 사이를 유연하게 오갈 수 있도록 한다. 설문을 통해 개발자들이 코딩 에이전트에 일률적인 통제 수준을 원하지 않는다는 점을 확인했다. 한 프로그래머도 일부 파일이나 작업에는 엄격한 감독을 원할 수 있지만, 다른 경우에는 훨씬 느슨한 감독을 원할 수 있다. 선호 사항은 작업, 위험 수준 또는 작업 단계에 따라서도 달라질 수 있다. 또한 일부 선호 사항은 결정론적으로 강제해야 하는 엄격한 경계인 반면, 다른 선호 사항은 에이전트가 개발자에게 언제, 어떻게 관여를 요청해야 하는지에 관한 보다 유연한 행동 지침이다. 기존 에이전트 시스템은 프롬프트 지침, 메모리, 권한 설정, 후크 등을 제공할 수 있지만, 개발자는 어떤 메커니즘을 수정하고 각 규칙을 어떻게 강제할지 직접 결정해야 하는 경우가 많다. 적응형 자율성을 갖춘 코딩 에이전트는 이러한 차이를 명시적으로 구분하고 런타임에 강제해야 하며, 모델의 해석에만 의존해서는 안 된다.", "h": false}, {"r": 23, "t": "3 Hedwig CLI 에이전트", "h": true}, {"r": 24, "t": "3.1 기술 구성 요소", "h": true}, {"r": 25, "t": "Hedwig는 개발자와 코딩 에이전트의 협업에서 동적 자율성을 지원하는 로컬 Python CLI이다. 상호작용 트레이스를 시간에 따라 관찰하고, 그 이력을 바탕으로 변화하는 자율성 정책 집합을 유지한다. 이러한 정책은 에이전트의 행동을 규제하고, 적절한 시점에 간략한 설명과 함께 개발자에게 중간 확인 요청을 표시한다. Hedwig는 클라우드 호스팅 LLM(구체적으로 Claude Sonnet 4.6)을 기반으로 하며 VS Code에 통합되어 있다. 로컬에서 사용하고 테스트할 수 있도록 Hedwig의 소스 코드를 제공한다.", "h": false}, {"r": 26, "t": "자율성 정책의 범주. 개발자가 코딩 에이전트와 협업할 때 자율성을 생각하는 방식에 맞춰, Hedwig는 두 종류의 자율성 정책을 구분한다(DG2). 강제 제약은 보호된 경로를 수정하지 않거나, 해당 경로를 수정하기 전에 항상 개발자를 참여시키는 것처럼 코딩 에이전트가 해서는 안 되거나 반드시 해야 하는 일에 관한 엄격한 경계를 포착한다. 행동 지침은 언제 신중해야 하는지, 언제 의견을 물어야 하는지, 어느 정도 주도적으로 행동해야 하는지와 같이 에이전트가 협업하는 방식에 관한 보다 유연한 선호를 포착한다. 자율성 선호는 양방향으로 조정된다. 일관된 승인이 쌓이면 신뢰가 확대되는 한편, 개발자는 저장된 다른 모든 상태를 버리지 않고도 특정 파일 영역이나 변경 범주에 부여한 특정 선호를 선택적으로 철회할 수 있다(DG1). 이를 통해 개발자의 신뢰 태세가 변할 때 감독은 완화될 뿐 아니라 강화될 수도 있다.", "h": false}, {"r": 27, "t": "기록된 트레이스에서 자율성 정책 추론하기. Hedwig는 제안된 행동에 대한 승인 또는 거부, 개발자가 변경 사항을 얼마나 꼼꼼히 검토하는지, 에이전트 출력에 대한 수정, 에이전트 계획의 수정, 검증 결과, 명시적인 개발자 지침 등 개발자와 에이전트 사이의 다양한 상호작용 트레이스를 수집한다. 각각의 상호작용은 아키텍처상 분리된 두 가지 피드백 경로를 작동시킨다. 정책 경로에서는 트레이스 이력이 온라인 로지스틱 회귀 분류기를 학습시켜 이후의 중간 확인 요청 행동을 직접 규율한다. 이 분류기는 합성 웜스타트를 통해 공학적 사전 지식으로 초기화되며, 개발자가 결정을 내릴 때마다 확률적 경사 하강법으로 업데이트된다. 제안된 각 행동의 특성, 즉 diff 크기, 영향 범위, 변경 패턴 위험도, 이전 승인 및 거부 횟수, 보안 민감도, 검증 실패 이력, 모델 확신도 등을 포착하는 13차원 특징 벡터를 바탕으로 작동한다. 계수는 저장소별로 유지되므로 여러 세션에 걸쳐 개인화가 축적된다. 분류기는 전적으로 CLI 측에서 작동하며, 모델에는 수치 점수나 학습된 가중치를 보여주지 않는다. 검색 경로에서는 개발자의 수정 사항과 명시적 지침을 짧은 텍스트 조각으로 저장하고, 현재 작업과의 관련성을 기준으로 이후 프롬프트에 검색해 넣는다. 이를 통해 에이전트는 근본적인 정책 상태에 접근하지 않고도 이전 결정을 정성적으로 활용할 수 있다. 다시 말해, 처음에는 특정 행동에 승인이 필요할 수 있지만 저장소의 해당 영역에서 유사한 행동이 안전하고 허용 가능하다는 증거를 에이전트가 축적한 뒤에는 같은 행동을 자동으로 진행할 수 있다. 예를 들어 API 파일에 대한 거부가 3회 누적되면 change_pattern_risk와 prior_denials가 더 엄격한 검토 방향으로 조정된다. 반면 유틸리티 파일에 대한 승인이 5회 누적되면 이후 세션에서 해당 경로의 중간 확인 요청 기준이 낮아진다.", "h": false}, {"r": 28, "t": "행동 지침 적용하기. 자율성 정책의 한 형태인 행동 지침은 코딩 에이전트가 이후 작업에 접근하는 방식을 이끄는 데 도움이 된다. 각 실행이 시작될 때 Hedwig는 현재 작업과 가장 관련성이 높은 과거 작업의 수정 사항, 행동 지침, 논리 메모를 검색하여 코딩 에이전트에 제공하는 프롬프트에 포함한다(DG1). 이러한 정성적 검색은 학습된 정책과 구별된다. 검색은 에이전트의 추론 방식을 형성하는 반면, 정책 엔진은 에이전트가 허용되는 행동을 독립적으로 규율한다.", "h": false}, {"r": 29, "t": "강제 제약 시행하기. 강제 제약을 런타임에 시행하기 위해 Hedwig는 전역 권한 설정이 아니라 개별 행동(예: 읽기 및 쓰기) 수준에서 권한을 부여한다. 제안된 모든 행동은 3단계 승인 절차를 거친다. 먼저 강제 제약을 확인한 다음 학습된 정책 엔진을 확인한다. 그 결과 점수에 따라 세 가지 결과 중 하나가 결정된다. 진행 임계값보다 높은 행동은 별도 알림 없이 승인되며 세션 요약에만 나타난다. 중간 구간에 속하는 행동은 승인되지만 실행 후 검토를 위한 간결한 요약 행으로 표시된다. 플래그 임계값보다 낮은 행동에 한해서만 실시간 중간 확인 요청이 발생한다. 저장된 자율성 선호와 그에 따른 임계값은 hw observe preferences를 통해 직접 확인할 수 있다. 작업 완료 전에 양질의 결과를 보장하기 위해, 승인된 변경 사항은 개발자가 설정한 프로젝트 테스트 모음을 통해서도 검사한다. 또한 Hedwig는 코딩 에이전트의 현재 작업 단계(예: 조사, 계획, 구현, 검토)를 추적하고 해당 단계에 적절한 행동만 허용한다.", "h": false}, {"r": 30, "t": "명확한 설명과 함께 중간 확인 요청 표시하기. Hedwig는 자율성 정책을 다듬거나 적용하기 위해 개발자의 입력이 필요한 시점에 중간 확인 요청을 표시한다(DG2). 일부 요청은 강제 제약, 마일스톤 트리거 또는 위험 임계값 조건에 따라 시스템이 발생시킨다. 다른 요청은 불확실성, 이전 지침과의 충돌, 계획에서 벗어난 진행 또는 중요한 설계상의 상충 관계를 감지한 코딩 에이전트가 발생시킨다. 두 요청은 병렬로 작동하지만 범주상 구별된다. 세션 종료 요약은 정책이 시작한 중간 확인 요청과 에이전트가 시작한 중간 확인 요청을 별도로 보고하므로, 개발자는 매 실행 후 2계층 아키텍처를 명확히 확인할 수 있다. 각 중간 확인 요청에서 Hedwig는 관련성이 있는 경우 이전 상호작용 트레이스와의 연관성을 포함해 요청이 발생한 이유를 간략히 설명한다.", "h": false}, {"r": 32, "t": "개발자와의 상호작용 개인화하기. 위에서 설명한 메커니즘을 통해 Hedwig는 코딩 에이전트를 사용해 프로그래밍할 때 위험을 감수하는 정도가 서로 다른 개발자와의 상호작용을 개인화할 수 있다. 개괄적으로 말하면, Hedwig의 회귀 분류기를 온라인 학습하면서 이루어지는 계수 업데이트는 서로 다른 개발자 페르소나의 다양한 행동과 선호를 포착해 에이전트가 자신의 행동을 효과적으로 조정할 수 있게 한다. 부록 A.1에서 이를 구체적으로 설명한다.", "h": false}, {"r": 33, "t": "4 평가: 개발자 이력에서 중간 확인 요청 행동 학습하기", "h": true}, {"r": 34, "t": "Hedwig이 학습한 정책이 개발자의 과거 승인 패턴에 따라 중간 확인 요청 빈도를 조정하는지 평가하고, Auto Memory를 사용하는 Claude Code(CC)와 비교한다. 두 시스템은 동일한 백엔드 작업 두 개, 즉 GET /tasks/summary 엔드포인트를 추가하는 작업 (T1)과 선택적 우선순위 필터를 추가해 이를 확장하는 작업 (T2)을 완료했으며, 실행당 쓰기 작업은 11회였다. Hedwig의 경우 신중하거나 허용적인 개발자 페르소나에서 얻은 합성 결정 20개로 신뢰 데이터베이스를 시드하고, 안정적인 분류기 상태에 도달하도록 이를 3회 재생했다(실질 결정 60개). 또한 시드 과정에서 승인율을 바탕으로 자율성 선호를 추론한다. 승인율이 90% 이상인 페르소나는 prefer_fewer_checkins 및 skip_low_risk_plan_checkpoint를 활성화한다. CC의 Auto Memory는 선호를 산문으로 저장하지만 정량적인 중간 확인 요청 임계값을 산출하지 않으므로, 동일한 페르소나를 CLAUDE.md의 규칙으로 표현했다. CC-B는 규칙이 없는 대조군이다. 각 시스템의 작업별 결정을 기준으로 평가하기 위해, 페르소나 규칙과 작업 맥락을 제공받는 LLM 심판(Claude Opus 4.7)을 기준으로 삼아 점수도 매겼다. 심판은 T1과 T2에 걸친 4개 작업(새로운 공개 요소 추가 2건, 시그니처 변경 2건)을 신중한 페르소나에서 중간 확인 요청이 필요한 것으로, 허용적인 페르소나에서는 0건을 필요한 것으로 판정했다.", "h": false}, {"r": 37, "t": "두 시스템은 안전성과 효율성 간 절충에서 서로 다른 지점에 위치한다. 신중한 페르소나에서 Hedwig의 재현율은 1.00으로 CC-C의 0.50보다 높다. CC-C는 자체 CLAUDE.md에서 검토하도록 명시한 시그니처 변경 작업 두 건을 아무런 알림 없이 통과시키는 반면, Hedwig은 심판이 요구한 중간 확인 요청 네 건을 모두 포착하지만 거짓 양성 두 건을 발생시킨다. 거버넌스 맥락에서는 중간 확인 요청을 놓치는 것(검토되지 않은 API 변경 사항이 배포됨)이 하나를 추가하는 것(개발자 시간 2초 소요)보다 비용이 크므로, Hedwig의 높은 재현율은 안전성 측면에서 우위에 있는 지표다. 허용적인 페르소나에서는 정밀도 측면에서 CC가 우세하다. CC-P와 CC-B는 중간 확인 요청이 필요 없는 오라클을 기준으로 거짓 양성을 전혀 내지 않지만, Hedwig은 네 건을 발생시킨다. 이 경우 Hedwig의 최소 수준은 의도된 설계에 따른 것이다. 처음 읽는 파일이나 구조적인 API 표면 수정에는 신뢰받는 개발자에게도 거버넌스가 적용된다. 그러나 이는 실제 효율성 비용으로 이어질 수 있다. 전체 설정, 각 발견 사항에 대한 분석, 한계는 부록 B에 제시한다.", "h": false}, {"r": 38, "t": "4.1 시스템 워크스루", "h": true}, {"r": 39, "t": "라우트 핸들러, 서비스 계층, 테스트, 짧은 작업 명세 파일로 구성된 소규모 Python 작업 API에서 두 세션에 걸친 시나리오를 통해 Hedwig를 설명한다. 명세는 작업 계약의 역할을 하며, 승인 없이 변경해서는 안 되는 API에 노출되는 동작을 표시하는 한편 구현 전략은 자유롭게 선택할 수 있도록 한다. 실시간 데모 시간 안에 세션 간 개인화가 드러나도록, 데모 저장소에는 합성된 개발자 결정 14건을 미리 입력해 두어 첫 hw 실행부터 학습된 정책이 활성화되도록 했다. 동일한 시나리오는 함께 제공되는 데모 영상에서도 확인할 수 있다.", "h": false}, {"r": 40, "t": "개발자는 먼저 hw rules add를 사용해 자연어 규칙 두 가지를 추가한다. 첫 번째 규칙인 ‘config/prod/ 아래의 파일에는 절대 쓰지 않는다’는 CLI가 직접 적용하는 강제 제약으로 변환된다. 두 번째 규칙인 ‘일상적인 백엔드 변경에서는 기존 검증 헬퍼를 재사용하고, 꼭 필요한 경우가 아니라면 새 파일을 만들지 않는다’는 행동 지침으로 분류되어 나중에 검색할 수 있도록 저장된다. Hedwig는 저장하기 전에 각 규칙을 어떻게 해석했는지 표시해 개발자의 확인을 받음으로써 거버넌스 분류를 명시적이고 투명하게 만든다.", "h": false}, {"r": 41, "t": "세션 1", "h": true}, {"r": 42, "t": "에이전트가 파일 세 개를 읽도록 요청한다. 개발자는 remember (r)를 선택해 승인하고, 해당 세션에서 재사용할 수 있는 읽기 권한을 설정한다. 모델은 편집이 시작되기 전에 계획 단계의 중간 확인 요청(planning check-in)을 제기해 핸들러 시그니처의 장단점을 보여 준다. 한 선택지는 기존 패턴에 부합하는 summary\\_handler(query: dict) 방식이고, 다른 선택지는 매개변수가 없는 summary\\_handler 방식으로, 모든 요약을 직접 반환해 더 단순하지만 기존 관례를 깨뜨린다. 이는 CLI 정책 규칙이 발동한 것이 아니라, 설계상의 장단점을 드러내기 위해 모델이 자체적으로 멈춰 제기한 에이전트 주도 중간 확인 요청이다. 개발자는 쿼리 기반 방식을 선택하고 간단한 아키텍처 지침을 제공한다. 즉, 중첩된 응답 구조를 유지하고, 위험도가 낮은 내부 변경에서는 중단을 줄이며, API, 시그니처, 스키마 또는 보안 변경에 대해서만 계속 중간 확인 요청을 하라는 지침이다. Hedwig는 작업 명세에 근거한 계획을 작성해 task\\_api/api.py와 task\\_api/service.py를 수정 대상으로 제시하고, 승인을 요청한 뒤 패치를 적용하고 설정된 검증 명령을 실행한다. 검증은 통과한다. 세션 종료 요약에는 ‘중간 확인 요청: 정책 주도 3회, 에이전트 주도 1회’라고 표시된다.", "h": false}, {"r": 43, "t": "두 세션 사이에 hw observe preferences를 실행하면 저장된 자율성 선호와 적용 중인 점수 구간이 표시된다. 점수가 0.90을 넘는 작업은 조용히 승인되고, 0.20에서 0.90 사이인 작업은 승인되지만 실행 후 검토 대상으로 표시되며, 0.20 미만인 작업은 실시간 중간 확인 요청을 유발한다. hw observe weights는 웜스타트 사전 가중치에 대비해 학습된 계수를 보여 준다. 미리 입력한 이력이 반영되면서 가장 크게 변한 두 항목은 model\\_confidence\\_avg(+0.51)와 change\\_pattern\\_risk(+0.13)이다. 이는 이 개발자의 이력이 API 패턴 변경에는 불이익을 주고 모델의 높은 신뢰도에는 보상을 부여함을 나타낸다.", "h": false}, {"r": 44, "t": "세션 2. 이어지는 관련 작업에서는 요약 엔드포인트에 선택적 우선순위 필터를 추가한다. 읽기 단계는 별도의 요청 없이 바로 진행된다. Hedwig는 ‘읽기: 이전 읽기 권한을 파일 2/2개에 재사용함; 이전 승인 6건; 이전 거부 0건 - 지침: ‘중첩된 객체 응답을 사용한다. 기존 응답을 유지한다...’’라고 표시한다. 세션 1에서 검색한 지침은 모델의 프롬프트 맥락에 주입되어 후속 작업의 불확실성을 줄이고, 아키텍처 관련 중간 확인 요청이 반복되는 것을 억제한다. 불필요한 마찰은 선택적으로 줄어든다. 균형 모드에서는 여러 파일에 걸친 계획에 정책 주도 확인 절차가 유지되므로 계획 확인 단계는 여전히 실행된다. 개발자가 계획을 승인한다. 해당 파일에 대한 쓰기 권한은 아직 기억된 상태가 아니므로 적용 단계에서는 수동 승인이 한 번 필요하다. 세션은 ‘중간 확인 요청: 정책 주도 3회’라는 결과로 끝난다. 이는 세션 1보다 에이전트 주도 중간 확인 요청이 한 번 줄어든 것으로, 설계상의 불확실성이 해소된 데 부합한다.", "h": false}, {"r": 45, "t": "관측 가능성과 신뢰 제어. 두 세션이 끝난 뒤 hw observe report를 실행하면 전체 거버넌스 기록이 표시된다. 에이전트 주도 중간 확인 요청 1회와 승인율 100%, 정책 중간 확인 요청 10회, 의도적인 승인 7회, 검증 통과 4/4회가 여기에 포함된다. 정책에 따른 중단(CLI 규칙 및 점수 임계값)과 에이전트에 따른 중단(모델의 불확실성 또는 설계상의 장단점)을 구분하는 발생 주체별 내역은 트레이스 내보내기에 묻혀 있는 정보가 아니라 핵심 출력으로 제공된다. 이러한 구분을 통해 개발자는 중단이 지나치게 엄격한 시스템 규칙에서 비롯되었는지, 실제 모델의 불확실성에서 비롯되었는지 확인할 수 있다. hw observe preferences-revoke -topic api를 실행하면 누적된 상태를 초기화하지 않고 신뢰 범위에서 API 주제를 제거하며, 이전 승인 이력과 관계없이 향후 모든 API 변경에 중간 확인 요청을 발생시킨다. 이에 따라 감독 수준을 필요에 따라 강화하거나 완화할 수 있다.", "h": false}, {"r": 46, "t": "Hedwig는 에이전트 시스템에서 동적 자율성을 구현하기 위한 개념 증명 데모로 제작되었다. 가장 중요한 기여는 아키텍처에 있다. 사용자와 협력하는 방법과 시점에 관한 모델 측 추론을 유용하지만 권위적이지 않은 정보원으로 활용하면서, 감독을 지속해서 갱신되고 검토 가능한 정책으로 외부화한다. 이를 통해 코딩 에이전트의 자율성이 장기적 상호작용 과정에서 어떻게 변화하는지 연구할 수 있는 재사용 가능한 프레임워크를 제공한다.", "h": false}, {"r": 47, "t": "Hedwig에는 몇 가지 한계가 있다. 평가는 형성적 설문에서 도출한 합성 상호작용 트레이스를 바탕으로 하며, 정식 사용자 연구는 수행되지 않았다. 승인 정책은 공학적 사전 지식으로 초기화한 뒤 온라인 SGD를 통해 개선한다. 수렴 속도와 페르소나별 학습 궤적, 즉 허용적인 프로필의 일상적인 작업에서 중간 확인 요청 비율이 언제, 얼마나 빠르게 0에 가까워져야 하는지는 향후 연구 과제로 남아 있다. 시스템은 코드 변경의 되돌릴 수 있는 정도를 위험 신호로 구현하지 않았고, 더 풍부한 선호 분류 체계를 반영하거나 하위 에이전트 위임을 지원하지도 않는다. 명세 기반 개발 지원도 단순하다. 모델은 명세 요약에 근거하고 요구사항 충족 여부를 보고하지만, 구조화된 파이프라인은 제공되지 않는다.", "h": false}, {"r": 48, "t": "현재 산출물은 작동하는 프로토타입이자 연구 플랫폼이지, 실제 서비스 수준의 개인화 방법은 아니다. Hedwig가 학습한 정책 위에 Zhou et al.의 CDCR 인지 스케줄링을 타이밍 계층으로 통합하는 것은 자연스러운 연구 방향이다. 가장 시급한 다음 단계는 현실적인 작업 흐름에서 작업 완료뿐 아니라 중단 부담, 조정 가능성, 검증 노력, 보정된 의존도까지 평가하는 통제된 실험실 연구를 수행하는 것이다.", "h": false}, {"r": 49, "t": "5 결론", "h": true}, {"r": 50, "t": "개발자와의 상호작용을 바탕으로 자율성 수준을 지능적으로 조정하는 CLI 코딩 에이전트 Hedwig를 소개한다. Hedwig는 시간이 지남에 따라 사용자 상호작용 트레이스(예: 제안된 명령의 수정, 명령의 거부·승인, 계획에 대한 수정)를 기록하고 추론하여 에이전트의 행동을 제어하는 정책을 지속적으로 갱신한다. 구체적으로 이러한 정책은 에이전트가 사용자의 도움과 피드백을 요청하는 방식과 빈도를 결정하는 데 사용된다. 향후 연구에서는 개발자 대상 사용자 연구를 수행하여 설계를 검증하고, 텍스트 기반 정책을 넘어서는 더욱 정교한 자율성 거버넌스 메커니즘을 고안할 계획이다.", "h": false}], "tl": {"duration": 451.651, "sections": [{"title": "초록", "row": 8, "start": 0.0, "end": 87.432}, {"title": "1 서론", "row": 9, "start": 87.432, "end": 198.833}, {"title": "2 동기와 설계 목표", "row": 15, "start": 198.833, "end": 201.727}, {"title": "2.1 개발자 설문을 통한 동기", "row": 16, "start": 201.727, "end": 276.937}, {"title": "2.2 설계 목표", "row": 18, "start": 276.937, "end": 347.894}, {"title": "3 Hedwig CLI 에이전트", "row": 23, "start": 347.894, "end": 350.694}, {"title": "3.1 기술 구성 요소", "row": 24, "start": 350.694, "end": 451.651}], "sents": [{"t": 0.0, "text": "초록", "sec": 0, "r": 8}, {"t": 1.472, "text": "코딩 에이전트가 점점 더 복잡한 작업을 처리하는 능력이 발전했지만, 코드 검토를 빠져나가는 의도치 않은 편집, 미묘한 버그, 범위 이탈을 지속적으로 유발하는 경향 때문에 개발자는 여전히 에이전트에 어느 정도의 자율성을 부여할지 결정해야 한다.", "sec": 0, "r": 8}, {"t": 19.294, "text": "그러나 정적 권한 설정이나 지침 파일처럼 에이전트의 자율성 수준을 설정하는 기존 접근법은 에이전트 자율성에 대한 개발자의 선호가 작업마다, 또 시간의 흐름에 따라 달라질 수 있다는 점을 반영하지 못한다.", "sec": 0, "r": 8}, {"t": 34.095, "text": "코딩 에이전트를 사용하는 소프트웨어 엔지니어 21명을 대상으로 형성적 설문조사를 실시한 결과, 이들은 자율성 조정에 어려움을 겪으며 감독 수준에 대한 선호도 변화한다는 사실을 확인했다.", "sec": 0, "r": 8}, {"t": 47.807, "text": "이러한 통찰을 바탕으로 세션 전반의 개발자-에이전트 상호작용을 토대로 자율성 수준을 동적으로 조정하는 CLI 코딩 에이전트 Hedwig을 제시한다.", "sec": 0, "r": 8}, {"t": 58.459, "text": "Hedwig은 전역적이고 고정된 자율성 설정으로 작동하는 대신, 개발자의 결정과 피드백으로부터 변화하는 행동 지침을 학습한다.", "sec": 0, "r": 8}, {"t": 68.374, "text": "이를 통해 에이전트가 신뢰를 얻은 작업에서는 마찰을 줄이고, 익숙하지 않은 영역에서 작동할 때는 감독을 강화한다.", "sec": 0, "r": 8}, {"t": 76.76, "text": "Hedwig은 능동적이고 종단적인 협업을 통해 사용자 신뢰에 따라 자율성 수준을 지능적으로 조정하는 새로운 패러다임의 가능성을 보여준다.", "sec": 0, "r": 8}, {"t": 87.432, "text": "1 서론", "sec": 1, "r": 9}, {"t": 89.131, "text": "코딩 에이전트는 일상적인 프로그래밍 관행에 점점 더 깊이 통합되고 있다.", "sec": 1, "r": 10}, {"t": 94.67, "text": "최신 코딩 에이전트는 저장소를 살펴보고, 여러 파일을 편집하고, 명령을 실행하며, 오류를 디버깅한다.", "sec": 1, "r": 10}, {"t": 102.736, "text": "이러한 기능을 수행하려면 개발자의 작업 환경에 대한 깊은 접근 권한이 필요하며, 의도하지 않은 편집, 미묘한 버그 또는 보안 문제를 일으킬 수 있다.", "sec": 1, "r": 10}, {"t": 113.607, "text": "전문 개발자에 대한 현장 관찰 결과, 에이전트를 효과적으로 사용하는 데는 실제로 상당한 통제가 따른다는 점이 확인되었다.", "sec": 1, "r": 10}, {"t": 122.874, "text": "개발자는 설계 결정, 검증, 코드 검토에 대한 책임을 유지하며, 처음부터 끝까지의 자율성을 위임하지 않는다.", "sec": 1, "r": 10}, {"t": 131.52, "text": "따라서 코딩 에이전트와 협업하는 일은 출력의 정확성을 판단하는 것뿐만 아니라 자율성 수준을 전략적으로 조정하여 에이전트를 효과적으로 관리하는 일이기도 하다.", "sec": 1, "r": 10}, {"t": 143.298, "text": "그러나 원하는 자율성 수준은 개발자, 작업, 일정, 프로젝트에 따라 달라질 수 있다.", "sec": 1, "r": 11}, {"t": 150.089, "text": "일부 개발자는 모든 편집을 검토하고 싶어 하는 반면, 다른 개발자는 주요 단계나 최종 결과물을 평가할 때만 개입하기를 선호한다.", "sec": 1, "r": 11}, {"t": 159.798, "text": "오늘날의 코딩 에이전트는 일반적으로 유용한 개발자 선호를 반영하도록 설계된 대규모 사후 학습 및 정렬 과정을 통해 형성되지만, 이러한 기본 설정은 특정 프로젝트 맥락에 있는 특정 사용자의 자율성에 대한 기대에 부합하지 않는 경우가 많다.", "sec": 1, "r": 11}, {"t": 176.765, "text": "따라서 인간-AI 협업의 목표는 자동화를 극대화하는 것이 아니라 각 개발자의 위험 감수 성향, 작업의 중요도, 에이전트에 대한 변화하는 신뢰 수준에 맞춰 의미 있는 인간의 감독을 유지하는 것이어야 한다.", "sec": 1, "r": 11}, {"t": 191.827, "text": "이를 위해서는 사용자와 작업에 따라 감독 행동이 실제로 어떻게 달라지는지 이해해야 한다.", "sec": 1, "r": 11}, {"t": 198.833, "text": "2 동기와 설계 목표", "sec": 2, "r": 15}, {"t": 201.727, "text": "2.1 개발자 설문을 통한 동기", "sec": 3, "r": 16}, {"t": 205.086, "text": "선택적이고 이해하기 쉬운 감독이 필요하다는 점을 확인하기 위해 코딩 에이전트를 사용하는 숙련자 21명을 대상으로 형성적 설문을 실시했다.", "sec": 3, "r": 17}, {"t": 215.816, "text": "응답자는 대부분 숙련된 엔지니어였다.", "sec": 3, "r": 17}, {"t": 218.99, "text": "응답자 21명 중 20명은 프로그래밍 경력이 8년 이상이라고 답했으며, 21명 중 20명은 코딩 에이전트를 적어도 매주 사용했다.", "sec": 3, "r": 17}, {"t": 229.047, "text": "가장 큰 우려 사항은 검토를 통과하는 미묘한 버그(13/21), 코드베이스에 대한 자신의 이해도 저하(12/21), 보안 취약점(10/21), 오래되거나 부정확한 맥락(9/21)이었다.", "sec": 3, "r": 17}, {"t": 242.86, "text": "동시에 응답자들은 지속적인 방해를 원하지 않았다.", "sec": 3, "r": 17}, {"t": 246.781, "text": "21명 중 11명은 주요 단계에서 중간 확인 요청을 선호했고, 나머지 응답자 중 일부는 위험하거나 예상치 못한 일이 발생했을 때만 중간 확인 요청을 선호했다.", "sec": 3, "r": 17}, {"t": 259.195, "text": "이러한 결과는 동일한 설계 요건을 보여준다.", "sec": 3, "r": 17}, {"t": 262.658, "text": "코딩 에이전트의 감독은 일률적으로 엄격하거나 일률적으로 관대하기보다는 선택적이고 이해하기 쉬우며 조정 가능해야 한다.", "sec": 3, "r": 17}, {"t": 271.436, "text": "본 연구는 워싱턴 대학교 IRB의 심사를 거쳐 승인을 받았다.", "sec": 3, "r": 17}, {"t": 276.937, "text": "2.2 설계 목표", "sec": 4, "r": 18}, {"t": 279.541, "text": "개발자 설문 결과에서 얻은 통찰을 바탕으로 세 가지 설계 목표를 도출했으며, 이는 Hedwig의 설계와 개발 방향을 제시한다.", "sec": 4, "r": 19}, {"t": 288.805, "text": "DG1: 개발자와 코딩 에이전트 간 상호작용을 통해 적응형 자율성을 지원한다.", "sec": 4, "r": 20}, {"t": 295.372, "text": "최근 코딩 에이전트는 프로젝트 지침을 지속적으로 저장하고(예: AGENTS.md) 선호 사항에 관한 메모를 축적할 수 있지만(예: Claude Code Auto Memory), 이러한 메커니즘은 주로 일반적인 기존 지침을 모델의 맥락으로 다시 불러온다.", "sec": 4, "r": 20}, {"t": 311.716, "text": "개발자가 실제로 보인 상호작용을 런타임 감독의 신호로 직접 활용하지는 않는다.", "sec": 4, "r": 20}, {"t": 318.053, "text": "그러나 실제로 개발자는 에이전트와 장기간 협업한 뒤에야 자신이 선호하는 감독 수준을 파악하는 경우가 많다.", "sec": 4, "r": 20}, {"t": 326.015, "text": "신뢰가 형성되거나 실수를 겪거나 중요도가 다른 작업으로 옮겨 가면서 선호 사항이 달라질 수 있다.", "sec": 4, "r": 20}, {"t": 333.588, "text": "따라서 개발자가 원하는 자율성 수준을 사전에 완전히 명시하기는 어렵다.", "sec": 4, "r": 20}, {"t": 339.327, "text": "대신 에이전트는 실제 상황에서 개발자가 에이전트의 행동에 어떻게 반응하는지를 바탕으로 시간에 따라 적응해야 한다.", "sec": 4, "r": 20}, {"t": 347.894, "text": "3 Hedwig CLI 에이전트", "sec": 5, "r": 23}, {"t": 350.694, "text": "3.1 기술 구성 요소", "sec": 6, "r": 24}, {"t": 353.635, "text": "Hedwig는 개발자와 코딩 에이전트의 협업에서 동적 자율성을 지원하는 로컬 Python CLI이다.", "sec": 6, "r": 25}, {"t": 360.52, "text": "상호작용 트레이스를 시간에 따라 관찰하고, 그 이력을 바탕으로 변화하는 자율성 정책 집합을 유지한다.", "sec": 6, "r": 25}, {"t": 368.093, "text": "이러한 정책은 에이전트의 행동을 규제하고, 적절한 시점에 간략한 설명과 함께 개발자에게 중간 확인 요청을 표시한다.", "sec": 6, "r": 25}, {"t": 376.932, "text": "Hedwig는 클라우드 호스팅 LLM(구체적으로 Claude Sonnet 4.6)을 기반으로 하며 VS Code에 통합되어 있다.", "sec": 6, "r": 25}, {"t": 385.013, "text": "로컬에서 사용하고 테스트할 수 있도록 Hedwig의 소스 코드를 제공한다.", "sec": 6, "r": 25}, {"t": 390.627, "text": "자율성 정책의 범주.", "sec": 6, "r": 26}, {"t": 392.698, "text": "개발자가 코딩 에이전트와 협업할 때 자율성을 생각하는 방식에 맞춰, Hedwig는 두 종류의 자율성 정책을 구분한다(DG2).", "sec": 6, "r": 26}, {"t": 402.007, "text": "강제 제약은 보호된 경로를 수정하지 않거나, 해당 경로를 수정하기 전에 항상 개발자를 참여시키는 것처럼 코딩 에이전트가 해서는 안 되거나 반드시 해야 하는 일에 관한 엄격한 경계를 포착한다.", "sec": 6, "r": 26}, {"t": 415.994, "text": "행동 지침은 언제 신중해야 하는지, 언제 의견을 물어야 하는지, 어느 정도 주도적으로 행동해야 하는지와 같이 에이전트가 협업하는 방식에 관한 보다 유연한 선호를 포착한다.", "sec": 6, "r": 26}, {"t": 428.208, "text": "자율성 선호는 양방향으로 조정된다.", "sec": 6, "r": 26}, {"t": 431.383, "text": "일관된 승인이 쌓이면 신뢰가 확대되는 한편, 개발자는 저장된 다른 모든 상태를 버리지 않고도 특정 파일 영역이나 변경 범주에 부여한 특정 선호를 선택적으로 철회할 수 있다(DG1).", "sec": 6, "r": 26}, {"t": 444.645, "text": "이를 통해 개발자의 신뢰 태세가 변할 때 감독은 완화될 뿐 아니라 강화될 수도 있다.", "sec": 6, "r": 26}]}, "audio": "tts-test.m4a"};
+  var doc = document, TL = P.tl, S = TL.sents;
+  function $(id){ return doc.getElementById(id); }
+  function ls(k, d){ try { var v = JSON.parse(localStorage.getItem('rttest:' + k) || 'null'); return v == null ? d : v; } catch (e) { return d; } }
+  function lss(k, v){ try { localStorage.setItem('rttest:' + k, JSON.stringify(v)); } catch (e) {} }
+  function fmt(s){ s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); }
+  var standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
+  var CTX = standalone ? 'app' : 'tab';
+
+  // ---- 기록 ----
+  var LOG = ls('log', []);
+  function log(msg){
+    var d = new Date(), line = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2) + ' [' + CTX + '] ' + msg;
+    LOG.push(line); if (LOG.length > 500) LOG = LOG.slice(-500); lss('log', LOG);
+    $('log').textContent = LOG.slice().reverse().join('\n');
+  }
+  $('log').textContent = LOG.slice().reverse().join('\n');
+  var ENV = '실행: ' + (standalone ? '홈 화면 앱' : '브라우저 탭') + ' · WebRTC ' + (window.RTCPeerConnection ? '있음' : '없음')
+    + ' · 마이크 ' + (navigator.mediaDevices && navigator.mediaDevices.getUserMedia ? '있음' : '없음') + '\n' + navigator.userAgent;
+  $('env').textContent = ENV;
+  $('sub').textContent = P.title + ' · 듣기 ' + fmt(TL.duration);
+  log('페이지 열림');
+
+  // ---- 설정 ----
+  var VOICES = ['marin', 'cedar', 'alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse'];
+  VOICES.forEach(function(v){ var o = doc.createElement('option'); o.value = o.textContent = v; $('voice').appendChild(o); });
+  $('key').value = ls('key', ''); $('model').value = ls('model', 'gpt-realtime-2.1-mini'); $('voice').value = ls('voice', 'marin');
+  $('resume').checked = ls('resume', true);
+  ['key', 'model', 'voice'].forEach(function(id){ $(id).onchange = function(){ lss(id, $(id).value.trim()); }; });
+  $('resume').onchange = function(){ lss('resume', $('resume').checked); };
+  if (!$('key').value) $('setup').open = true;
+
+  // ---- 본문 (AI가 보는 글) ----
+  var rowEl = {};
+  P.rows.forEach(function(r){
+    var p = doc.createElement('p'); p.className = r.h ? 'h' : ''; p.textContent = '[r' + r.r + '] ' + r.t; rowEl[r.r] = p; $('paper').appendChild(p);
+  });
+  var PAPER_TEXT = P.rows.map(function(r){ return '[r' + r.r + '] ' + (r.h ? '## ' : '') + r.t; }).join('\n');
+
+  // ---- 듣기 (듣기 시험과 같은 파일·시간표) ----
+  var au = $('au'); au.src = P.audio;
+  function sentAt(t){ var lo = 0, hi = S.length - 1; while (lo < hi){ var m = (lo + hi + 1) >> 1; if (S[m].t <= t + 0.05) lo = m; else hi = m - 1; } return lo; }
+  var curSent = -1;
+  au.addEventListener('timeupdate', function(){
+    var i = sentAt(au.currentTime);
+    $('l-t').textContent = fmt(au.currentTime) + ' / ' + fmt(TL.duration);
+    if (i !== curSent){
+      curSent = i; $('l-now').textContent = S[i].text; $('l-sec').textContent = (TL.sections[S[i].sec] || {}).title || '';
+      Object.keys(rowEl).forEach(function(k){ rowEl[k].classList.remove('cur'); });
+      if (rowEl[S[i].r]) rowEl[S[i].r].classList.add('cur');
+    }
+    if (Date.now() % 5000 < 300) lss('pos', au.currentTime);
+  });
+  au.addEventListener('loadedmetadata', function(){ var p = ls('pos', 0); if (p) au.currentTime = p; });
+  au.addEventListener('play', function(){ $('l-pp').textContent = '⏸ 멈춤'; });
+  au.addEventListener('pause', function(){ $('l-pp').textContent = '▶ 듣기'; lss('pos', au.currentTime); });
+  $('l-pp').onclick = function(){ if (au.paused) au.play().catch(function(e){ log('듣기 재생 실패: ' + e.name); }); else au.pause(); };
+  $('l-back').onclick = function(){ au.currentTime = Math.max(0, au.currentTime - 15); };
+  $('l-fwd').onclick = function(){ au.currentTime = au.currentTime + 15; };
+  if ('mediaSession' in navigator){
+    try { navigator.mediaSession.metadata = new MediaMetadata({title: P.title, artist: 'Narani 대화 시험', artwork: [{src: 'icon-512.png', sizes: '512x512', type: 'image/png'}]}); } catch (e) {}
+    navigator.mediaSession.setActionHandler('play', function(){ au.play(); });
+    navigator.mediaSession.setActionHandler('pause', function(){ au.pause(); });
+  }
+
+  // ---- 대화 (OpenAI realtime, WebRTC) ----
+  var RT = null;   // {pc, dc, mic, started, usage, cost, lastAct, tStop, wasPlaying, resumeAt}
+  var PRICE = {   // 100만 토큰당 달러 — mini는 공식 가격표(2026-10), 2.1은 어림
+    'gpt-realtime-2.1-mini': {ti: 0.6, tic: 0.06, ai: 10, aic: 0.3, ao: 20, to: 2.4},
+    'gpt-realtime-2.1': {ti: 4, tic: 0.4, ai: 32, aic: 0.4, ao: 64, to: 16}
+  };
+  var TOOLS = [
+    {type: 'function', name: 'jump_to', description: '근거가 되는 본문 행을 화면에 표시한다. 답의 근거가 특정 행에 있으면 부른다.',
+     parameters: {type: 'object', properties: {row: {type: 'integer', description: '행 번호 (rN의 N)'}}, required: ['row']}},
+    {type: 'function', name: 'read_rows', description: '본문 행의 글을 다시 읽어 온다(정확히 인용하거나 확인할 때).',
+     parameters: {type: 'object', properties: {from: {type: 'integer'}, to: {type: 'integer'}}, required: ['from', 'to']}},
+    {type: 'function', name: 'resume_listening', description: '대화를 끝내고 논문 듣기를 이어 간다. 사용자가 계속 읽어 달라·다시 듣겠다·그만 묻겠다고 하면 부른다. 특정 행부터 읽어 달라고 하면 row를 준다.',
+     parameters: {type: 'object', properties: {row: {type: 'integer'}}}},
+  ];
+  function setState(cls, text){ $('state').className = cls; $('st').textContent = text; }
+  function bubble(kind, text){ var d = doc.createElement('div'); d.className = 'm ' + kind; d.textContent = text; $('chat').appendChild(d); d.scrollIntoView({block: 'nearest'}); return d; }
+  function send(obj){ if (RT && RT.dc && RT.dc.readyState === 'open') RT.dc.send(JSON.stringify(obj)); }
+  function where(){
+    var i = sentAt(au.currentTime || 0), s = S[i] || {};
+    return '사용자는 방금 [r' + s.r + '] 부근을 듣고 있었다 (섹션: ' + ((TL.sections[s.sec] || {}).title || '') + ', 문장: "' + (s.text || '') + '").';
+  }
+  function instructions(){
+    return '너는 사용자가 차에서 듣고 있는 논문에 대해 음성으로 답하는 조수다. 사용자는 운전 중이라 화면을 보지 못한다.\n'
+      + '- 한국어로, 짧고 자연스럽게(보통 2~4문장) 말한다. 목록·표·수식을 읽지 말고 말로 풀어 설명한다.\n'
+      + '- 아래 논문 본문에 근거해 답한다. 본문에 없는 내용이면 그렇다고 말한다.\n'
+      + '- 근거 행이 있으면 jump_to로 그 행을 표시하되, 행 번호는 소리 내어 말하지 않는다.\n'
+      + '- 사용자가 계속 읽어 달라·다시 듣겠다·그만이라고 하면 resume_listening을 부른다(특정 부분부터면 row).\n\n'
+      + '# 논문: ' + P.title + '\n' + PAPER_TEXT + '\n\n# 지금 위치\n' + where();
+  }
+  function addUsage(u){
+    if (!u || !RT) return;
+    var p = PRICE[$('model').value] || PRICE['gpt-realtime-2.1-mini'], id = u.input_token_details || {}, od = u.output_token_details || {};
+    var cached = id.cached_tokens_details || {}, ct = cached.text_tokens || 0, ca = cached.audio_tokens || 0;
+    var c = ((id.text_tokens || 0) - ct) * p.ti + ct * p.tic + ((id.audio_tokens || 0) - ca) * p.ai + ca * p.aic
+      + (od.audio_tokens || 0) * p.ao + (od.text_tokens || 0) * p.to;
+    RT.cost += c / 1e6;
+    RT.tokens += (u.total_tokens || 0);
+    $('m-cost').textContent = '$' + RT.cost.toFixed(3);
+    log('사용량: 입력 ' + (u.input_tokens || 0) + '(캐시 ' + ((id.cached_tokens) || 0) + ') · 출력 ' + (u.output_tokens || 0) + ' · 누적 $' + RT.cost.toFixed(4));
+  }
+  function runTool(name, args, callId){
+    var out = {ok: true};
+    if (name === 'jump_to'){
+      Object.keys(rowEl).forEach(function(k){ rowEl[k].classList.remove('hl'); });
+      var el = rowEl[args.row]; if (el){ el.classList.add('hl'); el.parentNode.parentNode.open = true; el.scrollIntoView({block: 'center'}); }
+      bubble('s', '근거 → [r' + args.row + ']'); log('도구: jump_to ' + args.row);
+    } else if (name === 'read_rows'){
+      out = {text: P.rows.filter(function(r){ return r.r >= args.from && r.r <= args.to; }).map(function(r){ return '[r' + r.r + '] ' + r.t; }).join('\n').slice(0, 6000)};
+      log('도구: read_rows ' + args.from + '–' + args.to);
+    } else if (name === 'resume_listening'){
+      log('도구: resume_listening ' + (args.row != null ? args.row : ''));
+      var at = null;
+      if (args.row != null){ for (var i = 0; i < S.length; i++) if (S[i].r >= args.row){ at = S[i].t; break; } }
+      RT.resumeAt = at; RT.forceResume = true;
+      send({type: 'conversation.item.create', item: {type: 'function_call_output', call_id: callId, output: JSON.stringify({ok: true})}});
+      setTimeout(function(){ endTalk('사용자가 이어 듣기를 원함'); }, 1200);   // 짧은 대답이 나갈 틈
+      return;
+    }
+    send({type: 'conversation.item.create', item: {type: 'function_call_output', call_id: callId, output: JSON.stringify(out)}});
+    send({type: 'response.create'});
+  }
+  var cur = null;
+  function onEvent(ev){
+    var e; try { e = JSON.parse(ev.data); } catch (x) { return; }
+    if (!RT) return;
+    var now = performance.now();
+    switch (e.type){
+      case 'session.created': log('세션 열림'); break;
+      case 'session.updated': log('세션 설정 반영'); break;
+      case 'input_audio_buffer.speech_started': RT.lastAct = now; RT.userSpeaking = true; setState('listening', '듣는 중 — 말씀하세요'); break;
+      case 'input_audio_buffer.speech_stopped': RT.lastAct = now; RT.tStop = now; RT.userSpeaking = false; setState('thinking', '생각 중…'); break;
+      case 'conversation.item.input_audio_transcription.completed': if (e.transcript) bubble('u', e.transcript.trim()); break;
+      case 'response.output_audio_transcript.delta':
+        RT.lastAct = now;
+        if (RT.tStop){ var lat = Math.round(now - RT.tStop); $('m-lat').textContent = '지연 ' + (lat / 1000).toFixed(1) + '초'; log('지연 ' + lat + 'ms'); RT.tStop = 0; }
+        if (!cur) cur = bubble('a', '');
+        cur.textContent += e.delta || ''; setState('speaking', '말하는 중'); break;
+      case 'response.output_audio_transcript.done': cur = null; break;
+      case 'output_audio_buffer.started': RT.botSpeaking = true; RT.lastAct = now; break;
+      case 'output_audio_buffer.stopped': RT.botSpeaking = false; RT.lastAct = now; setState('listening', '듣는 중 — 더 물어보세요'); break;
+      case 'response.done':
+        RT.lastAct = now;
+        var r = e.response || {};
+        addUsage(r.usage);
+        (r.output || []).forEach(function(it){
+          if (it.type === 'function_call'){ var args = {}; try { args = JSON.parse(it.arguments || '{}'); } catch (x) {} runTool(it.name, args, it.call_id); }
+        });
+        if (r.status && r.status !== 'completed') log('응답 상태: ' + r.status + (r.status_details ? ' ' + JSON.stringify(r.status_details).slice(0, 200) : ''));
+        break;
+      case 'error': log('오류: ' + JSON.stringify(e.error || e).slice(0, 300)); bubble('s', '오류: ' + ((e.error && e.error.message) || '')); break;
+    }
+  }
+  async function startTalk(){
+    var key = $('key').value.trim();
+    if (!key){ $('setup').open = true; $('key').focus(); log('키가 없음'); return; }
+    lss('key', key);
+    var wasPlaying = !au.paused;
+    au.pause();
+    RT = {cost: 0, tokens: 0, lastAct: performance.now(), tStop: 0, started: Date.now(), wasPlaying: wasPlaying, resumeAt: null};
+    $('talk').classList.add('on'); $('talk').textContent = '■ 대화 끝내기';
+    setState('', '연결 중…'); bubble('s', '— 대화 시작 —');
+    var model = $('model').value, voice = $('voice').value;
+    try {
+      var t0 = performance.now();
+      RT.mic = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true}});
+      log('마이크 받음 (' + (RT.mic.getAudioTracks()[0] || {}).label + ')');
+      var tok = await fetch('https://api.openai.com/v1/realtime/client_secrets', {method: 'POST',
+        headers: {'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'},
+        body: JSON.stringify({session: {type: 'realtime', model: model, audio: {output: {voice: voice}}}})});
+      if (!tok.ok) throw new Error('단기 키 ' + tok.status + ': ' + (await tok.text()).slice(0, 200));
+      var ek = (await tok.json()).value;
+      var pc = new RTCPeerConnection(); RT.pc = pc;
+      pc.ontrack = function(ev){ var a = $('remote'); a.srcObject = ev.streams[0]; a.play().catch(function(x){ log('답 소리 재생 실패: ' + x.name); }); };
+      pc.onconnectionstatechange = function(){ log('연결 상태: ' + pc.connectionState); if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') endTalk('연결 끊김'); };
+      RT.mic.getTracks().forEach(function(tr){ pc.addTrack(tr, RT.mic); });
+      var dc = pc.createDataChannel('oai-events'); RT.dc = dc;
+      dc.onmessage = onEvent;
+      dc.onopen = function(){
+        log('연결됨 — ' + Math.round(performance.now() - t0) + 'ms');
+        send({type: 'session.update', session: {type: 'realtime', instructions: instructions(), tools: TOOLS, tool_choice: 'auto',
+          audio: {input: {turn_detection: {type: 'semantic_vad'}, transcription: {model: 'gpt-4o-mini-transcribe', language: 'ko'}},
+                  output: {voice: voice}}}});
+        send({type: 'response.create', response: {instructions: '한국어로 아주 짧게 "네, 질문하세요."라고만 말하세요.'}});
+        setState('listening', '듣는 중 — 말씀하세요');
+      };
+      var offer = await pc.createOffer(); await pc.setLocalDescription(offer);
+      var ans = await fetch('https://api.openai.com/v1/realtime/calls', {method: 'POST',
+        headers: {'Authorization': 'Bearer ' + ek, 'Content-Type': 'application/sdp'}, body: offer.sdp});
+      if (!ans.ok) throw new Error('연결 ' + ans.status + ': ' + (await ans.text()).slice(0, 200));
+      await pc.setRemoteDescription({type: 'answer', sdp: await ans.text()});
+    } catch (err){
+      log('대화 시작 실패: ' + (err.name || '') + ' ' + (err.message || err));
+      bubble('s', '시작하지 못했어요: ' + (err.message || err));
+      endTalk('시작 실패');
+    }
+  }
+  function endTalk(why){
+    if (!RT) return;
+    var r = RT; RT = null;
+    try { r.dc && r.dc.close(); } catch (x) {}
+    try { r.pc && r.pc.close(); } catch (x) {}
+    try { r.mic && r.mic.getTracks().forEach(function(tr){ tr.stop(); }); } catch (x) {}
+    $('remote').srcObject = null;
+    $('talk').classList.remove('on'); $('talk').textContent = '🎙 질문하기';
+    var secs = Math.round((Date.now() - r.started) / 1000);
+    setState('', '대기'); bubble('s', '— 대화 끝 (' + why + ' · ' + fmt(secs) + ' · $' + r.cost.toFixed(3) + ') —');
+    log('대화 끝: ' + why + ' · ' + secs + '초 · $' + r.cost.toFixed(4) + ' · 토큰 ' + r.tokens);
+    lss('sessions', ls('sessions', []).concat([{at: Date.now(), secs: secs, cost: r.cost, model: $('model').value}]).slice(-50));
+    if (($('resume').checked && r.wasPlaying) || r.forceResume){
+      if (r.resumeAt != null) au.currentTime = r.resumeAt;
+      au.play().then(function(){ log('이어 듣기 시작'); }, function(x){ log('이어 듣기 실패(▶을 눌러야 함): ' + x.name); bubble('s', '▶ 듣기를 눌러 이어 들으세요'); });
+    }
+  }
+  $('talk').onclick = function(){ if (RT) endTalk('끝내기 단추'); else startTalk(); };
+  setInterval(function(){   // 조용하면 저절로 끝 — 내가 말하거나 AI가 말하는 중이 아닐 때 20초
+    if (!RT || RT.userSpeaking || RT.botSpeaking) return;
+    var sec = Math.round((Date.now() - RT.started) / 1000);
+    $('m-time').textContent = fmt(sec);
+    if (performance.now() - RT.lastAct > 20000) endTalk('20초 조용함');
+  }, 1000);
+
+  // ---- 시험 항목 ----
+  var ITEMS = [
+    '홈 화면 앱에서 마이크 허락이 뜨고 대화가 된다',
+    'CarPlay(또는 블루투스)로 답이 들린다',
+    '차 마이크로 내 말이 들린다(내 말 전사가 맞다)',
+    '답이 스피커로 나와도 AI가 자기 말을 다시 듣지 않는다(반향)',
+    'AI가 말할 때 끼어들면 멈추고 들어 준다',
+    '대답이 충분히 빠르다(지연 표시)',
+    '한국어 답의 내용·발음이 괜찮다',
+    '듣기 → 🎙 → 대화 끝 → 이어 듣기가 자연스럽다',
+    '"계속 읽어 줘"·"그 부분부터 다시 읽어 줘"로 이어 듣기가 된다',
+    '조용하면 저절로 끝난다',
+    '10분쯤 대화한 비용이 괜찮다(위 $ 표시)'
+  ];
+  var CK = ls('check:' + CTX, {});
+  ITEMS.forEach(function(txt, i){
+    var li = doc.createElement('li'); li.appendChild(doc.createTextNode(txt));
+    var st = doc.createElement('span'); st.className = 'st';
+    [['y', '✓ 됨'], ['n', '✗ 안 됨']].forEach(function(p){
+      var b = doc.createElement('button'); b.className = p[0] + (CK[i] === p[0] ? ' on' : ''); b.textContent = p[1];
+      b.onclick = function(){ CK[i] = CK[i] === p[0] ? null : p[0]; lss('check:' + CTX, CK);
+        [].forEach.call(st.children, function(x){ x.classList.toggle('on', CK[i] === x.className.charAt(0)); }); };
+      st.appendChild(b);
+    });
+    li.appendChild(st); $('check').appendChild(li);
+  });
+  $('memo').value = ls('memo:' + CTX, ''); $('memo').oninput = function(){ lss('memo:' + CTX, $('memo').value); };
+  $('copy').onclick = function(){
+    var ses = ls('sessions', []), tot = ses.reduce(function(n, s){ return n + s.cost; }, 0), secs = ses.reduce(function(n, s){ return n + s.secs; }, 0);
+    var lines = ['# Narani 대화 시험 결과', ENV, '모델 ' + $('model').value + ' · 목소리 ' + $('voice').value,
+                 '대화 ' + ses.length + '번 · ' + fmt(secs) + ' · $' + tot.toFixed(3), ''];
+    ITEMS.forEach(function(t, i){ lines.push((i + 1) + '. ' + (CK[i] === 'y' ? '✓' : CK[i] === 'n' ? '✗' : '–') + ' ' + t); });
+    if ($('memo').value.trim()) lines.push('', '메모: ' + $('memo').value.trim());
+    lines.push('', '## 기록 (최근 150줄)'); lines = lines.concat(LOG.slice(-150));
+    var text = lines.join('\n');
+    function done(){ $('copy').textContent = '복사했어요'; setTimeout(function(){ $('copy').textContent = '결과 복사'; }, 1500); }
+    function fallback(){ var t = doc.createElement('textarea'); t.value = text; doc.body.appendChild(t); t.select(); try { doc.execCommand('copy'); done(); } catch (e) {} t.remove(); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
+  };
+  $('reset').onclick = function(){
+    if (!confirm('이 화면의 결과와 기록을 지울까요? (키는 그대로)')) return;
+    LOG = []; lss('log', LOG); CK = {}; lss('check:' + CTX, CK); lss('memo:' + CTX, ''); lss('sessions', []); location.reload();
+  };
+})();
+</script>
+</body></html>
