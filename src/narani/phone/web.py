@@ -99,7 +99,13 @@ _PWA_CSS = """
   font: inherit; padding: 6px 10px; min-height: 32px; }
 .lib-bar button:disabled { opacity: .55; }
 .badge.off { border-style: dashed; }
-.li-title .dl { color: var(--muted); font-weight: 400; font-size: .8em; margin-left: 4px; }
+.li-by { display: flex; gap: 5px; color: var(--muted); font-size: .8em; margin-top: 6px; white-space: nowrap; min-width: 0; }
+.li-by .who { overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.li-by .sep, .li-by .when { flex: none; }
+.li-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.li-tags .tag { display: inline-flex; align-items: center; gap: 4px; white-space: nowrap; font-size: .75em; color: var(--muted);
+  border: 1px solid var(--line); border-radius: 999px; padding: 1px 9px; font-variant-numeric: tabular-nums; }
+.li-tags .tag.au { color: var(--accent); border-color: currentColor; }
 #loading { color: var(--muted); text-align: center; margin: 30vh 0 0; font-size: .95em; }
 #lib .empty { color: var(--muted); font-size: .9em; padding: 12px 2px; }
 .lib-foot { color: var(--muted); font-size: .8em; text-align: center; margin: 8px 0 24px; }
@@ -186,7 +192,6 @@ ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3p
 .js.listening .row.tts-off { opacity: .35; transition: opacity .2s; }   /* 음성에 없는 행 — 듣는 동안 흐리게 */
 .rng label { display: block; margin: 6px 0; }
 .rng-secs { margin: 4px 0 0 22px; max-height: 32vh; overflow-y: auto; font-size: .9em; }
-.li-meta .au { margin-left: 6px; }
 /* 새 판 알림 — 읽는 중일 때만 (목록에선 바로 다시 연다) */
 #upd { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 60px); transform: translateX(-50%); z-index: 20;
   display: none; align-items: center; gap: 8px; background: var(--fg); color: var(--bg); border-radius: 999px;
@@ -195,7 +200,6 @@ ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3p
 #upd button { border: 0; border-radius: 999px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; padding: 5px 12px; }
 /* 오프라인 — 받아 두지 않은 논문은 흐리게 */
 #lib-list li.na a { opacity: .45; }
-.li-meta .na-t { margin-left: 6px; }
 .lib-bar label.auto { display: inline-flex; align-items: center; gap: 6px; color: var(--fg); }
 .lib-bar label.auto input { width: 18px; height: 18px; margin: 0; }
 """
@@ -490,15 +494,28 @@ _APP_JS = r"""
       var off = have[e.file] === e.hash; if (off) n++;
       var li = el('li', OFFLINE && !have[e.file] ? 'na' : ''), a = el('a');
       a.href = '#!' + fileId(e); a.setAttribute('data-open', fileId(e));
-      var title = el('span', 'li-title', e.title_ko || e.title);
-      if (off) title.appendChild(el('span', 'dl', '⤓'));
-      a.appendChild(title);
+      // 카드 — 제목 / 원제 / 저자·연도·학회 한 줄(넘치면 …) / 작은 꼬리표 줄(번역·음성 길이·받아 둠)
+      a.appendChild(el('span', 'li-title', e.title_ko || e.title));
       if (e.title_ko) a.appendChild(el('span', 'li-en', e.title));
-      var meta = el('span', 'li-meta', [e.authors, e.year, e.venue].filter(function(x){ return x; }).join(' · '));
-      meta.appendChild(el('span', 'badge', e.has_ko ? md4T('번역') : md4T('원문만')));
-      if (li.className === 'na') meta.appendChild(el('span', 'na-t', md4T('받아 두지 않음')));
-      if (audioOf(e)) meta.appendChild(el('span', 'au', '🎧 ' + fmtT(e.audio.duration)));
-      a.appendChild(meta); li.appendChild(a); libList.appendChild(li);
+      var when = [e.year, e.venue].filter(function(x){ return x; }).join(' · ');   // 저자만 줄이고 연도·학회는 늘 보이게
+      if (e.authors || when){
+        var by = el('span', 'li-by');
+        if (e.authors) by.appendChild(el('span', 'who', e.authors));
+        if (e.authors && when) by.appendChild(el('span', 'sep', '·'));
+        if (when) by.appendChild(el('span', 'when', when));
+        a.appendChild(by);
+      }
+      var tags = el('span', 'li-tags');
+      tags.appendChild(el('span', 'tag', e.has_ko ? md4T('번역') : md4T('원문만')));
+      if (audioOf(e)){
+        var au = el('span', 'tag au');
+        au.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 0 0-9 9v6a3 3 0 0 0 3 3h1a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H5v-1a7 7 0 0 1 14 0v1h-2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1a3 3 0 0 0 3-3v-6a9 9 0 0 0-9-9z"/></svg>';
+        au.appendChild(doc.createTextNode(fmtT(e.audio.duration)));
+        tags.appendChild(au);
+      }
+      if (off) tags.appendChild(el('span', 'tag dl', '⤓'));   // 이 기기에 받아 둔 논문
+      if (li.className === 'na') tags.appendChild(el('span', 'tag na-t', md4T('받아 두지 않음')));
+      a.appendChild(tags); li.appendChild(a); libList.appendChild(li);
     });
     if (INDEX && !INDEX.papers.length) libList.appendChild(el('li', 'empty', md4T('올린 논문이 없어요. 데스크톱 앱에서 모바일로 보내 주세요.')));
     libBar.innerHTML = '';
