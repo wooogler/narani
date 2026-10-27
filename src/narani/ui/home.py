@@ -1047,6 +1047,12 @@ def build_home(state: dict) -> None:
         ui.notify(msg, type="positive")
         mobile_changed()
 
+    async def mobile_dropped(args) -> None:  # noqa: ANN001 — {paper, coll}
+        """논문 카드를 사이드바 '모바일'에 놓음 — 그 논문을 모바일로 보낸다(이미 있으면 새로 맞춘다)."""
+        root = str((args or {}).get("paper") or "") if isinstance(args, dict) else str(args or "")
+        if root and root in data["by_root"]:
+            await send_to_mobile([Path(root)])
+
     async def remove_from_mobile(roots: list[Path]) -> None:
         """모바일에서 빼기 — 모바일에서 단 메모는 먼저 이 컴퓨터에 합친다. 논문 파일은 그대로."""
         roots = [r for r in roots if Path(r).stem in data["mobile"]]
@@ -1230,6 +1236,11 @@ def build_home(state: dict) -> None:
             row.on("drop", lambda e, p=value: row_dropped(e.args, p), js_handler=_ROW_DROP_JS)
             if depth:  # 들여 쓴 행은 이름이 잘릴 수 있어 'SCALE / 리뷰' 경로를 툴팁으로
                 row.tooltip(path_of(value))
+        elif value == MOBILE:  # 카드를 놓으면 모바일로 보낸다 (컬렉션 행 끌기는 받지 않는다)
+            row.props("data-drop")
+            row.on("dragover", js_handler=_ROW_DRAGOVER_JS)
+            row.on("dragleave", js_handler=_ROW_DRAGLEAVE_JS)
+            row.on("drop", lambda e: mobile_dropped(e.args), js_handler=_ROW_DROP_JS)
         if not on:
             row.on("click", lambda _, v=value: pick_scope(v))
 

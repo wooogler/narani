@@ -980,11 +980,9 @@
  "{date}에 올린 목록": "List sent {date}",
  "오프라인 {n}/{m}편": "{n}/{m} offline",
  "새로 고침": "Refresh",
- "모두 오프라인에 저장": "Save all offline",
  "{n}편은 받지 못했어요": "Couldn't download {n}",
  "저장 중… {n}/{m}": "Saving… {n}/{m}",
  "연결된 저장소가 없어요.": "No storage connected.",
- "오프라인 — 받아 둔 목록이에요": "Offline — showing the saved list",
  "목록을 불러오지 못했어요. 인터넷 연결을 확인하세요.": "Couldn't load the list. Check your internet connection.",
  "이 논문을 받지 못했어요. 인터넷에 연결된 뒤 다시 열어 보세요.": "Couldn't download this paper. Open it again once you're online.",
  "Google Drive에 연결해 데스크톱에서 보낸 논문을 받아요.": "Connect Google Drive to get the papers you sent from the desktop.",
@@ -1100,5 +1098,11 @@
  "빈 답이 왔어요": "Got an empty answer",
  "답을 받지 못했어요: {e}": "Couldn't get an answer: {e}",
  "번역으로 보기": "Show translation",
- "원문으로 보기": "Show original"
+ "원문으로 보기": "Show original",
+ "오프라인 — 받아 둔 논문만 열려요": "Offline — only saved papers open",
+ "받아 두지 않음": "Not saved",
+ "오프라인 모드 — 모두 받아 두기": "Offline mode — save all",
+ "메모만": "Notes only",
+ "아직 표시한 문장이 없어요. 본문의 문장을 누르면 색을 칠하거나 메모를 달 수 있어요.": "Nothing marked yet. Tap a sentence in the text to highlight it or add a note.",
+ "저장소에 연결해야 하이라이트·메모를 남길 수 있어요.": "Connect a store to leave highlights and notes."
 }

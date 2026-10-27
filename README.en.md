@@ -303,6 +303,7 @@ Read papers translated on the desktop on your phone or tablet, and exchange high
 1. On Home, tick the papers to send and click **Send to mobile**.
 2. The first time, a Google sign-in opens in your browser. Sign in and allow access; a `Narani` folder is created in your Drive and the papers are uploaded. (You can also connect first with **Mobile → Connect Google Drive** in the sidebar.)
 3. To send many at once, use **⋯ → Send all translated papers in this list to mobile** at the top right of the list.
+4. You can also drag a paper card onto **Mobile** in the left sidebar.
 
 Sent papers get a 📱 mark on their card and are listed under **Mobile** in the sidebar. Its header shows the connected account, paper count, size, last sync, **Sync now** and **Disconnect**.
 
@@ -327,10 +328,11 @@ Sent papers get a 📱 mark on their card and are listed under **Mobile** in the
 
 ### 3. Reading on the phone
 
-- **List** — the papers you sent from the desktop. Tap **Save all offline** to read without internet (planes, subways). **Refresh** reloads the list from Drive.
+- **List** — the papers you sent from the desktop. **Refresh** reloads the list from Drive.
+- **Offline mode** — turn on **Offline mode — save all** above the list to keep every paper and its desktop highlights and notes on the phone; each time the app opens it fetches only what's new or changed (planes, subways). Papers you've opened are kept either way. Without internet the list says so, and papers that aren't saved are dimmed.
 - **Top bar** — **‹** back to the list. Tap the **title** to slide out the **table of contents** from the left, with the current section marked. **Translation ⇄** switches between translation and source; **A** changes the text size.
 - **Tap a sentence** and its **counterpart** (the source, if you're reading the translation) slides up from the bottom. Tap a citation to see the reference.
-- Expand **Highlights & notes** at the top of the paper for a list; tap an item to jump there.
+- **Your notes** — the **Notes** tab of the **✦** button at the bottom right lists this paper's highlights and notes in reading order (filter with **Notes only**); tap one to jump there. The number on the button is the count.
 
 ### 4. Highlights, notes and sync
 
@@ -343,7 +345,7 @@ Sent papers get a 📱 mark on their card and are listed under **Mobile** in the
 
 <img src="docs/images/en/mobile-agent.png" width="200" align="right" alt="Mobile agent — AI key stored on this device">
 
-The **✦** button at the bottom right asks about the paper you're reading. Tap a source like [r12] in the answer to jump to that paragraph.
+The **Ask** tab of the **✦** button at the bottom right asks about the paper you're reading. Tap a source like [r12] in the answer to jump to that paragraph.
 
 - The first time, enter **your own AI API key** (OpenAI, Anthropic or Gemini) **on that device**. The key is stored only in that device's browser.
 - When you ask, the paper's text, your highlights and notes, and the conversation go directly to the AI service you chose, billed to that key's account.

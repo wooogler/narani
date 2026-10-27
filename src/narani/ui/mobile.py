@@ -129,6 +129,11 @@ def _localize_images(md: str) -> str:
     return _HTML_IMG_RE.sub(sub, _MD_IMG_RE.sub(sub, md))
 
 
+# 수식은 보통 상자(span.mx)에 싸서 그 상자가 가로로 스크롤하게 한다 — iOS Safari는 <math>에 준
+# max-width·overflow를 따르지 않아, 화면보다 긴 수식(통계 보고 등)이 페이지 전체를 가로로 늘린다.
+_MATH_RE = re.compile(r"<math\b.*?</math>", re.S)
+
+
 def _render(md: str, prefix: str, images: _Images, shared: bool = False) -> str:
     """마크다운 블록 → HTML. id·내부 링크에 접두어를 붙여 여러 논문·두 언어가 한 문서에 공존하게 한다.
 
@@ -139,7 +144,7 @@ def _render(md: str, prefix: str, images: _Images, shared: bool = False) -> str:
     양쪽 셀의 링크가 모두 이리로 와야 하므로 id마다 원문용 별칭 앵커를 하나 더 심는다 —
     JS 없이(iOS 미리보기) 인용을 눌러도 참고문헌으로 이동하게.
     """
-    out = _LINE_ATTR_RE.sub("", mdrender.render(_localize_images(md)))
+    out = _MATH_RE.sub(lambda m: f'<span class="mx">{m.group(0)}</span>', _LINE_ATTR_RE.sub("", mdrender.render(_localize_images(md))))
     if shared:
         en_prefix = prefix.replace("-ko-", "-en-")
         out = _TAG_ID_RE.sub(
@@ -336,10 +341,11 @@ main { max-width: 720px; margin: 0 auto; padding: 0 16px 45vh; }
 .cell th, .cell td { border: 1px solid var(--line); padding: 4px 8px; vertical-align: top; }
 .cell pre { overflow-x: auto; font-size: .82em; background: var(--card); padding: 10px; border-radius: 8px; }
 .cell code { font-size: .9em; }
-.cell math[display=block] { display: block; overflow-x: auto; overflow-y: hidden; margin: .6em 0; }
-/* 인라인 수식은 줄을 바꾸지 못한다 — 화면보다 길면 페이지 전체가 가로로 늘어나 아래 시트까지 잘린다 */
-.cell math:not([display=block]) { display: inline-block; max-width: 100%; overflow-x: auto; overflow-y: hidden;
-  vertical-align: middle; }
+/* 수식은 줄을 바꾸지 못한다 — 화면보다 길면 감싼 상자(.mx)만 가로로 스크롤한다(_wrap_math) */
+.cell .mx { display: inline-block; max-width: 100%; overflow-x: auto; overflow-y: hidden; vertical-align: middle; }
+.cell .math.block .mx { display: block; margin: .6em 0; }
+/* 그래도 무언가 넘치면 본문 밖으로는 못 나가게 — 페이지가 가로로 밀리지 않는다 */
+main { overflow-x: clip; }
 .cell ul, .cell ol { padding-left: 1.3em; margin: 0 0 .9em; }
 .cell a[href*="-ref-"], .cell sup a { text-decoration: none; border-bottom: 1px dotted currentColor; }
 .cell sup { line-height: 0; }
