@@ -77,7 +77,7 @@ a.figref { color: var(--accent); text-decoration: underline dotted; text-underli
   display: none; align-items: center; gap: 6px; border: 0; border-radius: 999px; background: var(--fg); color: var(--bg);
   font: inherit; font-size: .9em; font-weight: 600; padding: 9px 16px; box-shadow: 0 6px 18px rgba(0,0,0,.22); }
 .js.reading #jback.on { display: flex; }
-.js.reading.listening #jback { bottom: calc(130px + env(safe-area-inset-bottom)); }
+.js.reading.listening #jback { bottom: calc(212px + env(safe-area-inset-bottom)); }
 .js.talking #jback { display: none !important; }
 #tocd li.here a { background: var(--hl2); font-weight: 600; box-shadow: inset 3px 0 0 var(--accent); }
 #fab { position: fixed; right: 16px; bottom: calc(18px + env(safe-area-inset-bottom)); z-index: 8; width: 52px; height: 52px;
@@ -169,19 +169,32 @@ ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3p
   box-shadow: 0 4px 14px rgba(0,0,0,.14); }
 .js.reading.has-audio:not(.listening) #lis { display: grid; place-items: center; }
 #player { position: fixed; left: 0; right: 0; bottom: 0; z-index: 9; display: none; background: var(--card);
-  border-top: 1px solid var(--line); box-shadow: 0 -6px 20px rgba(0,0,0,.1); padding: 6px 12px calc(6px + env(safe-area-inset-bottom)); }
+  border-top: 1px solid var(--line); box-shadow: 0 -6px 20px rgba(0,0,0,.1); padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); }
 .js.reading.listening #player { display: block; }
-.js.reading.listening #fab.rd { bottom: calc(118px + env(safe-area-inset-bottom)); }
-.js.reading.listening main { padding-bottom: 130px; }
-.pl-top { display: flex; gap: 8px; font-size: .8em; color: var(--muted); }
-#pl-sec { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.pl-t { white-space: nowrap; font-variant-numeric: tabular-nums; }
-#pl-seek { width: 100%; margin: 4px 0 2px; }
-.pl-ctl { display: flex; justify-content: space-between; align-items: center; }
-.pl-ctl button { border: 0; background: none; color: var(--fg); font: inherit; font-size: 1em; min-width: 36px; padding: 6px 4px; }
-.pl-ctl button svg { display: block; margin: 0 auto; }
-#pl-pp { width: 46px; height: 46px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 1.15em; }
-#pl-range, #pl-spd { font-size: .8em; color: var(--muted); }
+.js.reading.listening #fab.rd { bottom: calc(200px + env(safe-area-inset-bottom)); }
+.js.reading.listening main { padding-bottom: 214px; }
+/* 재생 막대 — 차 안·걸으면서 누르기 쉽게 크게: 단추는 48px 이상, 재생 64px, 막대 손잡이 26px */
+.pl-top { display: flex; gap: 4px; align-items: center; font-size: .92em; color: var(--muted); }
+.pl-top button { border: 0; background: none; color: var(--muted); font: inherit; font-weight: 600; min-width: 44px; min-height: 40px;
+  padding: 0 8px; border-radius: 10px; }
+.pl-top button:active { background: var(--hl2); }
+#pl-x { font-size: 1.35em; font-weight: 400; }
+#pl-sec { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; text-align: center; color: var(--fg); }
+.pl-t { display: flex; justify-content: space-between; margin: -4px 4px 2px; font-size: .8em; color: var(--muted); font-variant-numeric: tabular-nums; }
+#pl-seek { -webkit-appearance: none; appearance: none; width: 100%; height: 32px; margin: 2px 0; background: transparent; touch-action: none; }
+#pl-seek::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background: var(--line); }
+#pl-seek::-webkit-slider-thumb { -webkit-appearance: none; width: 26px; height: 26px; margin-top: -10px; border-radius: 50%;
+  background: var(--accent); border: 3px solid var(--card); box-shadow: 0 1px 4px rgba(0,0,0,.3); }
+#pl-seek::-moz-range-track { height: 6px; border-radius: 3px; background: var(--line); }
+#pl-seek::-moz-range-thumb { width: 22px; height: 22px; border-radius: 50%; background: var(--accent); border: 3px solid var(--card); }
+.pl-ctl { display: flex; justify-content: space-evenly; align-items: center; }
+.pl-ctl button { border: 0; background: none; color: var(--fg); font: inherit; font-size: 1.2em; font-weight: 600; min-width: 56px; min-height: 56px;
+  padding: 4px; border-radius: 12px; display: grid; place-items: center; }
+.pl-ctl button:active { background: var(--hl2); }
+.pl-ctl button svg { width: 30px; height: 30px; }
+#pl-pp { flex: none; width: 64px; height: 64px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 1.6em; }
+#pl-pp:active { background: var(--accent); filter: brightness(.9); }
+#pl-range, #pl-spd { font-size: .95em; }
 ::highlight(tts) { background-color: rgba(255, 196, 0, .45); }
 /* 말로 묻기 — 막대의 🎙, 대화 중 상태 막대(재생 막대 위·없으면 아래) */
 /* 듣는 중엔 떠 있는 💬 단추가 '🎙 묻기' 알약으로 바뀐다(메모·질문하기 창은 막대를 닫고) */
@@ -194,7 +207,7 @@ ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3p
 #talkbar { position: fixed; left: 12px; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 13; display: none;
   align-items: center; gap: 8px; background: var(--fg); color: var(--bg); border-radius: 16px; padding: 10px 10px 10px 14px;
   box-shadow: 0 8px 24px rgba(0,0,0,.25); font-weight: 600; }
-.js.reading.listening #talkbar { bottom: calc(126px + env(safe-area-inset-bottom)); }
+.js.reading.listening #talkbar { bottom: calc(200px + env(safe-area-inset-bottom)); }
 #talkbar.on { display: flex; }
 #talkbar .lv { width: 12px; height: 12px; border-radius: 50%; background: #9a968e; flex: none; }
 #talkbar.listening .lv { background: #4caf50; animation: tkPulse 1.2s infinite; } #talkbar.speaking .lv { background: #6aa0ff; }
@@ -2198,13 +2211,13 @@ def _index_html(cfg: dict) -> str:
         "<button id=\"lis\" class=\"rd\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" aria-hidden=\"true\">"
         "<path fill=\"currentColor\" d=\"M12 3a9 9 0 0 0-9 9v6a3 3 0 0 0 3 3h1a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H5v-1a7 7 0 0 1"
         " 14 0v1h-2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1a3 3 0 0 0 3-3v-6a9 9 0 0 0-9-9z\"/></svg></button>"
-        "<div id=\"player\" role=\"region\"><div class=\"pl-top\"><span id=\"pl-sec\"></span>"
-        "<span class=\"pl-t\"><span id=\"pl-cur\">0:00</span> / <span id=\"pl-dur\">0:00</span></span>"
-        "</div>"
+        "<div id=\"player\" role=\"region\"><div class=\"pl-top\"><button id=\"pl-range\"></button><span id=\"pl-sec\"></span>"
+        "<button id=\"pl-spd\">1×</button><button id=\"pl-x\">×</button></div>"
         "<input type=\"range\" id=\"pl-seek\" min=\"0\" step=\"1\" value=\"0\">"
-        "<div class=\"pl-ctl\"><button id=\"pl-range\"></button><button id=\"pl-prev\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M6 6h2v12H6zm3.5 6 8.5 6V6z\"/></svg></button>"
+        "<div class=\"pl-t\"><span id=\"pl-cur\">0:00</span><span id=\"pl-dur\">0:00</span></div>"
+        "<div class=\"pl-ctl\"><button id=\"pl-prev\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M6 6h2v12H6zm3.5 6 8.5 6V6z\"/></svg></button>"
         "<button id=\"pl-back\">−15</button><button id=\"pl-pp\">▶</button><button id=\"pl-fwd\">+15</button>"
-        "<button id=\"pl-next\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M6 18l8.5-6L6 6v12zM16 6v12h2V6z\"/></svg></button><button id=\"pl-spd\">1×</button><button id=\"pl-x\">×</button></div>"
+        "<button id=\"pl-next\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M6 18l8.5-6L6 6v12zM16 6v12h2V6z\"/></svg></button></div>"
         "<audio id=\"pl-au\" preload=\"none\"></audio></div>"
         "<button id=\"jback\"><span aria-hidden=\"true\">↩</span><span id=\"jback-t\"></span></button>"
         "<button id=\"fab\" class=\"rd\"><span id=\"fab-n\"></span><svg class=\"fab-c\" viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" aria-hidden=\"true\">"
