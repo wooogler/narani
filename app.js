@@ -523,6 +523,8 @@
   function sourceProblem(err){
     // 저장소 오류 → 목록 위에 보일 안내와 단추
     var kind = err && err.kind;
+    // 꺼진 망에서는 다시 연결도 못 한다 — 승인이 만료됐어도 오프라인 안내만
+    if (navigator.onLine === false) return {text: md4T('오프라인 — 받아 둔 논문만 열려요')};
     if (source && source.drive && (kind === 'auth' || authError)){
       var first = true;
       try { first = !localStorage.getItem('narani:gconn'); } catch (e) {}
@@ -553,7 +555,7 @@
   function pruneCache(ix){
     // 목록에서 빠진 논문의 캐시는 지운다 (폰 저장 공간)
     var keep = {}, keys = {}, m = haveMap(), k;
-    ix.papers.forEach(function(e){ keep[e.file] = 1; keys[e.key] = 1; });
+    ix.papers.forEach(function(e){ keep[e.file] = 1; keep['notes/' + fileId(e) + '.json'] = 1; keys[e.key] = 1; });
     for (k in m) if (!keep[k]) setHave(k, null);
     // 데스크톱이 모바일에서 뺀 논문 — 그 논문의 폰 기록도 지운다(다시 올리면 Drive에 주인 없는 파일이 남는다).
     // 데스크톱은 빼기 전에 올라와 있던 폰 기록을 합쳐 두었다.
@@ -584,6 +586,16 @@
       }, function(err){ if (c) return c; throw err; });
     });
   }
+  function getNotes(e){   // 데스크톱이 올린 하이라이트·메모 — 받아 둔 것과 지문(__h)이 같으면 캐시로
+    if (!e.notes_hash) return Promise.resolve(null);
+    var name = 'notes/' + fileId(e) + '.json';
+    return cacheGet(name).then(function(c){
+      if (c && c.__h === e.notes_hash) return c;
+      if (!source) return c;
+      return source.get(name).then(function(n){ n.__h = e.notes_hash; cachePut(name, n); return n; },
+                                   function(){ return c; });
+    });
+  }
 
   // ---- 목록 ----
   function fileId(e){ return String(e.file || '').replace(/^papers\//, '').replace(/\.json$/, ''); }
@@ -603,7 +615,7 @@
     doc.getElementById('lib-h').textContent = INDEX ? md4T('논문 {n}편', {n: INDEX.papers.length}) : APP;
     (INDEX ? INDEX.papers : []).forEach(function(e){
       var off = have[e.file] === e.hash; if (off) n++;
-      var li = el('li'), a = el('a');
+      var li = el('li', OFFLINE && !have[e.file] ? 'na' : ''), a = el('a');
       a.href = '#!' + fileId(e); a.setAttribute('data-open', fileId(e));
       var title = el('span', 'li-title', e.title_ko || e.title);
       if (off) title.appendChild(el('span', 'dl', '⤓'));
@@ -611,33 +623,55 @@
       if (e.title_ko) a.appendChild(el('span', 'li-en', e.title));
       var meta = el('span', 'li-meta', [e.authors, e.year, e.venue].filter(function(x){ return x; }).join(' · '));
       meta.appendChild(el('span', 'badge', e.has_ko ? md4T('번역') : md4T('원문만')));
+      if (li.className === 'na') meta.appendChild(el('span', 'na-t', md4T('받아 두지 않음')));
       a.appendChild(meta); li.appendChild(a); libList.appendChild(li);
     });
     if (INDEX && !INDEX.papers.length) libList.appendChild(el('li', 'empty', md4T('올린 논문이 없어요. 데스크톱 앱에서 모바일로 보내 주세요.')));
     libBar.innerHTML = '';
     var info = [];
     if (INDEX && INDEX.updated) info.push(md4T('{date}에 올린 목록', {date: fmtDate(INDEX.updated)}));
-    if (INDEX && INDEX.papers.length) info.push(md4T('오프라인 {n}/{m}편', {n: n, m: INDEX.papers.length}));
+    if (SAVING) info.push(md4T('저장 중… {n}/{m}', {n: SAVING.done, m: SAVING.total}));
+    else if (INDEX && INDEX.papers.length) info.push(md4T('오프라인 {n}/{m}편', {n: n, m: INDEX.papers.length}));
+    if (OFFLINE && !note) note = md4T('오프라인 — 받아 둔 논문만 열려요');
     if (note) info.push(note);
     libBar.appendChild(el('span', 'grow', info.join(' · ')));
     if (source){
       var re = el('button', '', md4T('새로 고침')); re.onclick = function(){ loadIndex(true); };
       libBar.appendChild(re);
     }
-    if (INDEX && n < INDEX.papers.length && source){
-      var all = el('button', '', md4T('모두 오프라인에 저장')); all.onclick = function(){ saveAll(all); };
-      libBar.appendChild(all);
+    if (INDEX && INDEX.papers.length && source){
+      // 오프라인 모드 — 켜 두면 모든 논문(과 데스크톱의 하이라이트·메모)을 받아 두고, 목록을 새로 받을 때마다
+      // 새로 올라온·바뀐 것만 더 받는다. 끄면 더 받지 않을 뿐 받아 둔 것은 그대로.
+      var lab = el('label', 'auto'), cb = el('input');
+      cb.type = 'checkbox'; cb.checked = autoSave();
+      cb.onchange = function(){
+        try { localStorage.setItem('narani:auto', cb.checked ? '1' : '0'); } catch (e) {}
+        if (cb.checked) saveOffline();
+      };
+      lab.appendChild(cb); lab.appendChild(doc.createTextNode(md4T('오프라인 모드 — 모두 받아 두기')));
+      libBar.appendChild(lab);
     }
   }
-  function saveAll(btn){
-    var list = INDEX.papers.slice(), total = list.length, done = 0, failed = 0;
+  function autoSave(){ try { return localStorage.getItem('narani:auto') === '1'; } catch (e) { return false; } }
+  var SAVING = null, OFFLINE = false;
+  function saveOffline(){
+    if (!INDEX || !source || SAVING || OFFLINE) return;
+    var have = haveMap(), todo = INDEX.papers.filter(function(e){ return have[e.file] !== e.hash; }), failed = 0;
+    var all = INDEX.papers.slice();
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
-    btn.disabled = true;
+    SAVING = {done: 0, total: todo.length};
+    if (todo.length) renderLib();
     (function next(){
-      if (!list.length){ renderLib(failed ? md4T('{n}편은 받지 못했어요', {n: failed}) : ''); return; }
-      var e = list.shift();
+      if (!todo.length){   // 논문을 다 받았으면 하이라이트·메모 파일 — 바뀐 것만 받는다
+        Promise.all(all.map(function(e){ return getNotes(e).catch(function(){}); })).then(function(){
+          var had = SAVING.total; SAVING = null;
+          if (had) renderLib(failed ? md4T('{n}편은 받지 못했어요', {n: failed}) : '');
+        });
+        return;
+      }
+      var e = todo.shift();
       getPaper(e).catch(function(){ failed++; }).then(function(){
-        done++; btn.textContent = md4T('저장 중… {n}/{m}', {n: done, m: total}); next();
+        SAVING.done++; if (lib && !lib.classList.contains('off')) renderLib(); next();
       });
     })();
   }
@@ -658,10 +692,13 @@
         return;
       }
       return source.get('index.json').then(function(ix){
+        OFFLINE = false;
         cachePut('index.json', ix); setUiLang(ix.ui_lang); pruneCache(ix); showIndex(ix); flushPending();
+        if (autoSave()) saveOffline();
       }, function(err){
-        var pr = sourceProblem(err), offline = !pr.button && err && !err.kind;
-        if (cached) showIndex(cached, offline ? md4T('오프라인 — 받아 둔 목록이에요') : pr.text, pr);
+        var pr = sourceProblem(err);
+        OFFLINE = navigator.onLine === false || (!pr.button && !!err && !err.kind);   // 망 오류(인증·폴더 문제가 아니라)
+        if (cached) showIndex(cached, OFFLINE ? '' : pr.text, pr);
         else { libBar.innerHTML = ''; libBar.appendChild(el('span', 'grow', pr.text)); addAct(pr); }
       });
     });
@@ -724,6 +761,7 @@
     var a = e.target.closest ? e.target.closest('a[data-open]') : null;
     if (!a) return;
     e.preventDefault(); e.stopPropagation();
+    if (a.parentNode.classList.contains('na')) return;
     openPaper(a.getAttribute('data-open'), true);
   });
   var saveTimer = null;
@@ -737,12 +775,16 @@
     }, 400);
   }, {passive: true});
 
+  // 망이 끊기면 목록에 바로 표시하고, 다시 붙으면 목록을 새로 받는다(적어 둔 기록도 이때 올라간다)
+  window.addEventListener('offline', function(){ OFFLINE = true; if (INDEX) renderLib(); });
+  window.addEventListener('online', function(){ loadIndex(true); });
+
   labels(); topTitle.textContent = APP;
   if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function(){});
   loadIndex(false);
 
   var COLORS = ['yellow', 'green', 'blue', 'pink', 'purple'], ACTX = 40;
-  var NOTE = {key: null, fid: null, base: [], applied: 0};
+  var NOTE = {key: null, fid: null, base: [], applied: 0, lost: []};
   function lsGet(k, d){ try { var v = JSON.parse(localStorage.getItem(k) || 'null'); return v == null ? d : v; } catch (e) { return d; } }
   function lsSet(k, v){ try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} }
   function ops(key){ return lsGet('narani:ops:' + key, []); }
@@ -859,53 +901,70 @@
       }
       last.forEach(function(x){ x.m.classList.add('note-end'); });
     });
-    noteHead(list, lost);
+    NOTE.lost = lost.map(function(it){ return it.id; });
+    notesChanged();
   }
 
-  // ---- 논문 머리의 메모 목록 ----
-  function noteHead(list, lost){
-    var head = cur && cur.querySelector('header.ph');
-    if (!head) return;
-    var box = head.querySelector('.anno-head');
-    if (!box){ box = el('details', 'anno-head toc'); head.appendChild(box); }
-    var pend = pendingCount(NOTE.key);
-    box.style.display = (list.length || pend) ? '' : 'none';
-    box.innerHTML = '';
-    var sum = el('summary', '', md4T('하이라이트·메모 {n}개', {n: list.length}));
-    if (pend) sum.appendChild(el('span', 'anno-pend', ' · ' + md4T('올릴 기록 {n}개', {n: pend})));
-    box.appendChild(sum);
-    if (pend && source && source.drive && !gToken()){   // 연결이 끊겨 못 올린 기록 — 다시 연결하면 올라간다
-      var rc = button(md4T('다시 연결'), function(){ gSignIn(); });
-      rc.className = 'anno-reconnect'; box.appendChild(rc);
+  // ---- 내 메모 목록 — 떠 있는 단추의 '메모' 탭 (본문 순서로; 누르면 그 자리로) ----
+  function rowOf(it){ var a = (it.anchors || [])[0]; return a ? +a.row || 0 : 0; }
+  function notesChanged(){   // 표시가 바뀌면: 단추의 개수 · 열려 있는 메모 탭
+    var n = NOTE.key ? items().length : 0, b = doc.getElementById('fab-n');
+    b.textContent = n > 99 ? '99+' : String(n); b.classList.toggle('on', n > 0);
+    if (agent.classList.contains('open') && AG.mode === 'notes') showNotes(); else setTabs();
+  }
+  function jumpTo(id){
+    closeDrawers();
+    var ms = cur ? cur.querySelectorAll('mark.anno[data-aid="' + id + '"]') : [], m = null;
+    for (var i = 0; i < ms.length; i++) if (ms[i].offsetParent){ m = ms[i]; break; }   // 지금 보기(번역·원문)에 보이는 쪽
+    m = m || ms[0];
+    if (!m) return;
+    m.scrollIntoView({block: 'center'});
+    var r = m.closest('.row'); if (r){ r.classList.remove('flash'); void r.offsetWidth; r.classList.add('flash'); }
+  }
+  function showNotes(){
+    AG.mode = 'notes'; setTabs(); agBody.innerHTML = '';
+    doc.getElementById('ag-form').style.display = 'none';
+    var list = items().slice().sort(function(a, b){ return rowOf(a) - rowOf(b); });
+    var pend = pendingCount(NOTE.key), only = lsGet('narani:notesonly', false);
+    var withNote = list.filter(function(it){ return it.note; }).length;
+    var bar = el('div', 'nl-bar'), info = [md4T('하이라이트·메모 {n}개', {n: list.length})];
+    if (pend) info.push(md4T('올릴 기록 {n}개', {n: pend}));
+    bar.appendChild(el('span', 'grow', info.join(' · ')));
+    if (pend && source && source.drive && !gToken() && navigator.onLine !== false)   // 연결이 끊겨 못 올린 기록
+      bar.appendChild(button(md4T('다시 연결'), function(){ gSignIn(); }));
+    if (withNote && withNote < list.length){
+      var f = button(md4T('메모만'), function(){ lsSet('narani:notesonly', !only); showNotes(); });
+      if (only) f.className = 'on';
+      bar.appendChild(f);
+    } else only = false;
+    agBody.appendChild(bar);
+    if (only) list = list.filter(function(it){ return it.note; });
+    if (!list.length){
+      agBody.appendChild(el('p', 'hint', source && source.put
+        ? md4T('아직 표시한 문장이 없어요. 본문의 문장을 누르면 색을 칠하거나 메모를 달 수 있어요.')
+        : md4T('저장소에 연결해야 하이라이트·메모를 남길 수 있어요.')));
+      return;
     }
-    var ol = el('ol');
+    var side = doc.getElementById('m-en').checked ? 'en' : 'ko', ol = el('ol', 'nl');
     list.forEach(function(it){
-      var li = el('li'), a = (it.anchors || [])[0] || {};
-      var q = el('span', 'aq c-' + it.color, (a.quote || '').slice(0, 120));
-      li.appendChild(q);
+      var an = it.anchors || [], a = an.filter(function(x){ return x.side === side; })[0] || an[0] || {};
+      var q = a.quote || '', li = el('li');
+      li.appendChild(el('span', 'aq c-' + (COLORS.indexOf(it.color) >= 0 ? it.color : 'yellow'),
+                        q.length > 160 ? q.slice(0, 160) + '…' : q));
       if (it.note) li.appendChild(el('span', 'an', it.note));
-      if (lost.indexOf(it) >= 0) li.appendChild(el('span', 'al', md4T('(본문에서 위치를 찾지 못했어요)')));
-      else li.onclick = function(){
-        var m = cur.querySelector('mark.anno[data-aid="' + it.id + '"]');
-        if (m) m.scrollIntoView({block: 'center'});
-      };
+      if (NOTE.lost.indexOf(it.id) >= 0) li.appendChild(el('span', 'al', md4T('(본문에서 위치를 찾지 못했어요)')));
+      else li.onclick = function(){ jumpTo(it.id); };
       ol.appendChild(li);
     });
-    box.appendChild(ol);
+    agBody.appendChild(ol);
   }
 
   // ---- 열기 · 받기 ----
   function notesOpen(e, b){
-    NOTE = {key: b.key, fid: fileId(e), base: [], applied: 0};
+    NOTE = {key: b.key, fid: fileId(e), base: [], applied: 0, lost: []};
     paint();
-    var key = b.key, name = 'notes/' + NOTE.fid + '.json';
-    if (!e.notes_hash) return;
-    cacheGet(name).then(function(c){
-      if (c && c.__h === e.notes_hash) return c;
-      if (!source) return c;
-      return source.get(name).then(function(n){ n.__h = e.notes_hash; cachePut(name, n); return n; },
-                                   function(){ return c; });
-    }).then(function(n){
+    var key = b.key;
+    getNotes(e).then(function(n){
       if (!n || NOTE.key !== key) return;
       NOTE.base = n.items || []; NOTE.applied = +n.applied || 0;
       var mine = ops(key), left = mine.filter(function(o){ return o.ts > NOTE.applied; });
@@ -935,7 +994,7 @@
       lsSet('narani:opsup:' + key, top);
     }, function(){}).then(function(){
       uploading[key] = false;
-      if (NOTE.key === key && cur) noteHead(items(), []);
+      if (NOTE.key === key && cur) notesChanged();
       if (lastTs(ops(key)) > upTs(key) && lastTs(ops(key)) > top) upload(key, fid);   // 올리는 사이 새로 적은 것
     });
   }
@@ -1142,8 +1201,18 @@
     if (m.role === 'user' || m.err) d.textContent = m.content; else d.innerHTML = md(m.content);
     return d;
   }
+  function setTabs(){
+    var n = NOTE.key ? items().length : 0, notes = AG.mode === 'notes';
+    setText('tab-notes', md4T('메모') + (n ? ' ' + n : ''));
+    setText('tab-chat', md4T('질문하기'));
+    doc.getElementById('tab-notes').classList.toggle('on', notes);
+    doc.getElementById('tab-chat').classList.toggle('on', !notes);
+    agent.classList.toggle('notes', notes);
+  }
+  doc.getElementById('tab-notes').onclick = function(){ lsSet('narani:agtab', 'notes'); showNotes(); };
+  doc.getElementById('tab-chat').onclick = function(){ lsSet('narani:agtab', 'chat'); showChat(); };
   function showChat(){
-    AG.mode = 'chat'; agBody.innerHTML = '';
+    AG.mode = 'chat'; setTabs(); agBody.innerHTML = '';
     doc.getElementById('ag-form').style.display = '';
     var c = aiCfg();
     if (!c.keys[c.provider]){ showSettings(md4T('질문하려면 이 기기에 AI 서비스와 API 키를 한 번 넣어 주세요.')); return; }
@@ -1153,7 +1222,7 @@
     agBody.scrollTop = agBody.scrollHeight;
   }
   function showSettings(note){
-    AG.mode = 'settings'; agBody.innerHTML = '';
+    AG.mode = 'settings'; setTabs(); agBody.innerHTML = '';
     doc.getElementById('ag-form').style.display = 'none';
     var c = aiCfg(), tiers = CFG.ai_models || {};
     if (note) agBody.appendChild(el('p', 'hint', note));
@@ -1188,11 +1257,12 @@
   doc.getElementById('ag-clear').onclick = function(){ AG.msgs = []; saveChat(); showChat(); };
   doc.getElementById('fab').onclick = function(e){
     e.stopPropagation();
-    closeSheet(); setText('ag-title', md4T('질문하기') + ' — ' + AG.title);
+    closeSheet();
     setText('ag-clear', '⟲'); doc.getElementById('ag-clear').setAttribute('aria-label', md4T('대화 지우기'));
     agIn.placeholder = md4T('이 논문에 대해 물어보세요');
     agent.classList.add('open'); scrim.classList.add('open');
-    showChat();
+    var tab = lsGet('narani:agtab', null) || (items().length ? 'notes' : 'chat');   // 지난번 탭 (처음엔 표시가 있으면 메모)
+    if (tab === 'notes') showNotes(); else showChat();
   };
 
   function paperText(){

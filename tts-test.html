@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="듣기 시험">
+<link rel="manifest" href="tts-test.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Narani 듣기 시험</title>
+<style>
+:root { --bg: #fbfaf7; --fg: #24211c; --muted: #6b6862; --line: #e4e0d8; --card: #fff; --accent: #2f6fd6; --hl: #ffe08a; --bad: #b3261e; --ok: #1e7a3c; }
+@media (prefers-color-scheme: dark) { :root { --bg: #161615; --fg: #ecebe8; --muted: #a09d97; --line: #34322e; --card: #1f1e1c; --accent: #6aa0ff; --hl: #6b5a12; --bad: #ff8a80; --ok: #7ed39a; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+  padding: env(safe-area-inset-top) 16px calc(150px + env(safe-area-inset-bottom)); }
+h1 { font-size: 1.15em; margin: 16px 0 4px; }
+.sub { color: var(--muted); font-size: .85em; margin: 0 0 12px; }
+details { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; margin: 10px 0; }
+summary { font-weight: 600; cursor: pointer; }
+.env { font-size: .8em; color: var(--muted); word-break: break-all; }
+ol.check { padding-left: 1.3em; margin: 8px 0; font-size: .92em; }
+ol.check li { margin: 6px 0; }
+ol.check .st { display: inline-flex; gap: 4px; margin-left: 4px; vertical-align: middle; }
+ol.check .st button { font: inherit; font-size: .8em; padding: 2px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+ol.check .st button.on.y { background: var(--ok); border-color: var(--ok); color: #fff; }
+ol.check .st button.on.n { background: var(--bad); border-color: var(--bad); color: #fff; }
+textarea.memo { width: 100%; font: inherit; font-size: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); padding: 6px 8px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+button.b { font: inherit; font-size: .9em; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+button.b.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+.secs label { display: block; font-size: .92em; margin: 4px 0; }
+#log { font: 12px/1.45 ui-monospace, Menlo, monospace; white-space: pre-wrap; max-height: 40vh; overflow-y: auto; margin: 8px 0 0; }
+#text h3 { font-size: 1em; margin: 22px 0 6px; }
+#text p { margin: 0 0 12px; }
+#text span.s { border-radius: 3px; cursor: pointer; }
+#text span.s.now { background: var(--hl); }
+#text span.s.out { opacity: .4; }
+#text mark { background: var(--accent); color: #fff; border-radius: 2px; }
+#bar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--card); border-top: 1px solid var(--line);
+  padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); box-shadow: 0 -6px 20px rgba(0,0,0,.08); }
+#bar .now { font-size: .82em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#bar .ctl { display: flex; justify-content: space-between; align-items: center; gap: 4px; margin-top: 4px; }
+#bar .ctl button { font: inherit; border: 0; background: none; color: var(--fg); padding: 6px 8px; font-size: 1.05em; min-width: 40px; }
+#bar #pp { width: 52px; height: 52px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 1.3em; }
+#bar input[type=range] { width: 100%; margin: 4px 0 0; }
+#bar .t { display: flex; justify-content: space-between; font-size: .75em; color: var(--muted); }
+</style></head><body>
+<h1>Narani 듣기 시험</h1>
+<p class="sub" id="sub"></p>
+
+<details open><summary>시험 순서</summary>
+<p style="font-size:.9em;margin:6px 0">Safari 탭에서 한 번, <b>공유 → 홈 화면에 추가</b>로 만든 앱에서 한 번 해 보세요(둘은 결과가 다를 수 있어요). 해 본 항목에 ✓/✗를 누르고, 끝나면 <b>결과 복사</b>로 붙여 넣어 주세요. 아래 기록은 화면이 꺼진 동안 일어난 일도 남깁니다.</p>
+<ol class="check" id="check"></ol>
+<textarea class="memo" id="memo" rows="2" placeholder="메모 (차종·iOS 버전·느낀 점)"></textarea>
+<div class="row"><button class="b pri" id="copy">결과 복사</button><button class="b" id="reset">결과·기록 지우기</button></div>
+<div class="env" id="env"></div>
+</details>
+
+<details><summary>듣기 범위</summary>
+<div class="row" style="font-size:.92em"><label><input type="radio" name="rng" value="all" checked> 전체</label>
+<label><input type="radio" name="rng" value="pick"> 고른 섹션만 (안 고른 섹션은 건너뛰고, 마지막 고른 섹션 뒤에 멈춤)</label></div>
+<div class="secs" id="secs"></div>
+</details>
+
+<details><summary>폰 내장 음성 (speechSynthesis) 비교</summary>
+<p style="font-size:.9em;margin:6px 0">음성 파일 대신 폰의 목소리로 지금 문장부터 읽어요. 단어 하이라이트가 따라가는지, 화면을 잠가도 계속 읽는지 봐 주세요.</p>
+<div class="row"><select id="vsel" class="b"></select><button class="b pri" id="sp-go">내장 음성으로 읽기</button><button class="b" id="sp-stop">멈춤</button></div>
+</details>
+
+<details><summary>기록</summary><div id="log"></div></details>
+
+<div id="text"></div>
+
+<audio id="au" preload="metadata"></audio>
+<div id="bar">
+  <div class="now" id="now"></div>
+  <input type="range" id="seek" min="0" step="1" value="0">
+  <div class="t"><span id="cur">0:00</span><span id="spd"></span><span id="dur">0:00</span></div>
+  <div class="ctl">
+    <button id="prev" aria-label="이전 섹션">⏮</button><button id="back" aria-label="15초 뒤로">−15</button>
+    <button id="pp" aria-label="재생">▶</button>
+    <button id="fwd" aria-label="15초 앞으로">+15</button><button id="next" aria-label="다음 섹션">⏭</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var TL = {"duration": 451.651, "sections": [{"title": "초록", "row": 8, "start": 0.0, "end": 87.432}, {"title": "1 서론", "row": 9, "start": 87.432, "end": 198.833}, {"title": "2 동기와 설계 목표", "row": 15, "start": 198.833, "end": 201.727}, {"title": "2.1 개발자 설문을 통한 동기", "row": 16, "start": 201.727, "end": 276.937}, {"title": "2.2 설계 목표", "row": 18, "start": 276.937, "end": 347.894}, {"title": "3 Hedwig CLI 에이전트", "row": 23, "start": 347.894, "end": 350.694}, {"title": "3.1 기술 구성 요소", "row": 24, "start": 350.694, "end": 451.651}], "sents": [{"t": 0.0, "e": 0.572, "text": "초록", "b": 0, "head": true, "sec": 0}, {"t": 1.472, "e": 19.044, "text": "코딩 에이전트가 점점 더 복잡한 작업을 처리하는 능력이 발전했지만, 코드 검토를 빠져나가는 의도치 않은 편집, 미묘한 버그, 범위 이탈을 지속적으로 유발하는 경향 때문에 개발자는 여전히 에이전트에 어느 정도의 자율성을 부여할지 결정해야 한다.", "b": 1, "head": false, "sec": 0}, {"t": 19.294, "e": 33.845, "text": "그러나 정적 권한 설정이나 지침 파일처럼 에이전트의 자율성 수준을 설정하는 기존 접근법은 에이전트 자율성에 대한 개발자의 선호가 작업마다, 또 시간의 흐름에 따라 달라질 수 있다는 점을 반영하지 못한다.", "b": 1, "head": false, "sec": 0}, {"t": 34.095, "e": 47.557, "text": "코딩 에이전트를 사용하는 소프트웨어 엔지니어 21명을 대상으로 형성적 설문조사를 실시한 결과, 이들은 자율성 조정에 어려움을 겪으며 감독 수준에 대한 선호도 변화한다는 사실을 확인했다.", "b": 1, "head": false, "sec": 0}, {"t": 47.807, "e": 57.859, "text": "이러한 통찰을 바탕으로 세션 전반의 개발자-에이전트 상호작용을 토대로 자율성 수준을 동적으로 조정하는 CLI 코딩 에이전트 Hedwig을 제시한다.", "b": 1, "head": false, "sec": 0}, {"t": 58.459, "e": 68.124, "text": "Hedwig은 전역적이고 고정된 자율성 설정으로 작동하는 대신, 개발자의 결정과 피드백으로부터 변화하는 행동 지침을 학습한다.", "b": 2, "head": false, "sec": 0}, {"t": 68.374, "e": 76.51, "text": "이를 통해 에이전트가 신뢰를 얻은 작업에서는 마찰을 줄이고, 익숙하지 않은 영역에서 작동할 때는 감독을 강화한다.", "b": 2, "head": false, "sec": 0}, {"t": 76.76, "e": 86.832, "text": "Hedwig은 능동적이고 종단적인 협업을 통해 사용자 신뢰에 따라 자율성 수준을 지능적으로 조정하는 새로운 패러다임의 가능성을 보여준다.", "b": 2, "head": false, "sec": 0}, {"t": 87.432, "e": 88.231, "text": "1 서론", "b": 3, "head": true, "sec": 1}, {"t": 89.131, "e": 94.42, "text": "코딩 에이전트는 일상적인 프로그래밍 관행에 점점 더 깊이 통합되고 있다.", "b": 4, "head": false, "sec": 1}, {"t": 94.67, "e": 102.486, "text": "최신 코딩 에이전트는 저장소를 살펴보고, 여러 파일을 편집하고, 명령을 실행하며, 오류를 디버깅한다.", "b": 4, "head": false, "sec": 1}, {"t": 102.736, "e": 113.357, "text": "이러한 기능을 수행하려면 개발자의 작업 환경에 대한 깊은 접근 권한이 필요하며, 의도하지 않은 편집, 미묘한 버그 또는 보안 문제를 일으킬 수 있다.", "b": 4, "head": false, "sec": 1}, {"t": 113.607, "e": 122.624, "text": "전문 개발자에 대한 현장 관찰 결과, 에이전트를 효과적으로 사용하는 데는 실제로 상당한 통제가 따른다는 점이 확인되었다.", "b": 4, "head": false, "sec": 1}, {"t": 122.874, "e": 131.27, "text": "개발자는 설계 결정, 검증, 코드 검토에 대한 책임을 유지하며, 처음부터 끝까지의 자율성을 위임하지 않는다.", "b": 4, "head": false, "sec": 1}, {"t": 131.52, "e": 142.698, "text": "따라서 코딩 에이전트와 협업하는 일은 출력의 정확성을 판단하는 것뿐만 아니라 자율성 수준을 전략적으로 조정하여 에이전트를 효과적으로 관리하는 일이기도 하다.", "b": 4, "head": false, "sec": 1}, {"t": 143.298, "e": 149.839, "text": "그러나 원하는 자율성 수준은 개발자, 작업, 일정, 프로젝트에 따라 달라질 수 있다.", "b": 5, "head": false, "sec": 1}, {"t": 150.089, "e": 159.548, "text": "일부 개발자는 모든 편집을 검토하고 싶어 하는 반면, 다른 개발자는 주요 단계나 최종 결과물을 평가할 때만 개입하기를 선호한다.", "b": 5, "head": false, "sec": 1}, {"t": 159.798, "e": 176.515, "text": "오늘날의 코딩 에이전트는 일반적으로 유용한 개발자 선호를 반영하도록 설계된 대규모 사후 학습 및 정렬 과정을 통해 형성되지만, 이러한 기본 설정은 특정 프로젝트 맥락에 있는 특정 사용자의 자율성에 대한 기대에 부합하지 않는 경우가 많다.", "b": 5, "head": false, "sec": 1}, {"t": 176.765, "e": 191.577, "text": "따라서 인간-AI 협업의 목표는 자동화를 극대화하는 것이 아니라 각 개발자의 위험 감수 성향, 작업의 중요도, 에이전트에 대한 변화하는 신뢰 수준에 맞춰 의미 있는 인간의 감독을 유지하는 것이어야 한다.", "b": 5, "head": false, "sec": 1}, {"t": 191.827, "e": 198.233, "text": "이를 위해서는 사용자와 작업에 따라 감독 행동이 실제로 어떻게 달라지는지 이해해야 한다.", "b": 5, "head": false, "sec": 1}, {"t": 198.833, "e": 200.827, "text": "2 동기와 설계 목표", "b": 6, "head": true, "sec": 2}, {"t": 201.727, "e": 204.186, "text": "2.1 개발자 설문을 통한 동기", "b": 7, "head": true, "sec": 3}, {"t": 205.086, "e": 215.566, "text": "선택적이고 이해하기 쉬운 감독이 필요하다는 점을 확인하기 위해 코딩 에이전트를 사용하는 숙련자 21명을 대상으로 형성적 설문을 실시했다.", "b": 8, "head": false, "sec": 3}, {"t": 215.816, "e": 218.74, "text": "응답자는 대부분 숙련된 엔지니어였다.", "b": 8, "head": false, "sec": 3}, {"t": 218.99, "e": 228.797, "text": "응답자 21명 중 20명은 프로그래밍 경력이 8년 이상이라고 답했으며, 21명 중 20명은 코딩 에이전트를 적어도 매주 사용했다.", "b": 8, "head": false, "sec": 3}, {"t": 229.047, "e": 242.61, "text": "가장 큰 우려 사항은 검토를 통과하는 미묘한 버그(13/21), 코드베이스에 대한 자신의 이해도 저하(12/21), 보안 취약점(10/21), 오래되거나 부정확한 맥락(9/21)이었다.", "b": 8, "head": false, "sec": 3}, {"t": 242.86, "e": 246.531, "text": "동시에 응답자들은 지속적인 방해를 원하지 않았다.", "b": 8, "head": false, "sec": 3}, {"t": 246.781, "e": 258.945, "text": "21명 중 11명은 주요 단계에서 중간 확인 요청을 선호했고, 나머지 응답자 중 일부는 위험하거나 예상치 못한 일이 발생했을 때만 중간 확인 요청을 선호했다.", "b": 8, "head": false, "sec": 3}, {"t": 259.195, "e": 262.408, "text": "이러한 결과는 동일한 설계 요건을 보여준다.", "b": 8, "head": false, "sec": 3}, {"t": 262.658, "e": 271.186, "text": "코딩 에이전트의 감독은 일률적으로 엄격하거나 일률적으로 관대하기보다는 선택적이고 이해하기 쉬우며 조정 가능해야 한다.", "b": 8, "head": false, "sec": 3}, {"t": 271.436, "e": 276.337, "text": "본 연구는 워싱턴 대학교 IRB의 심사를 거쳐 승인을 받았다.", "b": 8, "head": false, "sec": 3}, {"t": 276.937, "e": 278.641, "text": "2.2 설계 목표", "b": 9, "head": true, "sec": 4}, {"t": 279.541, "e": 288.205, "text": "개발자 설문 결과에서 얻은 통찰을 바탕으로 세 가지 설계 목표를 도출했으며, 이는 Hedwig의 설계와 개발 방향을 제시한다.", "b": 10, "head": false, "sec": 4}, {"t": 288.805, "e": 295.122, "text": "DG1: 개발자와 코딩 에이전트 간 상호작용을 통해 적응형 자율성을 지원한다.", "b": 11, "head": false, "sec": 4}, {"t": 295.372, "e": 311.466, "text": "최근 코딩 에이전트는 프로젝트 지침을 지속적으로 저장하고(예: AGENTS.md) 선호 사항에 관한 메모를 축적할 수 있지만(예: Claude Code Auto Memory), 이러한 메커니즘은 주로 일반적인 기존 지침을 모델의 맥락으로 다시 불러온다.", "b": 11, "head": false, "sec": 4}, {"t": 311.716, "e": 317.803, "text": "개발자가 실제로 보인 상호작용을 런타임 감독의 신호로 직접 활용하지는 않는다.", "b": 11, "head": false, "sec": 4}, {"t": 318.053, "e": 325.765, "text": "그러나 실제로 개발자는 에이전트와 장기간 협업한 뒤에야 자신이 선호하는 감독 수준을 파악하는 경우가 많다.", "b": 11, "head": false, "sec": 4}, {"t": 326.015, "e": 333.338, "text": "신뢰가 형성되거나 실수를 겪거나 중요도가 다른 작업으로 옮겨 가면서 선호 사항이 달라질 수 있다.", "b": 11, "head": false, "sec": 4}, {"t": 333.588, "e": 339.077, "text": "따라서 개발자가 원하는 자율성 수준을 사전에 완전히 명시하기는 어렵다.", "b": 11, "head": false, "sec": 4}, {"t": 339.327, "e": 347.294, "text": "대신 에이전트는 실제 상황에서 개발자가 에이전트의 행동에 어떻게 반응하는지를 바탕으로 시간에 따라 적응해야 한다.", "b": 11, "head": false, "sec": 4}, {"t": 347.894, "e": 349.794, "text": "3 Hedwig CLI 에이전트", "b": 12, "head": true, "sec": 5}, {"t": 350.694, "e": 352.735, "text": "3.1 기술 구성 요소", "b": 13, "head": true, "sec": 6}, {"t": 353.635, "e": 360.27, "text": "Hedwig는 개발자와 코딩 에이전트의 협업에서 동적 자율성을 지원하는 로컬 Python CLI이다.", "b": 14, "head": false, "sec": 6}, {"t": 360.52, "e": 367.843, "text": "상호작용 트레이스를 시간에 따라 관찰하고, 그 이력을 바탕으로 변화하는 자율성 정책 집합을 유지한다.", "b": 14, "head": false, "sec": 6}, {"t": 368.093, "e": 376.682, "text": "이러한 정책은 에이전트의 행동을 규제하고, 적절한 시점에 간략한 설명과 함께 개발자에게 중간 확인 요청을 표시한다.", "b": 14, "head": false, "sec": 6}, {"t": 376.932, "e": 384.763, "text": "Hedwig는 클라우드 호스팅 LLM(구체적으로 Claude Sonnet 4.6)을 기반으로 하며 VS Code에 통합되어 있다.", "b": 14, "head": false, "sec": 6}, {"t": 385.013, "e": 390.027, "text": "로컬에서 사용하고 테스트할 수 있도록 Hedwig의 소스 코드를 제공한다.", "b": 14, "head": false, "sec": 6}, {"t": 390.627, "e": 392.448, "text": "자율성 정책의 범주.", "b": 15, "head": false, "sec": 6}, {"t": 392.698, "e": 401.757, "text": "개발자가 코딩 에이전트와 협업할 때 자율성을 생각하는 방식에 맞춰, Hedwig는 두 종류의 자율성 정책을 구분한다(DG2).", "b": 15, "head": false, "sec": 6}, {"t": 402.007, "e": 415.744, "text": "강제 제약은 보호된 경로를 수정하지 않거나, 해당 경로를 수정하기 전에 항상 개발자를 참여시키는 것처럼 코딩 에이전트가 해서는 안 되거나 반드시 해야 하는 일에 관한 엄격한 경계를 포착한다.", "b": 15, "head": false, "sec": 6}, {"t": 415.994, "e": 427.958, "text": "행동 지침은 언제 신중해야 하는지, 언제 의견을 물어야 하는지, 어느 정도 주도적으로 행동해야 하는지와 같이 에이전트가 협업하는 방식에 관한 보다 유연한 선호를 포착한다.", "b": 15, "head": false, "sec": 6}, {"t": 428.208, "e": 431.133, "text": "자율성 선호는 양방향으로 조정된다.", "b": 15, "head": false, "sec": 6}, {"t": 431.383, "e": 444.395, "text": "일관된 승인이 쌓이면 신뢰가 확대되는 한편, 개발자는 저장된 다른 모든 상태를 버리지 않고도 특정 파일 영역이나 변경 범주에 부여한 특정 선호를 선택적으로 철회할 수 있다(DG1).", "b": 15, "head": false, "sec": 6}, {"t": 444.645, "e": 451.051, "text": "이를 통해 개발자의 신뢰 태세가 변할 때 감독은 완화될 뿐 아니라 강화될 수도 있다.", "b": 15, "head": false, "sec": 6}], "title": "Hedwig: 개별 맥락에 따른 감독하에서 코딩 에이전트의 동적 자율성", "voice": "Yuna", "audio": "tts-test.m4a", "bytes": 1871291};
+  var doc = document, a = doc.getElementById('au'), S = TL.sents, SEC = TL.sections;
+  var standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
+  var CTX = standalone ? 'app' : 'tab';
+  function ls(k, d){ try { var v = JSON.parse(localStorage.getItem('ttstest:' + k) || 'null'); return v == null ? d : v; } catch (e) { return d; } }
+  function lss(k, v){ try { localStorage.setItem('ttstest:' + k, JSON.stringify(v)); } catch (e) {} }
+  function fmt(s){ s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); }
+  function $(id){ return doc.getElementById(id); }
+
+  // ---- 기록 — 화면이 꺼진 사이 일도 남게 localStorage에 ----
+  var LOG = ls('log', []);
+  function log(msg){
+    var d = new Date(), line = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2)
+      + ' [' + CTX + '] ' + msg;
+    LOG.push(line); if (LOG.length > 400) LOG = LOG.slice(-400); lss('log', LOG);
+    var el = $('log'); el.textContent = LOG.slice().reverse().join('\n');
+  }
+  $('log').textContent = LOG.slice().reverse().join('\n');
+
+  // ---- 환경 ----
+  var hasMS = 'mediaSession' in navigator, hasAS = 'audioSession' in navigator;
+  if (hasAS){ try { navigator.audioSession.type = 'playback'; } catch (e) {} }
+  $('sub').textContent = TL.title + ' · ' + fmt(TL.duration) + ' · 섹션 ' + SEC.length + '개 · ' + (TL.bytes / 1e6).toFixed(1) + 'MB · 목소리 ' + TL.voice;
+  var ENV = '실행: ' + (standalone ? '홈 화면 앱' : '브라우저 탭') + ' · Media Session ' + (hasMS ? '있음' : '없음')
+    + ' · audioSession ' + (hasAS ? navigator.audioSession.type : '없음') + ' · speechSynthesis ' + ('speechSynthesis' in window ? '있음' : '없음')
+    + '\n' + navigator.userAgent;
+  $('env').textContent = ENV;
+  log('페이지 열림 (' + (standalone ? '홈 화면 앱' : '브라우저 탭') + ')');
+
+  // ---- 시험 항목 ----
+  var ITEMS = [
+    '화면을 잠가도 계속 들린다 (몇 분 이상)',
+    '잠금 화면에 제목·지금 섹션과 재생 단추가 보인다',
+    'CarPlay 화면에 \'지금 재생 중\'으로 보인다',
+    '핸들·CarPlay의 다음/이전 단추로 섹션이 넘어간다',
+    '1분 넘게 멈췄다가 잠금 화면·CarPlay에서 다시 재생된다',
+    '앱(탭)을 완전히 닫았다 다시 열고 재생하면 소리가 나고, 듣던 자리부터 이어진다',
+    '\'고른 섹션만\'일 때 화면이 꺼져 있어도 안 고른 섹션을 건너뛴다',
+    '화면을 켜면 지금 문장 하이라이트가 소리와 맞는다',
+    '속도를 바꿔도 목소리가 자연스럽다 (1.5×)',
+    '내장 음성: 화면을 잠가도 계속 읽는다',
+    '내장 음성: 단어 하이라이트가 소리를 따라간다'
+  ];
+  var CK = ls('check:' + CTX, {});
+  ITEMS.forEach(function(txt, i){
+    var li = doc.createElement('li'); li.appendChild(doc.createTextNode(txt));
+    var st = doc.createElement('span'); st.className = 'st';
+    [['y', '✓ 됨'], ['n', '✗ 안 됨']].forEach(function(p){
+      var b = doc.createElement('button'); b.className = p[0] + (CK[i] === p[0] ? ' on' : ''); b.textContent = p[1];
+      b.onclick = function(){
+        CK[i] = CK[i] === p[0] ? null : p[0]; lss('check:' + CTX, CK);
+        [].forEach.call(st.children, function(x){ x.classList.toggle('on', CK[i] === x.className.charAt(0)); });
+      };
+      st.appendChild(b);
+    });
+    li.appendChild(st); $('check').appendChild(li);
+  });
+  $('memo').value = ls('memo:' + CTX, '');
+  $('memo').oninput = function(){ lss('memo:' + CTX, $('memo').value); };
+  $('copy').onclick = function(){
+    var lines = ['# Narani 듣기 시험 결과', ENV, ''];
+    ITEMS.forEach(function(t, i){ lines.push((i + 1) + '. ' + (CK[i] === 'y' ? '✓' : CK[i] === 'n' ? '✗' : '–') + ' ' + t); });
+    if ($('memo').value.trim()) lines.push('', '메모: ' + $('memo').value.trim());
+    lines.push('', '## 기록 (최근 120줄)'); lines = lines.concat(LOG.slice(-120));
+    var text = lines.join('\n');
+    function done(){ $('copy').textContent = '복사했어요'; setTimeout(function(){ $('copy').textContent = '결과 복사'; }, 1500); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
+    function fallback(){ var t = doc.createElement('textarea'); t.value = text; doc.body.appendChild(t); t.select(); try { doc.execCommand('copy'); done(); } catch (e) {} t.remove(); }
+  };
+  $('reset').onclick = function(){
+    if (!confirm('이 화면(' + (standalone ? '홈 화면 앱' : '브라우저 탭') + ')의 결과와 기록을 지울까요?')) return;
+    LOG = []; lss('log', LOG); CK = {}; lss('check:' + CTX, CK); lss('memo:' + CTX, ''); location.reload();
+  };
+
+  // ---- 본문 (문장마다 span) ----
+  var spans = [], text = $('text'), blockEl = {};
+  S.forEach(function(s, i){
+    var host = blockEl[s.b];
+    if (!host){ host = blockEl[s.b] = doc.createElement(s.head ? 'h3' : 'p'); text.appendChild(host); }
+    else host.appendChild(doc.createTextNode(' '));
+    var sp = doc.createElement('span'); sp.className = 's'; sp.textContent = s.text; sp.setAttribute('data-i', i);
+    host.appendChild(sp); spans.push(sp);
+  });
+  text.addEventListener('click', function(e){
+    var sp = e.target.closest && e.target.closest('span.s'); if (!sp) return;
+    var i = +sp.getAttribute('data-i');
+    if (speaking){ speakFrom(i); return; }
+    seekTo(S[i].t, '문장 누름'); if (a.paused) play();
+  });
+
+  // ---- 듣기 범위 ----
+  var PICK = ls('pick', null) || SEC.map(function(){ return true; }), MODE = ls('mode', 'all');
+  SEC.forEach(function(s, i){
+    var l = doc.createElement('label'), c = doc.createElement('input'); c.type = 'checkbox'; c.checked = !!PICK[i];
+    c.onchange = function(){ PICK[i] = c.checked; lss('pick', PICK); paintRange(); };
+    l.appendChild(c); l.appendChild(doc.createTextNode(' ' + s.title + ' (' + fmt(s.end - s.start) + ')')); $('secs').appendChild(l);
+  });
+  [].forEach.call(doc.querySelectorAll('input[name=rng]'), function(r){
+    r.checked = r.value === MODE;
+    r.onchange = function(){ MODE = r.value; lss('mode', MODE); paintRange(); log('범위: ' + (MODE === 'all' ? '전체' : '고른 섹션만')); };
+  });
+  function allowed(sec){ return MODE === 'all' || !!PICK[sec]; }
+  function paintRange(){ spans.forEach(function(sp, i){ sp.classList.toggle('out', !allowed(S[i].sec)); }); }
+  paintRange();
+
+  // ---- 재생 ----
+  var cur = -1, curSec = -1, userScroll = 0, lastTU = 0, lastPos = 0, lastSave = 0, lastPS = 0, fresh = false;
+  a.src = TL.audio;
+  function secAt(t){ var k = 0; for (var i = 0; i < SEC.length; i++) if (SEC[i].start <= t + 0.05) k = i; return k; }
+  function sentAt(t){ var lo = 0, hi = S.length - 1; while (lo < hi){ var m = (lo + hi + 1) >> 1; if (S[m].t <= t + 0.05) lo = m; else hi = m - 1; } return lo; }
+  function seekTo(t, why){ a.currentTime = Math.max(0, Math.min(TL.duration - 0.2, t)); log('이동 → ' + fmt(t) + (why ? ' (' + why + ')' : '')); }
+  function play(){
+    stopSpeak();
+    if (!fresh){   // iOS 26: 홈 화면 앱을 다시 열면 <audio>가 소리 없이 재생되는 버그(WebKit 295518) — 첫 재생 직전에 src를 다시 넣는다
+      fresh = true;
+      var t = a.currentTime || ls('pos', 0);
+      a.src = TL.audio; a.load();
+      a.addEventListener('loadedmetadata', function f(){ a.removeEventListener('loadedmetadata', f); if (t) a.currentTime = t; });
+    }
+    var p = a.play();
+    if (p && p.then) p.then(function(){}, function(e){ log('재생 실패: ' + (e && e.name) + ' ' + (e && e.message || '')); });
+  }
+  function nextSec(dir, why){
+    var t = a.currentTime, k = secAt(t), target = null, i;
+    if (dir > 0){ for (i = k + 1; i < SEC.length; i++) if (allowed(i)){ target = i; break; } }
+    else {
+      if (t - SEC[k].start > 3 && allowed(k)) target = k;
+      else for (i = k - 1; i >= 0; i--) if (allowed(i)){ target = i; break; }
+      if (target == null) target = k;
+    }
+    if (target == null){ log('다음 섹션 없음 (' + why + ')'); return; }
+    seekTo(SEC[target].start, why + ': ' + (dir > 0 ? '다음' : '이전') + ' 섹션');
+  }
+  $('pp').onclick = function(){ if (a.paused) play(); else a.pause(); };
+  $('back').onclick = function(){ seekTo(a.currentTime - 15, '단추'); };
+  $('fwd').onclick = function(){ seekTo(a.currentTime + 15, '단추'); };
+  $('prev').onclick = function(){ nextSec(-1, '단추'); };
+  $('next').onclick = function(){ nextSec(1, '단추'); };
+  var SPEEDS = [1, 1.25, 1.5, 1.75, 2], spd = ls('spd', 1);
+  function setSpd(v){ spd = v; a.playbackRate = v; a.defaultPlaybackRate = v; lss('spd', v); $('spd').textContent = v + '× (눌러 바꾸기)'; }
+  $('spd').onclick = function(){ setSpd(SPEEDS[(SPEEDS.indexOf(spd) + 1) % SPEEDS.length]); log('속도 ' + spd + '×'); };
+  setSpd(spd);
+  var seek = $('seek'); seek.max = Math.floor(TL.duration); $('dur').textContent = fmt(TL.duration);
+  seek.oninput = function(){ $('cur').textContent = fmt(+seek.value); };
+  seek.onchange = function(){ seekTo(+seek.value, '막대'); };
+
+  function meta(k){
+    if (!hasMS) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({title: TL.title, artist: SEC[k] ? SEC[k].title : '', album: 'Narani 듣기 시험',
+        artwork: [{src: 'icon-512.png', sizes: '512x512', type: 'image/png'}, {src: 'icon-192.png', sizes: '192x192', type: 'image/png'}]});
+    } catch (e) {}
+  }
+  if (hasMS){
+    var H = {
+      play: function(){ log('잠금 화면/차: 재생'); play(); },
+      pause: function(){ log('잠금 화면/차: 일시정지'); a.pause(); },
+      stop: function(){ log('잠금 화면/차: 정지'); a.pause(); },
+      seekbackward: function(d){ seekTo(a.currentTime - ((d && d.seekOffset) || 15), '잠금 화면/차 뒤로'); },
+      seekforward: function(d){ seekTo(a.currentTime + ((d && d.seekOffset) || 15), '잠금 화면/차 앞으로'); },
+      previoustrack: function(){ nextSec(-1, '잠금 화면/차'); },
+      nexttrack: function(){ nextSec(1, '잠금 화면/차'); },
+      seekto: function(d){ if (d && d.seekTime != null) seekTo(d.seekTime, '잠금 화면/차 막대'); }
+    };
+    Object.keys(H).forEach(function(k){ try { navigator.mediaSession.setActionHandler(k, H[k]); } catch (e) { log('Media Session ' + k + ' 지원 안 함'); } });
+    meta(0);
+  }
+
+  a.addEventListener('loadedmetadata', function(){
+    if (!fresh){ var p = ls('pos', 0); if (p > 1 && p < TL.duration - 2){ a.currentTime = p; log('이어 듣기 위치 ' + fmt(p)); } }
+  });
+  ['play', 'pause', 'ended', 'waiting', 'stalled', 'emptied', 'error'].forEach(function(ev){
+    a.addEventListener(ev, function(){
+      if (ev === 'play' || ev === 'pause') $('pp').textContent = ev === 'play' ? '⏸' : '▶';
+      if (hasMS && (ev === 'play' || ev === 'pause')) try { navigator.mediaSession.playbackState = ev === 'play' ? 'playing' : 'paused'; } catch (e) {}
+      log('오디오: ' + ev + (ev === 'error' && a.error ? ' code ' + a.error.code : '') + ' @' + fmt(a.currentTime) + ' · 화면 ' + doc.visibilityState);
+      if (ev === 'pause' || ev === 'ended') lss('pos', a.currentTime);
+    });
+  });
+  a.addEventListener('timeupdate', function(){
+    var t = a.currentTime, now = Date.now();
+    // 시간 갱신이 오래 끊겼다 이어졌으면: 그동안 화면이 꺼져(또는 앱이 뒤로 가) JS가 멈췄다는 뜻. 위치가 그만큼 나아갔으면 소리는 계속 났다.
+    if (lastTU && !a.paused && now - lastTU > 4000)
+      log('시간 갱신 ' + Math.round((now - lastTU) / 1000) + '초 끊김 — 그사이 재생 위치 ' + Math.round(t - lastPos) + '초 진행 · 화면 ' + doc.visibilityState);
+    lastTU = now; lastPos = t;
+    var k = secAt(t);
+    if (!allowed(k) && !a.paused){   // 고른 섹션만 — 다음 고른 섹션으로, 없으면 멈춤
+      var nx = null; for (var i = k + 1; i < SEC.length; i++) if (allowed(i)){ nx = i; break; }
+      if (nx == null){ a.pause(); log('범위 끝 — 멈춤 @' + fmt(t) + ' · 화면 ' + doc.visibilityState); }
+      else { a.currentTime = SEC[nx].start; log('안 고른 섹션 건너뜀 → ' + SEC[nx].title + ' · 화면 ' + doc.visibilityState); }
+      return;
+    }
+    if (k !== curSec){ curSec = k; meta(k); $('now').textContent = SEC[k].title; }
+    var si = sentAt(t);
+    if (si !== cur){
+      if (cur >= 0) spans[cur].classList.remove('now');
+      cur = si; spans[si].classList.add('now');
+      if (doc.visibilityState === 'visible' && now - userScroll > 4000) spans[si].scrollIntoView({block: 'center', behavior: 'smooth'});
+    }
+    if (doc.activeElement !== seek){ seek.value = Math.floor(t); $('cur').textContent = fmt(t); }
+    if (now - lastSave > 5000){ lastSave = now; lss('pos', t); }
+    if (hasMS && navigator.mediaSession.setPositionState && now - lastPS > 1000){
+      lastPS = now; try { navigator.mediaSession.setPositionState({duration: TL.duration, playbackRate: a.playbackRate, position: Math.min(t, TL.duration)}); } catch (e) {}
+    }
+  });
+  ['touchmove', 'wheel'].forEach(function(ev){ window.addEventListener(ev, function(){ userScroll = Date.now(); }, {passive: true}); });
+  doc.addEventListener('visibilitychange', function(){ log('화면 ' + doc.visibilityState + (a.paused ? '' : ' · 재생 중 @' + fmt(a.currentTime))); });
+  window.addEventListener('pagehide', function(){ lss('pos', a.currentTime); log('pagehide'); });
+  window.addEventListener('pageshow', function(e){ if (e.persisted){ fresh = false; log('pageshow (되살아남)'); } });
+
+  // ---- 폰 내장 음성 (speechSynthesis) — 단어 하이라이트(boundary) ----
+  var speaking = false, spIdx = 0, synth = window.speechSynthesis, voices = [];
+  function loadVoices(){
+    if (!synth) return;
+    voices = synth.getVoices().filter(function(v){ return /^ko/i.test(v.lang); });
+    var sel = $('vsel'), keep = ls('voice', '');
+    sel.innerHTML = '';
+    voices.forEach(function(v){ var o = doc.createElement('option'); o.value = v.name; o.textContent = v.name + (v.localService ? '' : ' (온라인)'); if (v.name === keep) o.selected = true; sel.appendChild(o); });
+    if (!voices.length){ var o = doc.createElement('option'); o.textContent = '한국어 목소리 없음'; sel.appendChild(o); }
+  }
+  if (synth){ loadVoices(); synth.onvoiceschanged = loadVoices; }
+  $('vsel').onchange = function(){ lss('voice', $('vsel').value); };
+  function unmark(i){ if (i >= 0 && spans[i]) spans[i].textContent = S[i].text; }
+  function speakFrom(i){
+    if (!synth){ log('speechSynthesis 없음'); return; }
+    a.pause(); synth.cancel(); unmark(spIdx);
+    speaking = true; spIdx = i; sayOne();
+  }
+  function sayOne(){
+    if (!speaking) return;
+    while (spIdx < S.length && !allowed(S[spIdx].sec)) spIdx++;
+    if (spIdx >= S.length){ speaking = false; log('내장 음성: 끝'); return; }
+    var i = spIdx, s = S[i], u = new SpeechSynthesisUtterance(s.text), v = null, sawB = false;
+    voices.forEach(function(x){ if (x.name === $('vsel').value) v = x; });
+    u.lang = 'ko-KR'; if (v) u.voice = v; u.rate = Math.min(2, spd);
+    if (cur >= 0) spans[cur].classList.remove('now');
+    cur = i; spans[i].classList.add('now');
+    if (doc.visibilityState === 'visible' && Date.now() - userScroll > 4000) spans[i].scrollIntoView({block: 'center', behavior: 'smooth'});
+    u.onboundary = function(e){
+      if (!sawB){ sawB = true; if (i === spIdx && !ls('sawB', false)){ lss('sawB', true); log('내장 음성: 단어 경계(boundary) 이벤트 옴'); } }
+      var st = e.charIndex || 0, len = e.charLength;
+      if (!len){ var m = /\S+/.exec(s.text.slice(st)); len = m ? m.index + m[0].length : 1; }
+      var sp = spans[i]; sp.textContent = '';
+      sp.appendChild(doc.createTextNode(s.text.slice(0, st)));
+      var mk = doc.createElement('mark'); mk.textContent = s.text.slice(st, st + len); sp.appendChild(mk);
+      sp.appendChild(doc.createTextNode(s.text.slice(st + len)));
+    };
+    u.onend = function(){
+      unmark(i);
+      if (doc.visibilityState !== 'visible') log('내장 음성: 화면 ' + doc.visibilityState + '에서 문장 ' + (i + 1) + ' 끝냄');
+      if (speaking && i === spIdx){ spIdx++; sayOne(); }
+    };
+    u.onerror = function(e){ log('내장 음성 오류: ' + (e.error || '?') + ' · 화면 ' + doc.visibilityState); };
+    synth.speak(u);
+  }
+  function stopSpeak(){ if (speaking){ speaking = false; if (synth) synth.cancel(); unmark(spIdx); log('내장 음성: 멈춤'); } }
+  $('sp-go').onclick = function(){ log('내장 음성: 시작 (문장 ' + (Math.max(0, cur) + 1) + ')'); speakFrom(Math.max(0, cur)); };
+  $('sp-stop').onclick = stopSpeak;
+})();
+</script>
+</body></html>

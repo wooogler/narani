@@ -1,0 +1,1 @@
+{"id": "tts-test", "name": "Narani 듣기 시험", "short_name": "듣기 시험", "start_url": "tts-test.html", "display": "standalone", "background_color": "#fbfaf7", "theme_color": "#fbfaf7", "icons": [{"src": "icon-192.png", "sizes": "192x192", "type": "image/png"}, {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"}]}
