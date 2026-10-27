@@ -5,6 +5,7 @@ from __future__ import annotations
 import collections
 import json
 import re
+from pathlib import Path
 
 import pytest
 
@@ -145,3 +146,10 @@ def test_mobile_html_command_is_gone():
 
     result = CliRunner().invoke(cli, ["mobile"])
     assert result.exit_code != 0 and "No such command" in result.output
+
+
+def test_math_is_wrapped_in_a_scroll_box():
+    # iOS Safari는 <math>에 준 max-width·overflow를 따르지 않는다 — 긴 수식이 페이지를 가로로 늘리지 않게 상자로 싼다
+    out = mobile._render("값은 $t(29)=5.71, p<10^{-4}$ 이다.\n\n$$x^2+y^2$$", "p0-ko-", mobile._Images(Path("/nonexistent")))
+    assert out.count('<span class="mx"><math') == 2 and out.count("</math></span>") == 2
+    assert ".cell .mx {" in mobile._CSS and "main { overflow-x: clip; }" in mobile._CSS
