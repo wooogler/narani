@@ -30,7 +30,7 @@ from typing import Any
 @dataclass
 class Job:
     root: str  # 논문 작업 폴더 (resolve된 문자열)
-    kind: str  # translate | layout | cite | terms
+    kind: str  # translate | layout | cite | terms | mobile_audio
     label: str  # 사람이 읽는 이름 ("번역", "레이아웃 수정" …)
     title: str = ""  # 논문 제목 (헤더의 진행 목록용)
     status: str = "running"  # running | done | failed
@@ -88,6 +88,11 @@ def unseen_finished(root: Path | str) -> list[Job]:
     """그 논문에서 끝났지만 아직 아무 화면도 알리지 않은 작업 (자리를 비운 사이 끝난 것)."""
     k = _key(root)
     return [j for j in _JOBS.values() if j.root == k and not j.running and not j.seen]
+
+
+def finished_unseen(kind: str) -> list[Job]:
+    """그 종류의 끝났지만 아직 알리지 않은 작업 — 어느 논문이든 (홈에서 띄운 모바일 음성 등)."""
+    return [j for j in _JOBS.values() if j.kind == kind and not j.running and not j.seen]
 
 
 class Gate:
