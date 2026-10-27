@@ -1230,5 +1230,12 @@
  "맞추기": "Sincronizar",
  "이 컬렉션에서 빼기": "Quitar de esta colección",
  "{m}분": "{m} min",
- "모바일 음성 — {what}": "Audio móvil — {what}"
+ "모바일 음성 — {what}": "Audio móvil — {what}",
+ "음성 {m}분 · {mb:.0f}MB를 올렸습니다": "se subieron {m} min · {mb:.0f} MB de audio",
+ "모바일 음성": "Audio móvil",
+ "모바일 음성 만들기를 시작했습니다 — {n}편 · 목록 위 '백그라운드 작업'에서 진행이 보입니다": "Se empezó a crear el audio móvil — {n} artículos · el progreso aparece en 'Tareas en segundo plano' sobre la lista",
+ "{n}편은 이미 음성을 만드는 중입니다.": "{n} artículos ya están creando audio.",
+ "{label} 중…{pct} · {sec}": "{label}…{pct} · {sec}",
+ "'{t}' — {msg}": "'{t}' — {msg}",
+ "'{t}' 음성을 만들지 못했습니다: {e}": "No se pudo crear el audio de '{t}': {e}"
 }

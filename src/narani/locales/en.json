@@ -1230,5 +1230,12 @@
  "맞추기": "Sync",
  "이 컬렉션에서 빼기": "Remove from this collection",
  "{m}분": "{m} min",
- "모바일 음성 — {what}": "Mobile audio — {what}"
+ "모바일 음성 — {what}": "Mobile audio — {what}",
+ "음성 {m}분 · {mb:.0f}MB를 올렸습니다": "uploaded {m} min · {mb:.0f} MB of audio",
+ "모바일 음성": "Mobile audio",
+ "모바일 음성 만들기를 시작했습니다 — {n}편 · 목록 위 '백그라운드 작업'에서 진행이 보입니다": "Started making mobile audio — {n} papers · progress shows under 'Background jobs' above the list",
+ "{n}편은 이미 음성을 만드는 중입니다.": "{n} papers are already making audio.",
+ "{label} 중…{pct} · {sec}": "{label}…{pct} · {sec}",
+ "'{t}' — {msg}": "'{t}' — {msg}",
+ "'{t}' 음성을 만들지 못했습니다: {e}": "Couldn't make audio for '{t}': {e}"
 }

@@ -442,6 +442,9 @@ _PHASE_ICON = {"pending": "schedule", "extracting": "sync", "cite": "sync", "glo
 _AI_PHASES = ("cite", "glossary", "meta")
 
 
+_AUDIO_GATE = jobs.Gate(1)  # 모바일 음성 만들기 — 서버 수명 동안 하나, 한 번에 한 편씩
+
+
 def audio_label(a: dict) -> str:
     """모바일 음성 한 줄 — 무엇으로(엔진·목소리) · 길이 · 언제. 예: 'Mac · Yuna · 68분 · 3시간 전'."""
     from narani.ui.app import _relative_time
@@ -1201,24 +1204,34 @@ def build_home(state: dict) -> None:
             return
         if include is not None and len(include) == len(secs):
             include = None
-        progress: dict = {}
-        busy = t("음성 만드는 중… ({n}편)", n=len(roots))
-
-        def prog(i: int, n: int, done: int, tot: int, title: str) -> None:
-            pct = round(100 * done / tot) if tot else 100
-            progress["msg"] = t("음성 만드는 중… {i}/{n}편 · {p}% · {title}", i=i + 1, n=n, p=pct, title=title[:40])
-        if eng.value == "gemini":
-            def job(rs):  # noqa: ANN001, ANN202
-                return phone_service.make_audio(rs, gvoice.value, include, prog, engine="gemini", model=gmodel.value)
-        else:
-            def job(rs):  # noqa: ANN001, ANN202
-                return phone_service.make_audio(rs, voice.value if names else None, include, prog)
-        s = await mobile_call(job, roots, busy, progress)
-        if s is None:
+        # 오래 걸리는 일이라 백그라운드 작업으로 — 논문마다 카드(진행 %)가 목록 위에 뜨고, 논문 탭을 열어도
+        # 끝까지 돈다. 한 번에 한 편씩(합성이 이미 여러 스레드를 쓴다). Drive 연결은 여기서 먼저 확인한다.
+        if not phone_service.configured():
+            ui.notify(t("모바일용 Google 클라이언트 설정이 없습니다 — README의 '모바일에서 읽기'를 보세요."), type="warning")
             return
-        ui.notify(t("음성을 만들어 올렸습니다 — {n}편 · {m}분 · {mb:.0f}MB", n=s["made"], m=round(s["seconds"] / 60),
-                    mb=s["bytes"] / 1e6), type="positive")
-        mobile_changed()
+        if not phone_service.connected() and not await connect_drive():
+            return
+        engine = eng.value
+        opts_ = {"voice": gvoice.value if engine == "gemini" else (voice.value if names else None),
+                 "model": gmodel.value if engine == "gemini" else None}
+        started = 0
+        for root in roots:
+            def work(job, root=root):  # noqa: ANN001, ANN202 — 워커 스레드 (화면 없이 끝까지)
+                def prog(i: int, n: int, done: int, tot: int, title: str) -> None:  # noqa: ARG001
+                    job.progress(done, tot)
+                    job.detail["section"] = title
+                s = phone_service.make_audio([root], opts_["voice"], include, prog, engine=engine, model=opts_["model"])
+                job.message = t("음성 {m}분 · {mb:.0f}MB를 올렸습니다", m=round(s["seconds"] / 60), mb=s["bytes"] / 1e6)
+                return s
+            row = data["by_root"].get(str(root)) or {}
+            if jobs.start(root, "mobile_audio", t("모바일 음성"), work, title=row.get("title", ""), gate=_AUDIO_GATE):
+                started += 1
+        if started:
+            ui.notify(t("모바일 음성 만들기를 시작했습니다 — {n}편 · 목록 위 '백그라운드 작업'에서 진행이 보입니다", n=started),
+                      type="info")
+            show_jobs()
+        if started < len(roots):
+            ui.notify(t("{n}편은 이미 음성을 만드는 중입니다.", n=len(roots) - started), type="warning")
 
     async def remove_mobile_audio(roots: list[Path]) -> None:
         n = await mobile_call(phone_service.remove_audio, [Path(r) for r in roots], t("음성을 지우는 중…"))
@@ -1603,11 +1616,13 @@ def build_home(state: dict) -> None:
                 pct = f" {int(j.fraction * 100)}%" if j.total else ""
                 queued = bool(j.detail.get("queued"))  # 동시 실행 문(translate_job.gate) 앞에서 기다리는 중
                 if queued:
-                    n_ahead = translate_job.ahead(j)
+                    n_ahead = _AUDIO_GATE.ahead(j) if j.kind == "mobile_audio" else translate_job.ahead(j)
                     sub = (t("{label} 대기 중 · 앞에 {n}개 · 눌러서 열기", label=j.label, n=n_ahead) if n_ahead > 0
                            else t("{label} 대기 중 · 눌러서 열기", label=j.label))
                 else:
                     sub = t("{label} 중…{pct} · 눌러서 열기", label=j.label, pct=pct)
+                    if j.kind == "mobile_audio" and j.detail.get("section"):
+                        sub = t("{label} 중…{pct} · {sec}", label=j.label, pct=pct, sec=j.detail["section"][:30])
                 with ui.card().classes("w-full q-pa-sm cursor-pointer").on(
                         "click", lambda _, r=j.root: ui.navigate.to(_review_url(Path(r)))):
                     with ui.row().classes("items-center w-full no-wrap gap-2"):
@@ -2637,6 +2652,16 @@ def build_home(state: dict) -> None:
         preview_pane.refresh()
 
     def poll() -> None:  # 큐 진행 갱신 + 전체 처리 완료(또는 실패) 시에만 목록에 등장 + 하이라이트
+        audio_done = [j for j in jobs.finished_unseen("mobile_audio")]
+        for j in audio_done:   # 모바일 음성 — 홈에서 띄우고 홈에서 알린다(한 번만)
+            j.seen = True
+            name = j.title or Path(j.root).stem
+            if j.status == "done":
+                ui.notify(t("'{t}' — {msg}", t=name[:40], msg=j.message), type="positive")
+            else:
+                ui.notify(t("'{t}' 음성을 만들지 못했습니다: {e}", t=name[:40], e=j.error), type="negative", timeout=8000)
+        if audio_done:
+            mobile_changed()
         q = state["queue"]
         now = time.monotonic()
         finished = False

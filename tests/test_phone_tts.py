@@ -352,3 +352,26 @@ def test_service_make_audio_with_gemini_remembers_choice_and_is_not_remade(tmp_p
     wd.ko_md.write_text(KO.replace("면담했다", "만났다"), encoding="utf-8")
     n = len(made)
     assert service.refresh()["audio"] == 0 and len(made) == n
+
+
+def test_finished_audio_jobs_are_reported_once():
+    import asyncio
+
+    from narani.ui import jobs
+
+    jobs.reset()
+
+    async def go():
+        gate = jobs.Gate(1)
+        a = jobs.start("/tmp/a.md4", "mobile_audio", "모바일 음성", lambda j: 1, gate=gate)
+        b = jobs.start("/tmp/b.md4", "mobile_audio", "모바일 음성", lambda j: (_ for _ in ()).throw(RuntimeError("x")), gate=gate)
+        assert jobs.start("/tmp/a.md4", "mobile_audio", "모바일 음성", lambda j: 1) is None   # 같은 논문은 한 번에 하나
+        while a.running or b.running:
+            await asyncio.sleep(0.05)
+        return a, b
+    a, b = asyncio.run(go())
+    assert {j.status for j in jobs.finished_unseen("mobile_audio")} == {"done", "failed"} and b.error == "x"
+    for j in jobs.finished_unseen("mobile_audio"):
+        j.seen = True
+    assert jobs.finished_unseen("mobile_audio") == []
+    jobs.reset()
