@@ -1,992 +1,449 @@
 # Narani
 
-*Narani* — Korean for "side by side": the original and its translation next to each other, so you can read any paper in your own language.
+*Narani* — Korean for "side by side." Read English papers next to a translation in your own language.
 
 *English · [한국어](README.md)*
 
-A local tool that turns a research-paper PDF into **(1) Markdown with a properly ordered heading
-structure** and **(2) a Korean translation in Markdown**. The browser-based web UI is the main way
-to use it (the server runs only on your own machine), and a CLI is included for automation.
+![Paper view — source on the left, translation in the middle, original PDF on the right, with matching highlights on both sides](docs/images/en/reader.png)
 
-![Convert screen — section tree on the left, Markdown preview on the right](docs/images/02-convert.png)
+Narani turns a paper PDF into clean text on your own computer, translates it with AI, and shows the source, the translation and the PDF side by side.
 
-- PDF → Markdown extraction runs **on your own machine** via [Docling](https://github.com/docling-project/docling) (MIT).
-- You fix heading levels yourself in the section tree, checking against the original PDF side by side.
-- Reference parsing, citation links, glossary building, and Korean translation use an **LLM API**
-  (optional features, key required).
+- **Read source and translation together.** Hover a sentence and its counterpart on the other side lights up. The PDF follows the page you are reading.
+- **Mark as you read.** Highlights and notes attach to both the source and the translation, and every paper has its own notepad.
+- **Pick your native language.** Translate into Korean, Japanese, Simplified Chinese, Spanish and many more. The interface itself comes in English, Korean, Japanese, Chinese and Spanish.
+- **Read on your phone.** Papers you send from the desktop open offline in a phone web app, and notes you make there come back to the desktop.
+- **Ask your papers.** The agent panel searches and reads your papers to answer, and every answer links to the paragraph it came from.
 
-> **Two things to know up front.** The translation target language is **Korean only** — that is
-> what the prompts, the style options, and the glossary are built around. And **the web UI is in
-> Korean**, so an English-only reader will find the buttons hard to follow even though everything
-> under the hood is language-neutral. The extraction and structure-editing half of the tool works
-> for any English-language paper regardless.
+To contribute or use the command line, see the [developer guide](docs/DEVELOPMENT.md) (in Korean).
 
-## What's different — you can step in
+## Contents
 
-The difference from throwing a whole PDF at an LLM and saying "translate this" is that **there are
-places, part way through the pipeline, where a human can correct what the automation did.**
-
-- **You fix the section structure yourself.** When an auto-detected heading level is wrong, change
-  it in the tree, and adjust every heading in the same numbering scheme at once. Drop sections you
-  don't want; add headings that were missed. The preview updates immediately.
-- **It remembers your corrections.** A fix like "Acknowledgments is an h2" is stored per heading
-  name and applied automatically to the next paper in the same venue's format.
-- **The glossary is settled before translation.** You edit the LLM's candidate terms in a table
-  first, then translate with that glossary, so terminology doesn't drift across the document.
-- **You choose how it translates.** Sentence-ending register (three Korean styles), whether to
-  leave headings in English, and which sections to translate at all — section by section.
-- **You review against the original.** Click a section title to jump to that PDF page, check the
-  translation in an EN | KO side-by-side view, and hand-edit the Markdown.
-- **Anything with a fixed rule is not left to the LLM.** Number-based heading re-leveling,
-  matching figure and table captions, tidying image names, protecting math/code/links, and
-  stripping running headers, copyright lines, and **the line numbers in the margin of submission
-  drafts** are all handled deterministically in code. The LLM is used only for translation, the
-  glossary, and reference parsing — which is why results are reproducible and costs are predictable.
+- [Read this first](#read-this-first)
+- [Install](#install)
+- [First launch — AI key and languages](#first-launch--ai-key-and-languages)
+- [Home — adding and organizing papers](#home--adding-and-organizing-papers)
+- [Reading a paper](#reading-a-paper)
+- [Translation](#translation)
+- [Fixing the structure](#fixing-the-structure)
+- [Agent panel](#agent-panel)
+- [Reading on mobile](#reading-on-mobile)
+- [Export and save locations](#export-and-save-locations)
+- [Cost](#cost)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
-## ⚠️ Please read this first — this project was "vibe coded"
+## Read this first
 
-**Most of the code in this repository was written by an LLM (Claude Code)** and has not been
-reviewed line by line by a human. It is a personal research tool published as-is. Use it with the
-following in mind.
+**Most of this app's code was written by AI (Claude Code)** and has not been reviewed line by line by a person. It is a personal research tool, published as is.
 
-- **AS-IS, no warranty.** It can break at any time and can silently produce wrong output. Do not
-  put it in a production or business-critical pipeline.
-- **Extraction can drop content.** Tables, math, two-column layouts, and footnotes are especially
-  fragile. Always **check the output against the original PDF** (the web UI has a side-by-side view).
-- **Translation is done by an LLM — expect mistranslations, omissions, and hallucinations.** If a
-  number, an equation, an experimental result, or a citation number changes, the tool may not
-  notice. A human has to verify before you quote or distribute the text.
-- **Your paper's body text is sent to an external LLM API.** Running translation, glossary
-  building, or reference parsing sends that text to OpenAI/Anthropic/Google servers. **Do not use
-  it on unpublished manuscripts, confidential documents, or copyrighted material you may not
-  share.** If you only use extraction (PDF → Markdown), no text leaves your machine.
-- **API charges are real.** Typically $0.03–0.14 per paper (→ [Cost](#cost--what-does-one-paper-run-you)),
-  and the cost is entirely yours. Extraction alone costs nothing.
-- **API keys are stored in plaintext** (`~/.config/narani/config.toml`, mode 0600 on POSIX). On a
-  shared computer, use environment variables instead of the config file.
-- **Bug reports are welcome, but no support is promised.** Issues and PRs get looked at when there
-  is time.
-
----
-
-## Requirements
-
-| Item | Details |
-|---|---|
-| OS | Windows 10/11, macOS (Apple Silicon · Intel), Linux |
-| Python | 3.11+ — **you don't have to install it yourself** (uv fetches it) |
-| Disk | ~**1.3GB** of dependencies (measured on macOS) + a ~**1.1GB** Docling model download on first conversion (larger on Linux, where torch pulls CUDA builds) |
-| Memory | 4GB+ recommended (no GPU required; it runs on CPU) |
-| Network | Needed to install and to download the model once. Extraction works offline after that |
-| LLM key | Only for translation/citations/glossary (optional). One of OpenAI · Anthropic · Google Gemini |
-| App window | Optional — a standalone window opened from an icon (pywebview). macOS and Windows use the OS webview as-is; Linux needs WebKit2GTK (without it, it opens in a browser) |
+- **No warranty (AS-IS).** It can break at any time, and it can quietly produce wrong results.
+- **Extraction can drop content.** Tables, equations, two-column layouts and footnotes are the weak spots. Check anything important against the **original PDF** on the right of the screen.
+- **Translation is done by AI.** It can mistranslate or skip things, and the app may not notice if a number or citation changes.
+- **Translating sends the paper's text to an AI company.** Translation, glossaries and the agent send text to OpenAI, Anthropic or Google. Don't use them on unpublished manuscripts or confidential documents. Turning the PDF into text (extraction) runs only on your computer.
+- **AI usage is billed to your own key.** Translating one paper usually costs a few cents (→ [Cost](#cost)).
+- **Your AI key is stored in plain text** in a settings file on your computer (`~/.config/narani/config.toml`, readable only by you). Be careful on shared computers.
 
 ---
 
 ## Install
 
-### One-line install — icon and all (recommended)
+### One-line install (recommended)
 
-Paste this into a terminal and it handles uv, Python, Narani, and the app icon in one go.
+Paste the line below into a terminal. It downloads everything and creates a **Narani icon**. You don't need to install Python yourself.
 
-**macOS / Linux**:
+**macOS / Linux** — in the Terminal app:
 ```bash
 curl -LsSf https://raw.githubusercontent.com/wooogler/narani/main/install.sh | sh
 ```
 
-**Windows** (PowerShell):
+**Windows** — in PowerShell:
 ```powershell
 irm https://raw.githubusercontent.com/wooogler/narani/main/install.ps1 | iex
 ```
 
-When it finishes you get a **Narani icon** in Launchpad / the Start menu. Click it to open
-(→ [Open it as an app](#open-it-as-an-app--register-an-icon-optional)). Running the same line again
-updates to the latest version.
+- The first install downloads about 1.3 GB and takes a few minutes. The first PDF you convert downloads the extraction model (about 1.1 GB) once more.
+- When it finishes, **Narani** appears in Launchpad (macOS) or the Start menu (Windows). Click it to open the app window.
+- You can read the scripts first: [install.sh](install.sh) · [install.ps1](install.ps1).
 
-- **What it does** — installs uv (a package manager that also manages Python) if you don't have it,
-  installs narani with `uv tool install`, and registers the icon with `narani app`. The scripts
-  are right here in the repo — [install.sh](install.sh) · [install.ps1](install.ps1) — so read them
-  before you run them (piping an unknown script into a shell is something to be careful about in
-  general).
-- It downloads about 1.3GB of dependencies, so the first run takes a few minutes.
-- **Why a script and not an installer (.dmg/.exe)** — the app is **assembled on your machine**, so
-  no code signing or notarization is needed, and you don't get macOS's "unidentified developer"
-  warning or the Windows SmartScreen prompt. You also don't download a 1.5GB installer.
-- Uninstall: `narani app --remove && uv tool uninstall narani`
-- **Coming from md4paper?** That was this app's old name. The old app's built-in updater can't make the
-  jump, so run the install line above once. On first launch it moves `~/.config/md4paper` (keys, collections,
-  Drive connection) and `~/md4paper` (papers) to `~/.config/narani` and `~/narani`, and removes the old icon
-  and `md4paper` command.
+| You need | Details |
+|---|---|
+| OS | macOS (Apple Silicon or Intel), Windows 10/11, Linux |
+| Disk | About 2.5 GB (1.3 GB app + 1.1 GB extraction model) |
+| Memory | 4 GB or more recommended. No GPU needed |
+| AI key | Only for translation and the agent. One of OpenAI, Anthropic or Google Gemini |
 
-### Manual install — if you already use uv, or want to change the code
+### Updating
 
-Install the [uv](https://docs.astral.sh/uv/) package manager and uv takes care of Python too.
+Each time the app starts it checks for a new version and tells you in the **bottom-right corner**. Click **Update and restart** and the app closes and reopens on the new version. Running the install line again also gets you the latest version.
 
-#### Step 1 — install uv
+### Uninstalling
 
-**Windows** (PowerShell):
-```powershell
-powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/install.ps1 | iex"
-```
-You have to **close the PowerShell window and open a new one** for the `uv` command to be found.
-
-**macOS / Linux**:
+In a terminal:
 ```bash
-curl -LsSf https://astral.sh/uv/install.sh | sh
+narani app --remove && uv tool uninstall narani
 ```
-(Homebrew works on macOS too: `brew install uv`)
+Your converted papers (`~/narani`) and settings (`~/.config/narani`) stay. Delete them yourself if you no longer need them.
 
-Check it: `uv --version`
+### Coming from md4paper
 
-#### Step 2 — install Narani and start the web UI
-
-##### Option A: clone it (recommended for development)
-
-**Windows** (PowerShell):
-```powershell
-git clone https://github.com/wooogler/narani.git
-cd narani
-uv sync --extra ui
-uv run narani ui
-```
-
-**macOS / Linux**:
-```bash
-git clone https://github.com/wooogler/narani.git
-cd narani
-uv sync --extra ui
-uv run narani ui
-```
-
-`--extra ui` pulls in the web UI (NiceGUI). The first dependency download takes a few minutes.
-To check the install, run `uv run narani doctor`.
-
-##### Option B: run it without cloning
-
-**Windows** (PowerShell):
-```powershell
-uvx --from "narani[ui] @ git+https://github.com/wooogler/narani" narani ui
-```
-
-**macOS / Linux**:
-```bash
-uvx --from 'narani[ui] @ git+https://github.com/wooogler/narani' narani ui
-```
-
-The first run fetches dependencies, so it takes a few minutes. With this method the default work
-folder is `~/narani/output` (`C:\Users\<user>\narani\output` on Windows).
+md4paper is Narani's old name. The old app's auto-update can't make the jump, so run the install line above once. On first launch Narani moves your keys, collections, Drive connection and papers to the new folders (`~/.config/narani`, `~/narani`) and removes the old icon.
 
 ---
 
-## Open it as an app — register an icon (optional)
+## First launch — AI key and languages
 
-If you used the [one-line install](#one-line-install--icon-and-all-recommended), the icon is
-**already registered**. If you cloned the repo, run two commands in it:
+![Settings, Conversion & translation tab — display language, translation language, style](docs/images/en/settings.png)
 
-```bash
-uv sync --extra ui --extra native   # add the app-window dependency (pywebview)
-uv run narani app                 # register the icon
-```
+Open **⚙ Settings** at the bottom left of Home.
 
-| OS | What gets created | Where it opens from |
-|---|---|---|
-| macOS | `~/Applications/Narani.app` | Launchpad · Spotlight · Finder · Dock |
-| Windows | `narani` in the Start menu (add `--desktop` for a desktop shortcut too) | Start menu |
-| Linux | `~/.local/share/applications/Narani.desktop` | Application menu |
+1. **AI** tab — pick a service (OpenAI, Anthropic or Google), paste your API key and click **Test connection**. Without a key you can still turn PDFs into text and read them. When no key is set, a thin warning bar appears above the Home list; clicking it opens this tab.
+2. **Conversion & translation** tab
+   - **Display language** — the language of menus and buttons: 한국어, English, 日本語, 简体中文 or Español. It takes effect when you reopen the window.
+   - **Translation language (your native language)** — papers are translated into this language. Korean, Japanese, Simplified Chinese and Spanish come with style presets, and you can pick other languages too (French, German, Vietnamese and more). Papers you already translated keep their language.
+   - **Style** — per language, for example Korean 해라체 (academic) · 합니다체 · 해요체, or Japanese である調 · です・ます調.
+   - **Translate section titles too**, the export format, and OCR for scanned PDFs are here as well.
+3. **Save location** — a folder where translated Markdown piles up (→ [Export and save locations](#export-and-save-locations)).
+4. **Advanced** — caption, run-in heading, author and citation styles, reference links, BibTeX, metadata lookup, file-name rule.
 
-Clicking the icon opens a **standalone app window** rather than a browser tab — the screens and
-features are identical to the web UI. The server still binds to 127.0.0.1 only, and closing the
-window shuts the server down. To get the same window from a terminal, run
-`uv run narani ui --native` (or plain `narani ui` to open it in a browser).
-
-- **Downloading zips works in the app window too** — instead of a browser download you get the
-  **OS save dialog** and pick the location.
-- **Environment variables are not inherited.** Launched from the icon, the app does not see a
-  `OPENAI_API_KEY` you `export`ed in your shell. Save the key in **AI settings** on the left of the
-  home screen instead (`~/.config/narani/config.toml`).
-- **If nothing happens**, check the log — on macOS, `~/Library/Logs/narani.log`. If launching
-  fails, the app tells you in a dialog.
-- **If you moved the repo or rebuilt the virtualenv**, run `narani app` again. The launcher has
-  the interpreter path baked in. (With the one-line install the path stays the same across updates,
-  so you don't need to.)
-- **In environments that can't open an app window** (Linux without WebKit2GTK or Qt, for example),
-  the icon **falls back to opening a browser** rather than doing nothing. The reason is written to
-  the launch log.
-- Uninstall: `narani app --remove`
-
-> `uv sync --extra X` removes extras you don't list. For the app window, **always pass both**:
-> `uv sync --extra ui --extra native`.
+> When you open the app from its icon it can't see environment variables set in your terminal (such as `OPENAI_API_KEY`). Save the key in **⚙ Settings → AI**.
 
 ---
 
-## Using the web UI
+## Home — adding and organizing papers
 
-Running `narani ui` prints `http://127.0.0.1:8080` in the terminal and opens a browser.
-(To use an app window instead → [Open it as an app](#open-it-as-an-app--register-an-icon-optional).)
-**The server binds to 127.0.0.1 (your machine) only, so it is not reachable from outside.** If the
-port is taken, it picks a free one and prints the actual address. (`--port 9000` to choose one,
-`--no-show` to skip opening the browser, `narani ui <name>.md4/` to open an existing job directly.)
+![Home — collections on the left, the paper list in the middle, a preview on the right](docs/images/en/home.png)
 
-### 1. Home — upload, and find things again
+Home has three columns: **collections** on the left, the **paper list** in the middle and a **preview** of the selected paper on the right.
 
-![Home screen — PDF dropzone and the list of converted papers](docs/images/01-home.png)
+### Adding papers
 
-Drop a PDF and conversion starts immediately. Drop several and they're processed in order (batch).
-It also accepts `.md` files that are already Markdown (skipping extraction, starting at structure
-cleanup).
+- **Drag PDFs onto the window**, or click **Upload** above the list. Several files are processed one after another, and `.md` files that are already Markdown are accepted too.
+- New papers go into the **collection selected on the left**.
+- After conversion Narani looks up the metadata (title, authors, year, venue) and renames the folder, e.g. `2026_LitPivot_Kambhamettu`.
 
-- Search **Converted papers** on the right by title, author, or venue, and click a card to pick up
-  where you left off.
-- The select box above the list **filters down to one project**, or groups the whole list into
-  per-project sections. Click the **project chip** on a card to move that paper to another group and
-  the copies in your library folders (Markdown, images, PDF, bib entry) follow it.
-- Hit **📌 pin** on a card and that paper moves up into a **Pinned** group at the top of the list
-  (marked with a blue edge). Switching the sort to most-recent or by-title doesn't move a pinned
-  paper, and it **stays in the list even when it falls outside the 20 most recent**. Pinning only
-  gathers papers you care about in the list — it has nothing to do with the header tabs (a tab appears
-  when you open a paper; see [Several papers at once](#several-papers-at-once--header-tabs-and-new-windows)).
-  Press 📌 again to unpin.
-- **⧉** on a card opens that paper in a **new window** — for reading two papers side by side.
-- Paste your API key into **AI settings** on the left and hit "test connection" to verify it right
-  away (only needed for translation and citations).
-- **Default conversion and translation settings** on the left are the defaults applied to papers
-  you upload from now on.
-- **Projects** on the left is where you create a bundle of papers and give each bundle a folder —
-  see [Projects](#projects--keeping-papers-in-bundles) below.
-- **Library folders** on the left sets where converted papers accumulate — see
-  [Library folders](#library-folders--collecting-converted-papers-in-one-place) below.
-- Check several papers in the list to **export** them as a single zip.
-- The trash icon on a card offers **hide from list** (files stay, the card is hidden) or **delete
-  files** (permanently removes the working directory). Hidden papers come back any time via
-  **show N hidden papers** above the list. Deleting files removes the whole paper folder — original
-  PDF, extraction cache, images — and also cleans up the copies in your library folders, common
-  folder or project folder alike: the Markdown, the images, the PDF, and **that paper's entry in
-  `references.bib`** (uncheck the box in the dialog to keep those; the dialog shows you exactly which
-  folder paths will go).
+### Selecting and opening
 
-### Several papers at once — header tabs and new windows
+- **Click a card once** to see its preview on the right: a lead figure, metadata, collections, status and the abstract (switch between source and translation).
+- **Double-click** (or press Enter), or click **Open** under the preview, to open the paper. The same row has open in a new window, original PDF, source/translation zip, 📌 pin, and hide/delete.
+- The search box above the list finds titles, authors and venues. You can sort by recent, title, year, or translated first.
 
-You rarely read one paper at a time. There are two ways to move between them.
+### Fixing metadata
 
-- **Header tabs** — like browser tabs, **opening a paper adds a tab that stays until you press ×**
-  (it survives an app restart too). The paper you are looking at is the white tab (it meets the page
-  below it); clicking another tab jumps straight there without going back home. Hover a tab for its ×
-  to close it (the paper and its files are untouched); closing the tab you are on moves to its
-  neighbour, or home if it was the last one. With many tabs the row scrolls sideways. Pinning (📌)
-  lives only on the home list cards, separate from tabs. The **PDF icon** at the end of the tab row opens the original PDF in your system's PDF
-  viewer (Preview etc.).
-- Switching tabs **no longer flickers** — the window keeps its document and header and only the body is
-  swapped in. Scroll position, highlights and the chat follow each paper; browser back/forward work the same way.
-- **Home tab and +** — the first tab is a **Home** tab that never closes (upload and paper list). Home
-  shows the same tab row, so you can jump straight back to an open paper. The **+** next to the tabs
-  lists your converted papers — search by title, author or year and click (Enter opens the first
-  match) to open it in a new tab without going through home. Papers already open are marked.
-- **Background jobs** — translation, layout auto-fix, reference parsing and adding glossary terms run
-  on the server. Switch to another tab or go home mid-run and the job **is not cancelled; it runs to
-  the end** (including saving and auto-export). That paper's tab icon spins and a **↻ count** button
-  in the header lists what is running (click to jump to that paper); home shows them under
-  "백그라운드 작업" as well. Come back and the progress bar reattaches; if it finished while you were
-  away you get a one-time completion notice. Only one job of each kind runs per paper at a time.
-- The header is **a single 44px row**. The steps (1 · convert / 2 · translate / 3 · viewer) are tabs
-  meeting the page the same way at the right end, but one size smaller (26px) with a blue active
-  label — so the layers stay legible: **left tabs = which paper, right tabs = which view of it**.
-  The page gained the whole 44px the old two-line icon tabs used up.
-- **New window** — the **⧉** next to the tabs opens the paper in **its own window**. In app-window
-  mode you get a second app window (pointing at the same server, so an edit on one side shows up on
-  the other); in browser mode you get a new tab. Use it when you want two papers genuinely
-  **side by side**. Closing the main window shuts the server down and its extra windows with it.
-  - **The same paper won't open in two windows.** Highlights and notes are saved by rewriting the
-    whole file, so editing one paper from two windows means the later save wins. If it's already
-    open, you're told so instead.
-  - **While several windows are open, saving a zip skips the location dialog** — the file lands in
-    your Downloads folder and the file manager opens on it. An app-window save dialog belongs to one
-    specific window, and a save pressed in a sibling window appearing as a sheet on the main window
-    looks exactly like nothing happening, which is worse.
+In the preview, **click** the title, authors, year, venue, DOI, short title or abstract to edit it in place. **Enter** or clicking outside saves; **Esc** cancels. Fields you edit by hand are never overwritten by later lookups. **Look up online again** fetches the publication record from OpenAlex and Crossref; **Re-extract with AI** reads the metadata again from the first pages.
 
-### It comes back to where you were — remembered step and scroll
+### Collections
 
-- Move to another paper via the header tabs and back, and it opens on **the step you last had for
-  that paper** (convert / translate / viewer). Only a paper you open for the first time follows the
-  old rule (viewer if a translation exists, convert otherwise).
-- **Scroll positions come back too**, remembered per paper, per step, and per panel — so the viewer's
-  original and translation columns, the table of contents, the PDF, and the convert tab's Markdown
-  each return to their own spot. The paper list on the home screen does the same.
-- The memory lives **inside that window's session**: side-by-side windows don't mix, and closing the
-  app forgets. If you scroll yourself right after a restore, your position wins.
+- Create groups with **New collection** on the left (a thesis survey, this semester's class…). Collections can have subcollections.
+- **A paper can belong to several collections.** Click the collection tag on a card to add or remove it, or drag the card onto a collection on the left to add it.
+- The **⋯** menu on a collection has new subcollection, rename, set folder, **Glossary…**, settings and delete. Deleting a collection keeps its papers and files.
+- **Mobile** on the left lists only the papers you sent to your phone (→ [Reading on mobile](#reading-on-mobile)).
 
-### Cmd/Ctrl+F works on every screen
+### Many papers at once — batch translation
 
-The app window has no browser find bar, so Cmd+F used to do nothing at all. Now **the same find bar
-appears in the app window and in the browser** — top right, counting every match (`3 / 26`), marking
-them all in yellow and the current one in orange.
+Tick the checkboxes on the left of the cards and the preview turns into an **N selected** panel.
 
-- **Enter** (next), **Shift+Enter** (previous), **Esc** (close); on macOS **Cmd+G / Cmd+Shift+G** too.
-- It searches **whatever text is on screen**: the Markdown preview, the viewer's original and
-  translation columns, the section tree, the table of contents. If a match sits inside a scroll box,
-  that box scrolls to bring it to the middle.
-- Highlighting **does not touch the document.** Instead of injecting find markers into the text, it
-  asks the browser to paint the ranges — so your own highlights and notes never shift because of a
-  search.
+- **Translate (N)** — translates the selected papers in one go. Before starting it shows a breakdown ("3 not translated · 1 with outdated sections · 2 up to date") and the **estimated cost**. You can include figure text translation.
+- **English zip · Translation zip**, **Send to mobile · Remove from mobile**, **Add to collection · Remove from collection**, **Save to folder**.
 
-### 2. Convert — cleaning up the source-language Markdown
+### Tabs and windows
 
-![Convert screen — adjusting heading levels in the section tree](docs/images/02-convert.png)
+- Opening a paper adds a **tab** at the top. Click a tab to go straight to that paper; tabs survive restarts. **+** next to the tabs finds a converted paper and opens it in a new tab.
+- **⧉** next to the tabs opens the paper in a **new window**, for comparing two papers truly side by side (the same paper is never open in two windows).
+- Long jobs such as translation keep running when you switch tabs or go Home. The paper's tab icon spins, and a notice appears when it finishes.
 
-This is the **1 · Convert** tab at the top. Editing on the left, results on the right.
+---
 
-- **Auto-fix layout** — the button at the top. It has AI find and fix, across the whole document,
-  the places extraction mangled (a title split into two lines as `## 2` + `## Background`, math
-  unravelled into `x t`, broken paragraphs, lists, and tables). The dialog lets you add **extra
-  instructions** (or leave it blank), and `Apply` walks the document section by section. The fixed
-  result **rebuilds the section tree and the bulk level adjustments**, while carrying over the
-  levels, translation flags, and conversion settings you've already set.
-  It does not change the words of the text — each chunk is checked to confirm the original content
-  survived, and any chunk that doesn't match is left untouched. If you don't like the result,
-  `Revert to previous state` in the same dialog rolls the whole thing back.
-- **Section tree** — detected headings in order. Change the level with the dropdown on the left
-  (`Heading 1`–`6`), or pick `to body text` (demote a heading into a normal paragraph), `merge with
-  above`, `delete entirely`, or `italic`. A `run-in` badge means a subheading that was inline with
-  the body, as in "3.1.2 Title. Body text…"; a `title` badge marks the document title.
-- **Formulas** — the extractor (docling) locates every formula but leaves its contents empty. Left
-  alone, all that survives in the Markdown is an invisible comment, so the equation looks like it
-  vanished. Conversion therefore **crops each formula region out of the PDF as an image**, and — if
-  you have an LLM key — reads that image back into `$$…$$` LaTeX, equation number included as
-  `\tag{1}`. A formula the model cannot read stays as the cropped image, so either way nothing is
-  lost from the original.
-- **Author cleanup** — two-column PDFs jam authors, emails, and affiliations onto one line;
-  conversion separates and tidies them per author (LLM labels + code reassembly if you have a key,
-  rule-based otherwise). The eight authors in the screenshot above are that result.
-- **Bulk level adjustment** — groups a numbering scheme like `3.2.1` by depth and levels them all
-  at once.
-- **Conversion settings** — citation style (numeric / author-year / short-name combinations),
-  reference links, image handling, and so on.
-- Toggle **Edit Markdown** at the top right to hand-edit the resulting Markdown.
-- **Click a figure to blow it up full screen** — scaled down to the panel width, a chart's axis and
-  legend text is unreadable. Zoom with the wheel, a trackpad pinch, or `+`/`-` (the point under the
-  cursor stays put), drag to pan while zoomed, double-click or `0` to fit, `Esc` or a background
-  click to close. It works on the figures in the viewer tab's original and translation panes too.
-- Everything you change is **saved automatically** and reflected in the preview immediately. There
-  is no "save" button.
+## Reading a paper
 
-### 3. Side by side with the PDF
+The middle of a paper's screen is the **canvas**. The **Source / Translation / PDF** buttons at the top switch columns on and off. The five buttons on the left rail (**Contents · Structure · Translation · Settings · Notes**) switch the side panel; click the active one again to fold the panel away and widen the canvas.
 
-![Markdown and PDF side by side](docs/images/03-pdf.png)
+- **Contents** — click a section title to jump there. Translated titles appear on a second line.
+- **Sentence pairs** — with source and translation side by side, hovering a sentence highlights its counterpart. With one column, click a sentence to see its counterpart in a bubble. Sentences that couldn't be paired are marked in gray.
+- **Citations and footnotes** — click a citation like `[12, Díaz & Contell 2022, …]` to see the reference, or a figure number to jump to the figure.
 
-Click **Markdown + PDF** and the original PDF appears on the right. Clicking a title in the section
-tree on the left **jumps to the PDF page** that section is on, so you can visually confirm nothing
-was dropped in extraction. **PDF** alone gives you the PDF full width.
+### Reading against the PDF
 
-### 4. Translate — what, and in what register
+- Turn on the **PDF** column and the original PDF appears on the right. As you read, **the page containing your reading position moves to the top of the PDF column**; if that page is already fully visible, the PDF stays put. Turn following off with the ↻ toolbar button.
+- Use the **zoom bar [− 100% +]** above the PDF. Trackpad pinch and ⌘/Ctrl+wheel also work, and ⌘/Ctrl+0 goes back to 100%.
+- Turn off Source and leave PDF on to read the PDF large. **Original PDF** on the right of the toolbar opens it in your default PDF app.
 
-![Translate screen — choosing sections to translate and editing the glossary table](docs/images/04-translate.png)
+### Highlights and notes
 
-This is the **2 · Translate** tab at the top.
+![Clicking a highlight shows both sentences and a note field](docs/images/en/memo.png)
 
-- **Sections to translate** — only checked sections are translated (saving cost and time).
-  Unchecked ones stay in the English original. Leaving out the references is usually the natural
-  choice.
-- **Translation options** — sentence-ending register (three Korean styles: plain 해라체, polite
-  합니다체, soft 해요체), whether to leave headings in English, and so on.
-- **Glossary** — key terms are pulled automatically from the abstract, the introduction, and the
-  section titles. Before translating, you can fix the Korean rendering and the handling of each term
-  in the table — `translate (by meaning)` / `transliterate (by sound)` / `keep original` / `gloss the
-  original on first use`. The screenshot shows actual extracted results (`self-attention → 셀프
-  어텐션`, `hidden state → 은닉 상태`). Press **"Translate with this glossary"** and the whole
-  document is unified on those choices.
+- **Double-click a sentence** to color it **in the same color on both the source and the translation**, with a note field open.
+- **Drag over text** to color just that span. Pick a color (yellow, green, blue, pink, purple) from the bar that appears, or click **Add note**.
+- Click a highlight again to change its color, edit its note or delete it. Notes save automatically.
 
-### 5. Viewer — original and translation side by side
+![Highlights & notes drawer](docs/images/en/highlights.png)
 
-![Viewer screen — English original and Korean translation side by side](docs/images/05-viewer.png)
+The **notes icon** in the toolbar (with a count badge) opens the **highlights & notes list** on the right; click an item to jump to it. If the text changes after retranslation, highlights find their place again by their wording; any that can't be found stay in the list as `Not found`. **Export → Highlights & notes (md)** at the top right saves the quotes (source and translation) and notes as a single Markdown file.
 
-This is the **3 · Viewer** tab at the top. Navigate with the table of contents on the left and
-review the original next to the translation (scrolling is synced proportionally). This is where you
-confirm that a term set to `gloss the original on first use` came out as "시퀀스 변환(sequence
-transduction)". The **Original / Translation / PDF** buttons turn each pane on and off, and the top
-right downloads the English or Korean zip directly.
+### Notepad
 
-Hover over a sentence and **the sentence it pairs with on the other side is highlighted too** — so
-you can follow by eye which sentence is which. Equal sentence counts are matched 1:1 in order; if
-the translation split one sentence into two, length ratios match them up to 1:2 and 2:1. Sentences
-that couldn't be paired are shown in grey instead of blue, so "no match found here" isn't hidden.
+![Notes panel — notes on the whole paper](docs/images/en/notes.png)
 
-There are two ways to mark something up.
+**Notes** on the left rail is a notepad for the whole paper. You edit what you see (no Markdown syntax needed), and typing `/` inserts tables, checklists, code blocks and so on. Keep several notes as tabs, and drag a tab to the bottom of the notes area to split it and see two notes at once. Everything saves automatically.
 
-- **Drag** — the highlight lands on **exactly what you dragged**. A color bar appears; pick a color,
-  or `Add note` to attach a note. Use this to pin down a single term or a fragment of an equation.
-- **Double-click** — takes **the whole sentence** you were hovering over and marks it **in both the
-  original and the translation in the same color**, opening the note box right away. It reuses the
-  color you picked last.
+### Back to where you were
 
-Click a highlight again and a card shows both the original and translated sentence, where you can
-change the color, edit the note, or delete it; the note icon in the toolbar opens the full list and
-jumps to each spot. Like the chatbot drawer, that list takes up the right-hand side rather than
-covering the text, and the two open one at a time. Annotations are saved to `annotations.json` in
-the work folder, so they're still there next time you open the paper, and the **Notes md** button
-exports the quoted original, the translation, and your notes as a single Markdown file.
+![The 'Back to reading' pill after jumping from the table of contents](docs/images/en/jump-back.png)
 
-If reassembly or re-translation shifts the body text, highlights relocate themselves by matching the
-phrase. The ones that genuinely can't be found aren't deleted — they stay in the list marked
-`position not found`.
+When you jump somewhere through the table of contents, a citation, a figure number, search or the notes list, a **↑ Back to reading** pill appears at the bottom. Click it to return to where you were. After several jumps it steps back one at a time, like a browser's Back button.
 
-### 6. Ask the paper — every answer points at the paragraph it came from (LLM key required)
+Switching tabs and coming back also restores the panel you had open and your scroll position.
 
-Questions that come up while reading go in via the **speech-bubble icon** in the viewer toolbar. Like
-the PDF pane, it **takes a column on the right** rather than covering the text (the content narrows
-to make room), and it answers about this one paper only. Drag its left edge to resize; the width is
-remembered.
+### Two viewers, top and bottom
 
-- **Click a citation number in the answer and it jumps to the paragraph behind it.** The point is to
-  show you where the answer came from instead of asking you to trust it — the viewer scrolls to that
-  paragraph and flashes it. Since the original and the translation already sit side by side there,
-  the panel doesn't redraw the paragraph itself (hover the chip to preview where it goes). `N
-  paragraphs retrieved` under an answer lists what was searched.
-- **Pick the model in the panel header.** Because these are short exchanges, you may want a
-  different tier than you'd use to translate a whole paper, so **the chatbot's model is stored
-  separately and leaves your translation settings alone.** The list shows all three providers'
-  models with their prices; providers you have no key for are listed as `(no key)`.
-- **Ask in Korean and it still searches the English original.** Retrieval is BM25 (pure Python, no
-  embeddings), splitting English into words and Korean into character bigrams. When the vocabulary
-  doesn't line up, the LLM expands the question into synonym keywords and it searches again. The
-  answer comes back **in the language you asked in**.
-- **Your own highlights and notes are searched alongside the paper** — "what did I say where I marked
-  that?" is answered in the same window as a question about the text. Since a note is **your writing**
-  and not the paper, the answer says so explicitly and cites it separately. The **include notes**
-  toggle in the header turns it off.
-- **It says when it doesn't know.** It is instructed not to invent anything absent from the retrieved
-  paragraphs, and citations pointing at paragraphs that were never in the prompt are stripped before
-  the answer is drawn.
-- The conversation is kept in `chat.json` in the work folder, so it's still there next time, and
-  **the actual cost is shown on every turn** (two LLM calls per question — one to expand the search
-  terms, one to answer). `Clear` in the header wipes the history.
-- With no LLM key, the panel tells you why. Only this feature is unavailable; everything else works.
+![The same paper in two panes — the introduction on top, section 4.1 below](docs/images/en/split.png)
+
+The **horizontal split button** (≡) in the toolbar splits the same paper into **top and bottom panes** — read the introduction while keeping the method or a figure open below.
+
+- While split, jumps from the table of contents or citations open in the **bottom pane** and the top pane keeps your place.
+- If you jumped without splitting, click **⇅ Side by side** on the pill: the bottom pane shows where you jumped and the top pane returns to where you were reading.
+- Drag the bar in the middle to resize; **× Close bottom viewer** closes it. The PDF follows whichever pane you touched last.
+
+### Figures
+
+![Figure viewer — translated caption and the toolbar at the top](docs/images/en/figure.png)
+
+- **Click a figure to zoom it full screen.** Wheel, pinch or `+`/`-` changes the zoom; drag to pan; double-click or `0` fits; `Esc` closes.
+- **Figure description** — if the authors added accessibility descriptions (alt text) to the PDF (e.g. ACM final versions), a **Figure description** section opens under the zoomed figure.
+- **Translate figure text** — the **가** button makes a copy of the figure with axis labels, legends and box text in your translation language and puts it in the translation column. The figure is not redrawn by AI: only the text areas are repainted from the original, so lines, bars and numbers stay exactly as they were. The same menu switches between original and translated figures, edits the translation, or removes it. One figure usually costs less than a cent.
+- **Re-crop (✂)** — if a figure caught part of its neighbor or was cut in half, pick the area again on the PDF page and it is re-cropped at high resolution.
+
+### Equations
+
+![Clicking an equation shows the equation cropped from the PDF next to its LaTeX](docs/images/en/formula.png)
+
+Click an equation to see **the equation cropped from the original PDF** next to its current LaTeX, so you can check them against each other. If it's wrong, **Regenerate** has the AI read it again; check the preview, then **Apply**.
+
+### Find
+
+![Cmd/Ctrl+F find bar — total and current match](docs/images/en/find.png)
+
+**⌘F / Ctrl+F** opens a find bar on every screen. It counts matches (`3 / 26`), marks them all in yellow and the current one in orange. **Enter** next, **Shift+Enter** previous, **Esc** close.
+
+---
+
+## Translation
+
+![Translation panel — sections to translate and the Translate button](docs/images/en/translate.png)
+
+This is the **Translation** panel on the left rail. The `Not translated · Translate` chip in the header opens it too.
+
+1. Choose the **sections to translate**. Unticked sections stay in the source language (you usually skip the references).
+2. If you like, **Review glossary** first to settle the terms (below).
+3. Click **Translate**. When it finishes, the translation column turns on in the canvas and the actual cost is shown.
+
+Choose the model at the top of the panel. Translated paragraphs are kept, so if you fix the structure and translate again, only changed paragraphs are retranslated.
+
+### Glossary
+
+![Glossary table — source term, translation, handling](docs/images/en/glossary.png)
+
+During conversion Narani pulls key terms from the abstract, introduction and section titles. **Review glossary** opens a table where you fix translations and handling before translating.
+
+- Handling: **Translate (by meaning)** · **Transliterate (by sound)** · **Keep original** · **Original in parentheses on first use** (e.g. "문헌-촉발 피벗(literature-initiated pivot)").
+- Translation follows this glossary, so terms stay consistent across the paper.
+- **Collection glossary** — under a collection's **⋯ → Glossary…**, set terms shared by every paper in that collection. They override paper glossaries, and you can unify a term that different papers translated differently. Before applying a change it shows how many sections would be retranslated and what it would cost.
+
+### Notation settings
+
+The **Settings** panel on the left rail changes citation style (number, author–year, short name, in combination), reference links, captions and author formatting. Changes apply to both source and translation **without retranslating**.
+
+---
+
+## Fixing the structure
+
+![Structure panel — automatic layout fix, bulk level adjustment, section tree](docs/images/en/structure.png)
+
+Turning a PDF into text sometimes gets heading levels wrong or breaks paragraphs. Fix that in the **Structure** panel on the left rail.
+
+- **Automatic layout fix** — AI finds split headings, scattered equations and broken paragraphs, lists and tables across the paper and repairs them. It doesn't change the words, and **Restore previous state** undoes it.
+- **Section tree** — set each heading's level (Heading 1–6), or turn it into body text, merge it into the one above, or delete it. Narani remembers these choices and applies them to the next paper in the same venue format.
+- **Bulk level adjustment** — groups numbering like `3.2.1` by depth so you can set levels in one go.
+- **Reconvert from PDF** — start over from the PDF.
+- **Edit Markdown** — the toolbar toggle lets you edit the text directly, in either the source or the translation. Markdown is styled as you type, with shortcuts such as ⌘/Ctrl+B (bold), I (italic), K (link), ⌘/Ctrl+⌥1–6 (headings) and ⌘/Ctrl+⇧8 (list). It saves when you stop typing.
+
+---
+
+## Agent panel
+
+![Agent panel — a question, tool calls and an answer with source numbers](docs/images/en/agent.png)
+
+Open it with the **Agent** button at the top right. It takes a column on the right and keeps the conversation as you move between Home and papers. It needs an AI key.
+
+- **It works across all your papers.** It searches papers, reads paragraphs, contents, notes and highlights as needed, then answers. You can also ask it to move the screen: "go to section 4", "open that paper."
+- **Click a source number in the answer** to jump to that paragraph. If it's in another paper, that paper opens first.
+- **It knows what you're looking at.** The paper or collection you're viewing and any selected text go along with your question, so "this paragraph" and "the selected sentence" work. Type **@** in the input to add another paper, section or note as context.
+- **Actions such as writing notes, adding highlights or retranslating** show an approval card and run only after you allow them.
+- Conversations are kept as sessions. Click the session name in the header to pick an earlier one; ⚙ changes the model and text size.
 
 ---
 
 ## Reading on mobile
 
-Read the papers you translated on the desktop from your phone or tablet, and carry highlights and notes both ways.
-There is no server — papers travel through **a `Narani` folder in your own Google Drive**, and the mobile side reads them
-in a web app (**https://narani.sangwooklee.info/**). The desktop can be off, and downloaded papers open on a plane. The
-only permission is `drive.file` (files Narani created), so it can't see the rest of your Drive, and the desktop's LLM keys
-never leave the desktop.
+<p>
+<img src="docs/images/en/mobile-list.png" width="200" alt="Mobile paper list">
+<img src="docs/images/en/mobile-reader.png" width="200" alt="Mobile reader — highlights made on the desktop are visible">
+<img src="docs/images/en/mobile-sheet.png" width="200" alt="Tapping a sentence slides up the source sentence with color and note buttons">
+<img src="docs/images/en/mobile-toc.png" width="200" alt="Table of contents drawer from the left">
+</p>
 
-**Once**
-1. On the desktop Home, tick papers and press **Send to mobile**. A Google sign-in opens in your browser — sign in and
-   allow, and a `Narani` folder appears in your Drive (or connect first from **Mobile** in the left sidebar → **Connect Google Drive**).
-2. On iPhone, open the address above in Safari → **Share → Add to Home Screen**, and open it from that icon from then on
-   (the home-screen app and Safari tabs keep separate storage, so connect and save offline inside the icon app).
-3. In the app, **Connect Google Drive** with the same account as the desktop.
+Read papers translated on the desktop on your phone or tablet, and exchange highlights and notes made on the phone with the desktop.
 
-**Managing it from the desktop**
-- **Send / remove**: tick papers → **Send to mobile** / **Remove from mobile**, or drag a card onto **Mobile** in the
-  left sidebar, or list ⋯ → **Send all translated papers in this list to mobile**. Removing keeps the paper's files; notes made on mobile are merged into this computer first.
-- **What's on mobile**: a 📱 mark on the card, and **Mobile** in the left sidebar lists them. Its header shows the
-  connected account, count, size, last sync, plus **Sync now** and **Disconnect**.
-- **Automatic sync**: when the desktop app **starts**, papers on mobile that changed on the desktop (re-translated,
-  edited) are uploaded again, mobile notes are merged, and desktop notes are uploaded. The mobile side picks them up when opened.
+- **There is no server.** Papers travel through a **`Narani` folder in your own Google Drive**. The desktop can be off while you read on the phone.
+- **Phone web app: https://narani.sangwooklee.info/** — not an app-store app, but a web app you add to your home screen.
+- **Narrow permissions.** It uses one permission (`drive.file`) that only sees files Narani created, so it can't see anything else in your Drive. Your desktop AI key never goes to the phone.
 
-**Reading on mobile**
-- **Translation ⇄** at the top switches between translation and source; the size button sets text size. Tap a sentence
-  for its counterpart, a citation for the reference.
-- **Offline mode**: turn on **Offline mode — save all** above the list to keep every paper and its desktop highlights and
-  notes on the device; each time the app opens it fetches only what's new or changed. Papers you've opened are kept
-  either way. Without a connection the list says so and papers that aren't saved are dimmed.
-- **Highlights and notes**: tap a sentence, pick a color or **Add note** — both sides of the sentence pair are marked
-  (the same shape as the desktop viewer's double-click highlight), with ✎ when there's a note. The **Notes** tab of the ✦ button at the
-  bottom right lists your highlights and notes for this paper in reading order (filter with **Notes only**); tap one to
-  jump there. The number on the button is the count. Changes made offline wait on the device and upload when you're back online.
-- **Contents**: tap the paper title in the top bar to open the table of contents from the left, with the current section marked. Tap to jump.
-- **Ask (assistant)**: the **Ask** tab of the ✦ button asks about the paper you're reading. Tap an [r12]-style citation
-  in the answer to jump to that paragraph. The first time, enter **your own AI API key** (OpenAI, Anthropic or Gemini) on
-  that device — it's stored only in that browser, and questions send the paper's text and your highlights and notes
-  directly to the service you chose (billed to that key's account). The default service and model follow the desktop
-  assistant's choice.
+### 1. Send papers from the desktop
 
-**Good to know**
-- If the paper was open in the desktop viewer while syncing, reopen it to see mobile notes.
-- Papers whose source and translation have different section counts (not aligned side by side) can't take new highlights
-  on mobile; desktop highlights still show.
-- The Google sign-in on mobile may ask you to **Reconnect** after about an hour — downloaded papers stay readable.
-- How Google data is used: [Privacy Policy](https://narani.sangwooklee.info/privacy.html) · [About](https://narani.sangwooklee.info/about.html).
-- CLI: `narani phone connect | push --drive | disconnect`. To use your own Google Cloud project, put
-  `google_desktop_client_id`, `google_desktop_client_secret` and `google_web_client_id` under `[phone]` in `config.toml`
-  (they take precedence over the built-in defaults).
+1. On Home, tick the papers to send and click **Send to mobile**.
+2. The first time, a Google sign-in opens in your browser. Sign in and allow access; a `Narani` folder is created in your Drive and the papers are uploaded. (You can also connect first with **Mobile → Connect Google Drive** in the sidebar.)
+3. To send many at once, use **⋯ → Send all translated papers in this list to mobile** at the top right of the list.
+4. You can also drag a paper card onto **Mobile** in the left sidebar.
 
-## Export — which format, and where it goes
+Sent papers get a 📱 mark on their card and are listed under **Mobile** in the sidebar. Its header shows the connected account, paper count, size, last sync, **Sync now** and **Disconnect**.
 
-Pick from the **Export format** dropdown at the top right (Universal / Notion / Obsidian) and press
-**"Download English (zip)"** or **"Download Korean (zip)"**. From the home screen you can also bundle
-several papers into one zip. Your format choice is remembered.
+### 2. Install on your phone (add to home screen)
 
-Unzipped, it looks like this:
+<img src="docs/images/en/mobile-connect.png" width="200" align="right" alt="The web app on first open — Connect Google Drive button">
 
-```
-<paper-name>-en/
-├── <paper-name>.en.md    ← Markdown converted to the format you chose
-└── images/               ← only the figures and tables actually referenced in the text
-```
+**iPhone / iPad (Safari)**
+1. Open https://narani.sangwooklee.info/ in **Safari** (the most reliable way).
+2. Tap the **Share** button (a square with an arrow) at the bottom (top on iPad).
+3. Scroll down, tap **Add to Home Screen**, then **Add** at the top right.
+4. From now on, open it from the **Narani icon on your home screen**. The home-screen app and Safari tabs keep separate storage, so connect Drive and save papers offline in the app opened from the icon.
 
-The source `en.md` / `ko.md` are always kept in universal form and **converted only at download
-time**, so switching formats and downloading again loses nothing. (The CLI's `--flavor` is the
-exception: it writes the files in the work folder in that format.)
+**Android (Chrome)**
+1. Open https://narani.sangwooklee.info/ in **Chrome**.
+2. In the **⋮** menu at the top right, tap **Add to Home screen** (or **Install app**), then **Install** / **Add**.
+3. Open it from the **Narani** icon on your home screen or app drawer.
 
-### Universal — the default
+**After first opening:** tap **Connect Google Drive** and sign in with **the same Google account** as on the desktop. The papers you sent appear.
 
-Plain standard Markdown. Images are `![](images/fig-01.png)`, citations are in-document anchor links
-like `[1](#ref-1)`, and footnotes are `<sup>` HTML.
+<br clear="right">
 
-- **Where it's used** — reading in a GitHub/GitLab repo; Markdown editors like VS Code, Typora,
-  Zettlr; converting to PDF/DOCX/HTML with Pandoc or Quarto; static sites like MkDocs, Hugo, Jekyll;
-  pasting a whole paper into an LLM.
-- **How to use it** — unzip and open the `.md`. Note that the **`.md` and `images/` must stay in the
-  same folder** for figures to show. Move the folder, not just the file.
-- Citation links (`#ref-N`) work in GitHub and the VS Code preview — clicking `[1]` in the body
-  jumps to the references.
-- If you don't know yet where it's going, take Universal. The other two formats derive from it.
+### 3. Reading on the phone
 
-### Notion
+- **List** — the papers you sent from the desktop. **Refresh** reloads the list from Drive.
+- **Offline mode** — turn on **Offline mode — save all** above the list to keep every paper and its desktop highlights and notes on the phone; each time the app opens it fetches only what's new or changed (planes, subways). Papers you've opened are kept either way. Without internet the list says so, and papers that aren't saved are dimmed.
+- **Top bar** — **‹** back to the list. Tap the **title** to slide out the **table of contents** from the left, with the current section marked. **Translation ⇄** switches between translation and source; **A** changes the text size.
+- **Tap a sentence** and its **counterpart** (the source, if you're reading the translation) slides up from the bottom. Tap a citation to see the reference.
+- **Your notes** — the **Notes** tab of the **✦** button at the bottom right lists this paper's highlights and notes in reading order (filter with **Notes only**); tap one to jump there. The number on the button is the count.
 
-Converts the syntax Notion's importer can't handle: in-document anchor links are dropped (Notion
-breaks them into `about:blank#...`), and citations become **the DOI/arXiv URL when there is one**,
-or plain text otherwise. Footnote numbers become Unicode superscripts (¹ ² ³), and image alt text is
-emptied (Notion shows alt as a caption, which duplicates the separate caption block).
+### 4. Highlights, notes and sync
 
-- **How to import** — in Notion, bottom left, **Import → Markdown & CSV**, and select the
-  **zip file without unzipping it**. The figures come along.
-- **Known artifact** — the import leaves one empty page named `images`. Delete it. (This structure
-  gives the most reliable body import, so it was left alone.)
+- Tap a sentence, then pick a **color** to highlight it or tap **Add note** to add a note. Both sentences of the pair are colored (just like a double-click on the desktop), and noted ones get a ✎.
+- **Phone → desktop**: highlights from the phone go to Drive and are merged into the desktop's highlights **when the desktop app starts** (or with **Mobile → Sync now** in the sidebar). Marks made offline wait on the phone and upload once you're connected.
+- **Desktop → phone**: when the desktop app starts it re-uploads papers you retranslated or edited, plus new notes. The phone picks them up when you open the app (or tap **Refresh**).
+- If the paper was open in the desktop viewer during a sync, reopen it to see the phone's notes.
 
-### Obsidian
+### 5. Ask on the phone (optional)
 
-Converts to Obsidian syntax: images become wiki embeds `![[<paper-folder>/images/fig-01.png]]`,
-citations become block links `[1](#^ref-1)`, and reference lines get a block id `^ref-1` at the end.
-So **clicking a citation in the body jumps to that reference, and `Cmd/Ctrl + ←` returns you to
-where you were reading.** Footnotes work the same way.
+<img src="docs/images/en/mobile-agent.png" width="200" align="right" alt="Mobile agent — AI key stored on this device">
 
-- **How to install** — unzip and copy the `<paper-name>-en` **folder as a whole** into your vault.
-- **Careful** — the folder name is baked into the embed paths, so **renaming the folder breaks the
-  figures.** The paper name is in the folder name so that images don't collide when you put many
-  papers in one vault.
+The **Ask** tab of the **✦** button at the bottom right asks about the paper you're reading. Tap a source like [r12] in the answer to jump to that paragraph.
 
-## Projects — keeping papers in bundles
+- The first time, enter **your own AI API key** (OpenAI, Anthropic or Gemini) **on that device**. The key is stored only in that device's browser.
+- When you ask, the paper's text, your highlights and notes, and the conversation go directly to the AI service you chose, billed to that key's account.
+- The default service and model follow what you chose in the desktop agent panel.
 
-Past twenty papers or so the list turns into one undifferentiated pile. A **project** is a
-compartment for splitting that pile up — a thesis survey, this semester's seminar, the study you are
-actually running — so the lists never mix. You create, rename, and delete them in the **Projects**
-panel on the left of the home screen.
+<br clear="right">
 
-Pick **one folder** per project and the places inside it are laid out for you. There is no need to
-name a separate folder for English, Korean, and PDF.
+### 6. Getting a new version
 
-```
-<project folder>/2017_Attention_Vaswani.md          ← English Markdown at the root
-<project folder>/images/2017_Attention_Vaswani/     ← figures
-<project folder>/ko/2017_Attention_Vaswani.md       ← the translation
-<project folder>/pdf/2017_Attention_Vaswani.pdf     ← the original PDF
-<project folder>/references.bib                     ← BibTeX entries keep accumulating here
-```
+The web app checks for a new version in the background each time it opens. The new version takes effect **after you fully close the app and open it again**.
 
-- The **Converted papers** list on the right can **filter down to a single project** with a select
-  box, or group everything into per-project sections.
-- Click the **project chip** on a card to move the paper, and **the copies in your library folders
-  move with it** — the Markdown, images, PDF, and `references.bib` entry are placed in the new folder
-  and cleaned out of the old one. No orphans left behind. (This happens even with auto-save off —
-  a copy you already exported sitting in the wrong folder is the worse outcome.)
-- Whichever project you have selected in the list is **where a newly uploaded paper goes**. The
-  dropzone names the project it is about to land in.
-- Papers with no project (**Unfiled**) and projects with no folder of their own go to the common
-  [Library folders](#library-folders--collecting-converted-papers-in-one-place) below.
-- Deleting a project leaves **the folder and the files alone**. The papers that were in it become
-  unfiled.
+- **iPhone** — swipe up from the bottom to open the app switcher, swipe Narani away, then open it again.
+- **Android** — swipe Narani away in the recent apps list, then open it again.
 
-### Per-project settings
+Papers and notes you've downloaded stay.
 
-Expand **Override for this project** on a project row to set values that apply to that group only.
+### Good to know
 
-| Setting | Example |
-|---|---|
-| Naming rule | `{year}_{author}_{title}` |
-| Export format | Universal · Notion · Obsidian |
-| Accumulate references.bib | on / off |
-| Auto-save after conversion | on / off |
-
-- Anything you don't set **follows the global setting** — it's an override, not a copy. Change a
-  global setting and every project that hasn't overridden it follows along, so you aren't
-  maintaining settings in two places.
-- Turning something off is not the same as leaving it unset. Switch BibTeX **off** for a project
-  and it stays off even when the global setting is on.
-- From the CLI: `narani project set NIRVANA export_target obsidian`, clear it with
-  `--unset`, or omit the KEY to see what's overridden.
-
-Translation register and extraction options stay global — duplicating the whole settings screen
-per project would only make it unclear where a given value came from.
-
-### BibTeX — references.bib accumulates
-
-One entry per paper is **appended** to `references.bib` in your library folder. Copy it straight into
-your manuscript's `.bib`, or take the whole file to Overleaf or Zotero.
-
-The cite key is the paper's base name, so it is **the same name** as the Markdown and PDF files —
-the `2017_Attention_Vaswani` in your notes and `\cite{2017_Attention_Vaswani}` can't drift apart.
-When the base name contains non-ASCII characters (Korean, say), those are dropped and a short hash is
-appended instead (`2024-d7606b`) — classic `bibtex` chokes on UTF-8 keys, and merely dropping the
-characters would make two different papers share one key.
-
-```bibtex
-@inproceedings{2017_Attention_Vaswani,
-  author    = {Vaswani, Ashish and Shazeer, Noam},
-  booktitle = {Advances in Neural Information Processing Systems},
-  title     = {{Attention Is All You Need}},
-  year      = {2017}
-}
-```
-
-- Exporting the same paper again doesn't add a second entry — **that entry is updated.** The file is
-  never re-serialized as a whole, so entries and comments you wrote by hand survive untouched.
-- **We don't build the strings ourselves.** Paper titles are full of `&`, `%`, `_`, and accented
-  characters, and hand-rolled escaping eventually breaks not your `\cite` but **the LaTeX build** —
-  which you usually find out the night before a deadline. So escaping and serialization are left to
-  [bibtexparser](https://github.com/sciunto-org/python-bibtexparser), and the entry we built is
-  **parsed back** to check that the key, type, and fields survive the round trip before anything is
-  written.
-- After writing, **the whole file is parsed again** to confirm the entry count didn't drop. If it
-  did, the file is **rolled back to what it was** — a bibliography you spent months on is not ours
-  to break.
-- A paper with no bibliographic info (no title) can't produce an entry, so it is skipped silently.
-  The feature itself has a switch — **also accumulate BibTeX (references.bib)** — in the
-  **Library folders** panel.
-
-#### Accurate entries are fetched from paper APIs
-
-What isn't on page 1 of the PDF, we can't invent — many papers print only a footer acronym like
-`CHI '24` for the venue, or nothing at all, and DOI, pages and publisher are never on page 1. So
-instead of assembling an entry, **we fetch the publication record.**
-
-**This runs once automatically at the end of every conversion**, so the very first
-`references.bib` you get is already accurate — no cleanup pass needed later. It is on by
-default; on a slow connection turn off *Enrich bibliography online after conversion* in the
-Library folders panel (it can also be set per project).
-
-For papers you converted earlier, press **Bibliographic enrichment** in the Library folders panel (or run `narani enrich`)
-and, for the papers **in the currently selected project**:
-
-1. **Ai2's Semantic Scholar** finds the paper by title — it still finds it when extraction
-   dropped a ligature and turned `Effect` into `Efect`.
-2. The resulting **DOI is handed to Crossref** for the publisher-registered entry.
-
-```bibtex
-@inproceedings{2024_HaLLMarkEffect_Hoque,
-  author    = {Hoque, Md Naimul and Mashiat, Tasfia and Ghai, Bhavya and ...},
-  booktitle = {Proceedings of the CHI Conference on Human Factors in Computing Systems},
-  doi       = {10.1145/3613904.3641895},
-  pages     = {1--15},
-  publisher = {ACM},
-  series    = {CHI '24},
-  title     = {{The HaLLMark Effect: Supporting Provenance and Transparent Use of ...}},
-  year      = {2024}
-}
-```
-
-- **The publisher's record wins for year, venue and title.** A paper read as 2008 from the PDF
-  turned out to be Flower & Hayes 1981, *College Composition & Communication* 32(4) 365–387.
-  `paper_meta.json` (which drives the list, search and filenames) is left alone — only the `.bib`
-  entry changes.
-- **Only adopted when it is the same paper.** Title similarity alone is not enough — we measured a
-  different paper scoring 0.96 with one word changed. So the **author surnames and year are
-  cross-checked**, and if no API is convincing, nothing changes (a wrong entry is worse than a
-  missing one).
-- **Only the title leaves your machine.** The body is never sent. The record is cached in the
-  paper's `bib_source.json`, so re-exporting uses no network.
-- Papers no API has (old scans and the like) keep the values read from the PDF.
-- `narani bib` uses **no network** — it just rewrites the `.bib` from what has been fetched.
-- **Scope is the selected project** (the same filter as the home list), because you usually work on
-  one group at a time and sweeping everything would hit the APIs for old projects too. Use
-  `narani enrich --all` for everything, or `--project <name>` for a different group.
-- **Progress is shown and you can stop at any time.** A paper takes seconds to tens of seconds (about
-  two minutes when it has 100 references). **Stop** finishes the current paper and halts; everything
-  enriched up to that point is already saved. The CLI shows a progress bar and honours Ctrl+C.
-
-## Library folders — collecting converted papers in one place
-
-Instead of downloading and unzipping every time, you can have **Markdown land automatically in a
-folder you choose when conversion and translation finish**. Expand **Library folders** on the left
-of the home screen and click the **folder icon** to open the OS folder picker (or just paste a path).
-
-The folders you set here are the **common** ones — a paper in a project that has its own folder goes
-there, and everything else (unfiled papers, and projects without a folder) lands here.
-
-**English Markdown, Korean Markdown, and the original PDF can go to three different folders** — for
-example `Papers/EN`, `Papers/KO`, and `Papers/PDF` in an Obsidian vault. You can set only the ones
-you need, and if English and Korean go to the same folder, `.en` / `.ko` is appended to the filenames
-to keep them apart.
-
-```
-Papers/EN/2017_Attention_Vaswani.md          ← one file per paper
-Papers/EN/images/2017_Attention_Vaswani/     ← figures isolated in a per-paper folder
-Papers/KO/2017_Attention_Vaswani.md          ← the translation, same name, different folder
-Papers/PDF/2017_Attention_Vaswani.pdf        ← the original PDF under the same name → easy to find from the md
-```
-
-- The **Organize into one folder** button applies the same layout projects use to the common place —
-  pick a single root and English Markdown goes to that root, translations to `ko/`, original PDFs to
-  `pdf/`. Use it when naming three folders separately is more bother than it's worth.
-- The format follows your **Export format** setting (Universal / Notion / Obsidian).
-- Exporting the same paper again **overwrites** — this collects papers, not versions.
-- Auto-save happens ① when conversion finishes ② when translation finishes ③ when you change the
-  structure or settings and it reassembles. With auto-save off, export by hand with **Save to
-  folder** on the paper screen or **export already-converted papers now** on the home screen (you
-  can check several in the list and send them at once).
-
-### Filename rules
-
-The paper folder, the PDF in the work folder, and the md/PDF in your library folders **all use the
-same base name**. The base name is built from the bibliographic info (extracted by the LLM) using a
-**naming rule** — the default is `{year}_{title}_{author}` (e.g. `2017_AttentionIsAllYouNeed_Vaswani`)
-and you can change it in the **Library folders** panel.
-
-- Pieces: `{year}` year · `{title}` short title (CamelCase) · `{author}` first author's surname ·
-  `{venue}` venue. Missing pieces (unknown year, etc.) are dropped automatically.
-- Even if you uploaded a file named `2412.01234v2.pdf`, the folder and PDF are renamed to the rule
-  when conversion finishes.
-- The **Clean up existing paper and PDF names** button applies the current rule to every paper you
-  have already converted — renaming folders, PDFs, and library copies, and cleaning up copies
-  exported under old names. (Papers with no bibliographic info are skipped, since no name can be
-  built.)
-
-The same settings from the terminal:
-
-```bash
-uv run narani project                                   # list projects · which one is selected
-uv run narani project add "Tutor chatbot survey" --dir ~/Vault/Tutor
-uv run narani project use "Tutor chatbot survey"        # where new papers will go
-uv run narani project assign "Tutor chatbot" output/2017_.../2017_....md4
-uv run narani library                                   # show current library folders
-uv run narani library --en ~/Papers/EN --ko ~/Papers/KO --pdf ~/Papers/PDF
-uv run narani library --root ~/Papers                   # common library as a single folder
-uv run narani library --export                          # export every converted paper
-uv run narani library --off all                         # turn it off
-uv run narani bib --all                                 # refill references.bib (queries paper APIs)
-uv run narani naming                                    # show the naming rule
-uv run narani naming "{author}{year}_{title}"           # change the rule
-uv run narani naming --apply                            # clean up existing paper and PDF names
-```
-
-### Bibliographic enrichment (optional)
-
-Papers with a missing year or venue can be filled in from **public bibliographic APIs**: the
-**Enrich bibliography** button in the library panel, or `narani enrich --all`.
-
-- [OpenAlex](https://openalex.org) first; if only arXiv matches, [Crossref](https://www.crossref.org)
-  fills in the published venue. Both are free and need no key.
-- **Only the paper title is sent** (the body text does not leave your machine). Values read from the
-  PDF are **not overwritten** — only empty fields are filled.
-- A result is accepted only when its title matches ours closely enough. Crossref returns its top hit
-  regardless of similarity (observed: a query for a 2026 paper returned a 2010 book), so without this
-  check a wrong year would slip in silently.
-- Put an email in `[enrich].mailto` to use the APIs' polite pool:
-  `narani enrich --all --mailto you@example.com`
-
+- Google sign-in on the phone may ask you to **Reconnect** after about an hour. Downloaded papers stay readable.
+- Papers whose source and translation have a different number of sections couldn't be aligned, so you can't add new highlights to them on the phone (desktop highlights still show).
+- To take a paper off the phone, tick it on the desktop and click **Remove from mobile**. Phone notes are merged into the desktop first; the paper's files stay.
+- To disconnect, use **Mobile → Disconnect** in the sidebar. Files already in Drive remain; delete the `Narani` folder in Drive if you don't need them.
+- How Google data is used: [Privacy policy](https://narani.sangwooklee.info/privacy.html) · [About](https://narani.sangwooklee.info/about.html)
 
 ---
 
-## LLM API keys (only needed for translation and citation features)
+## Export and save locations
 
-The simplest way is to paste the key into the **AI settings** panel on the web UI home screen and
-press **test connection**. From a terminal:
+### Export
 
-```bash
-uv run narani keys set openai      # saved to ~/.config/narani/config.toml (mode 0600)
-uv run narani keys list            # check what's configured (values masked)
-```
+**Export** at the top right of a paper offers **English Markdown (zip)**, **Translated Markdown (zip)** and **Highlights & notes (md)**. Choose where it's going under **Format** in the same menu.
 
-Or environment variables — recommended on a shared computer:
-
-| Provider | Environment variable | Default model |
+| Format | For | How to bring it in |
 |---|---|---|
-| OpenAI | `OPENAI_API_KEY` | `gpt-6-luna` |
-| Anthropic | `ANTHROPIC_API_KEY` | `claude-haiku-4-5` |
-| Google Gemini | `GEMINI_API_KEY` | `gemini-3.5-flash-lite` |
+| **Universal** (default) | GitHub, Markdown editors like VS Code or Typora, Pandoc, pasting into an LLM | Unzip and open the `.md`. Keep the `.md` and the `images/` folder together or figures won't show |
+| **Notion** | Notion | **Import → Markdown & CSV** at the bottom left; choose the **zip itself, without unzipping**. Delete the empty `images` page that import leaves behind |
+| **Obsidian** | Obsidian | Unzip and copy the `<paper>-en` **folder as a whole** into your vault. Clicking a citation jumps to the reference and ⌘/Ctrl+← returns. **Renaming the folder breaks the figures** |
 
-The default models are the cheapest tier of each vendor's latest generation. If your account doesn't
-have one of them, pick a different provider in the UI or pass `--model <name>` on the CLI (older
-models still work fine).
+The originals are always kept in Universal form and converted only on export, so switching formats and exporting again loses nothing.
 
-## Cost — what does one paper run you?
+### Save location — papers pile up in a folder automatically
 
-**PDF → Markdown extraction costs $0.** Extraction is entirely local. The only things that cost
-money are reference parsing, glossary generation, translation, and questions to the viewer chatbot.
-Papers with equations add formula reading, at roughly $0.0005 per formula — a paper with 25 of them
-(TextGrad) measured **$0.012**. Papers without equations never make the call at all.
+Instead of downloading zips, choose one folder in **⚙ Settings → Save location** and Markdown lands there whenever a conversion or translation finishes.
 
-**Measured**: *Attention Is All You Need* (15 pages, 49k characters of body text), the paper used
-for this README's screenshots, with **automatic glossary generation + full translation** on the
-then-default model `gpt-5.6-luna`, cost — as reported by the tool itself — **$0.031** (15 chunks). Cost
-is close to linear in body length, so:
+```
+<save folder>/2026_LitPivot_Kambhamettu.md          ← source
+<save folder>/images/2026_LitPivot_Kambhamettu/     ← figures
+<save folder>/ko/2026_LitPivot_Kambhamettu.md       ← translation (folder named by language)
+<save folder>/pdf/2026_LitPivot_Kambhamettu.pdf     ← original PDF
+<save folder>/references.bib                        ← BibTeX
+```
 
-| Paper | `gpt-5.6-luna` (then default) |
-|---|---|
-| Short paper (~50k chars of body) — **measured** | **$0.031** |
-| Typical conference paper (~70k chars) | ~$0.04 |
-| Long paper with appendices (~240k chars) | ~$0.14 |
+- Each collection can have its own folder (collection **⋯ → Set folder…**). Collections without one use the common folder.
+- Each collection can also override the file-name rule, export format, BibTeX and auto-save (collection **⋯ → Settings… → Advanced**). Anything not set follows the global settings.
+- File names follow the `{year}_{title}_{author}` rule by default; change it in **⚙ Settings → Advanced**.
 
-Add reference parsing (citation links) on top and it's another $0.01–0.02 per paper.
+### BibTeX
 
-The current default, `gpt-6-luna`, is $0.1/$0.5 per 1M tokens — half the input price and about 42%
-of the output price of `gpt-5.6-luna` — so the same paper should come to **roughly half** the
-figures above (short paper ~$0.013–0.016). This hasn't been re-measured on `gpt-6-luna` yet.
+Each paper adds one entry to `references.bib` in the save location. Paste it into your manuscript's `.bib`, or bring it into Overleaf or Zotero.
 
-**The viewer chatbot** sends eight retrieved paragraphs and a few recent turns per question, not the
-whole paper, so it is far smaller than a translation — the exact figure is printed with each answer,
-so watch that for the first few.
-
-> An OpenAI price cut on 2026-07-30 took `gpt-5.6-luna` from $1/$6 to $0.2/$1.2 (per 1M tokens),
-> making the figures above one fifth of what they were. The measured row applies the new prices to
-> the same measured token usage. That cut made the default model the cheapest across all three
-> providers — switching to Gemini used to be much cheaper, but `gemini-3.5-flash-lite` ($0.3/$2.5)
-> is now more expensive. Choose a provider on translation-quality preference now, not cost.
-
-Guards against runaway spending:
-
-- **The actual cost is printed when a run finishes** — `cost ≈ $0.0306 → paper.ko.md`
-- **Translation cache** — chunks whose content hasn't changed are not re-translated when you fix the
-  structure and run again.
-- **Scope selection** — translate only the sections you need.
-- **The chatbot prints its cost on every turn** — a long conversation stays visible as it adds up.
-
-> The measured figures are computed from the price table in [base.py](src/narani/llm/base.py) as of
-> 2026-07. Vendor pricing changes, so run a short paper first and check the actual cost it prints.
-
-## Where files live
-
-| Item | Path |
-|---|---|
-| Work folder (default) | run from the repo: `<repo>/output/` · run via `uvx`: `~/narani/output/` |
-| Per-paper results | `<workfolder>/<name>/<name>.md4/` (extracted source, structure, translation, logs) |
-| Final Markdown | `<name>.md4/out/paper.en.md`, `paper.ko.md`, `out/images/` |
-| Library folders (optional) | a folder you choose, holding `<paper-name>.md` + `images/<paper-name>/` + `<paper-name>.pdf` — English, Korean, and PDF separately |
-| Project list | `~/.config/narani/projects.json` (project names and folders, plus the selected one) |
-| A paper's project | the `project` field in `<name>.md4/status.json` (a project id; empty means unfiled) |
-| Settings and API keys | `~/.config/narani/config.toml` (Windows: `C:\Users\<user>\.config\narani\config.toml`) |
-| Remembered heading decisions | `~/.config/narani/heading_prefs.json` |
-| Docling model cache | `~/.cache/huggingface` (Windows: `C:\Users\<user>\.cache\huggingface`) |
-| App launcher (optional) | macOS `~/Applications/Narani.app` · Windows Start menu · Linux `~/.local/share/applications` |
-| App launch log | macOS `~/Library/Logs/narani.log` (when launched from the icon) |
-
-To change the work folder: **Library folders → Work folder → Change** on the home screen,
-`uv run narani workspace <path>`, or `narani ui --upload-dir <path>`.
-
-The default **depends on how you launch it**, as the table shows, but the value at the time you first
-start the UI is written to the config file. So if you start with a clone and later switch to the icon
-(one-line install), it **keeps looking at the same folder** — papers you converted don't vanish from
-the list. Where the resulting Markdown accumulates is set separately, under
-[Library folders](#library-folders--collecting-converted-papers-in-one-place).
+- The citation key matches the file name (`\cite{2026_LitPivot_Kambhamettu}`).
+- After conversion Narani **fetches the publication record from Semantic Scholar and Crossref** to fill in DOI, venue and pages. **Only the paper title is sent.** It cross-checks authors and year and changes nothing unless it's sure it's the same paper.
+- Entries you added by hand are left alone, and if a write would shrink the file, it is rolled back.
 
 ---
 
-## CLI (optional — for automation and batch runs)
+## Cost
 
-Most of what the web UI does is available in a terminal, which is handy for scripting many papers or
-running on a server.
+**Turning PDFs into text (extraction) is free** — it runs only on your computer. What costs money is translation, glossary creation, reference parsing, reading equations, figure-text translation and agent questions.
 
-```bash
-uv run narani doctor                  # check the environment
-uv run narani convert paper.pdf       # PDF → paper.md4/out/paper.en.md
-uv run narani review paper.md4/       # open the section manifest in $EDITOR, then reassemble
-uv run narani cite paper.md4/         # parse references + link in-text citations (LLM)
-uv run narani glossary paper.md4/     # build the glossary before translating (LLM)
-uv run narani translate paper.md4/    # translate to Korean → paper.md4/out/paper.ko.md (LLM)
-uv run narani ui paper.md4/           # open this job in the web UI
-uv run narani workspace               # show / change the work folder
-uv run narani project                 # list projects; add · use · assign
-uv run narani library                 # show / change library folders (English, Korean, PDF); --root
-uv run narani bib --all               # refill references.bib (queries paper APIs)
-uv run narani naming                  # show / change the naming rule; --apply to clean up existing names
-uv run narani enrich --all            # fill empty years and venues from public bibliographic APIs
-uv run narani prefs list              # list remembered heading decisions
-uv run narani app                     # register the double-clickable app icon (--remove to undo)
-```
+| Paper | Translation cost (measured 2026-07 with `gpt-5.6-luna`) |
+|---|---|
+| Short paper (about 50k characters of body text) — measured | about $0.031 |
+| Typical conference paper (about 70k characters) | about $0.04 |
+| Long paper with appendices (about 240k characters) | about $0.14 |
 
-Main options:
+- The current default model, `gpt-6-luna`, is cheaper per token, so expect about half of the above (not re-measured yet).
+- Each equation costs about $0.0005; figure-text translation is under a cent per figure.
+- **Batch translation shows an estimate before it starts**, and every translation shows the **actual cost** when it finishes. Paragraphs already translated are never translated again.
+- The agent sends only the paragraphs it needs for each question, so it costs far less than translation. If one session passes $2, it asks before continuing.
 
-- `convert --ocr` — OCR for scanned PDFs (unnecessary for born-digital papers, and slow)
-- `convert --flavor standard|obsidian|notion` — export format (see [Export](#export--which-format-and-where-it-goes) above)
-- `translate --style 합니다체` — set the Korean register
-- `cite --style keep|authoryear|short` — citation style
-- `review` — opens the manifest in `$EDITOR` (Notepad on Windows if unset)
-
-If you installed with `uvx`, drop the `uv run` — just `narani convert paper.pdf`.
+---
 
 ## Troubleshooting
 
-**General**
+- **Clicking the icon opens nothing** — check the launch log (macOS `~/Library/Logs/narani.log`). Running the install line again usually fixes it.
+- **It says there's no AI key** — an app opened from its icon can't see terminal environment variables. Save the key in **⚙ Settings → AI**.
+- **Papers I converted are missing from the list** — the working folder points somewhere else. Set **⚙ Settings → Save location → Working folder** back to the old folder.
+- **The first conversion is slow** — it's downloading the extraction model (about 1.1 GB). Later ones are faster.
+- **The extracted text looks wrong** — fix heading levels or run **Automatic layout fix** in the **Structure** panel, and compare with the PDF column. For scanned PDFs, turn on OCR in **⚙ Settings → Conversion & translation** and convert again.
+- **New papers don't show on the phone** — tap **Refresh** in the phone list. If they're still missing, click **Mobile → Sync now** in the desktop sidebar.
+- **The phone web app looks old** — fully close the app and reopen it (→ [Getting a new version](#6-getting-a-new-version)).
+- **`libGL.so.1` error on Linux** — `sudo apt install -y libgl1 libglib2.0-0` (Debian/Ubuntu).
 
-- Run `narani doctor` first. If every required item is ✓, conversion will work. An LLM key showing
-  as `-` is not a failure — it means "optional feature not configured".
-- Converted papers missing from the list → the files weren't deleted; **the work folder is pointing
-  somewhere else**. When the list is empty, the home screen shows the folder path it's looking at, so
-  switch back to your old folder under **Library folders → Work folder** (`narani workspace <path>`
-  does the same).
-- Clicked the app icon and no window appeared → check the launch log (macOS:
-  `~/Library/Logs/narani.log`). Usually you skipped `uv sync --extra ui --extra native`, or you
-  moved the repo and didn't re-run `narani app`.
-- No AI key visible in the app window → icon launches don't inherit shell environment variables. Save
-  the key under **AI settings** on the home screen.
-- First conversion is slow → it's downloading the Docling model (~1.1GB). It's fast from the second
-  time on.
-- Output looks wrong → fix the heading levels in the section tree and compare against the PDF in the
-  side-by-side view. A scanned PDF needs OCR.
-
-**Windows**
-
-- `uv: command not found` → open a new PowerShell, or log out and back in.
-- If you don't have `git`, install it from [git-scm.com](https://git-scm.com/download/win), or use
-  **Option B**, which needs no clone.
-- Execution policy error (`running scripts is disabled`) → check you didn't drop the
-  `-ExecutionPolicy ByPass` part of the uv install command.
-- If install fails in a folder with a very long path, try a short one (e.g. `C:\dev\narani`).
-
-**macOS**
-
-- Both Apple Silicon and Intel run on CPU (no GPU needed).
-- If the browser doesn't open by itself, go to the `http://127.0.0.1:8080` printed in the terminal.
-
-**Linux**
-
-- `ImportError: libGL.so.1: cannot open shared object file` → an OpenCV runtime dependency:
-  ```bash
-  sudo apt install -y libgl1 libglib2.0-0     # Debian/Ubuntu
-  ```
-- On a headless server, run with `--no-show` and connect over an SSH port forward:
-  ```bash
-  narani ui --no-show --port 8080
-  ssh -L 8080:127.0.0.1:8080 <user>@<server>   # from your local machine
-  ```
-  The server binds to 127.0.0.1 only, so **don't expose it to the internet without authentication**
-  (it was not built for that).
-- Your distro's default torch may be a CUDA build, which makes the install large. It works without a
-  GPU.
-
-## Development
-
-```bash
-uv sync --extra ui
-uv run pytest -q          # tests (all of them run against a fake provider, with no LLM calls)
-uv run ruff check .       # lint
-```
-
-The design document and milestones are in [PLAN.md](PLAN.md) (Korean).
-`uv sync --extra X` removes the extras you don't list, so pass them all at once if you need several.
+Other install methods, the command line and file locations are in the [developer guide](docs/DEVELOPMENT.md).
 
 ## License
 
-[MIT](LICENSE). **AS-IS, no warranty** — see the warning section above.
+[MIT](LICENSE), with no warranty (AS-IS). All dependencies are MIT, BSD or Apache licensed; there are no GPL/AGPL dependencies.
 
-The dependencies are all permissive too — Docling, pydantic, NiceGUI (MIT); pypdfium2, click, httpx
-(BSD); PyTorch, OpenCV, the LLM SDKs (Apache-2.0); Pillow (HPND); bibtexparser, which builds and
-verifies the BibTeX entries (MIT). **There are no copyleft (GPL/AGPL) dependencies.** (PyMuPDF
-(AGPL), previously used to render PDF pages, was replaced by pypdfium2, which does the same job.)
-
-Copyright in the **output** of conversion and translation belongs to the copyright holder of the
-original paper. Whether you may redistribute it is yours to check.
+Copyright in the converted and translated **output** belongs to the original papers' authors. Check for yourself whether you may redistribute it.
