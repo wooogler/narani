@@ -1272,5 +1272,19 @@
  "Qwen3를 설치했습니다 — 처음 만들 때 모델(약 2.5GB)을 한 번 받습니다.": "Qwen3 installed — the model (about 2.5 GB) downloads once the first time you make audio.",
  "이 Mac에 Qwen3 로컬 목소리를 설치합니다 — 앱과 따로 두는 작은 환경(수백 MB)이고, 처음 만들 때 모델(약 2.5GB)을 한 번 받습니다. 인터넷 없이·무료로 돌지만 Mac 목소리보다 느립니다(한 시간 분량에 약 50분).": "Installs the Qwen3 local voice on this Mac — a small environment kept separate from the app (a few hundred MB); the model (about 2.5 GB) downloads once the first time. It runs offline and free but slower than the Mac voice (about 50 min per hour of audio).",
  "설치하기": "Install",
- " · 무료 · 만드는 데 약 {w}분 (이 Mac에서, 처음엔 모델 받기 더)": " · free · about {w} min to make (on this Mac; first time adds the model download)"
+ " · 무료 · 만드는 데 약 {w}분 (이 Mac에서, 처음엔 모델 받기 더)": " · free · about {w} min to make (on this Mac; first time adds the model download)",
+ "모바일과 동기화하는 중…": "Syncing with mobile…",
+ "모바일과 동기화했습니다 — 다시 올림 {up}편 · 메모 {m}개 합침": "Synced with mobile — re-uploaded {up} papers · merged {m} notes",
+ "{when} 동기화": "synced {when}",
+ "지금 동기화": "Sync now",
+ "동기화": "Sync",
+ "빈 칸이 없습니다.": "No empty rows.",
+ "AI가 읽는 법을 정하는 중… ({n}개)": "AI is choosing readings… ({n})",
+ "AI로 채우지 못했습니다: {e}": "Couldn't fill with AI: {e}",
+ "{n}개를 채웠습니다 — 확인하고 고친 뒤 만들기를 누르세요.": "Filled {n} — check and edit them, then press Create.",
+ "발음 용어집 — 영어 용어를 어떻게 읽을지 ({n}개)": "Pronunciation glossary — how to read English terms ({n})",
+ "비워 두면 목소리가 알아서 읽습니다. 고치면 그 말이 나오는 섹션만 다시 만듭니다.": "Leave blank to let the voice decide. Changing a reading remakes only the sections that use it.",
+ "AI로 채우기": "Fill with AI",
+ "{n}번 나옴": "appears {n} times",
+ "논문마다 저장해 둔 발음 용어집으로 읽습니다.": "Each paper is read with its saved pronunciation glossary."
 }

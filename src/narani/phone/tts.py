@@ -279,6 +279,97 @@ def _prose(sents: list[tuple[str, int, int]]) -> bool:
             and text.lstrip()[:1] not in "∗*†‡§¶")       # 저자 각주(∗ 인턴십 중… † 현재 소속…)
 
 
+# ---- 발음 용어집 — 번역문에 남은 영어(이름·약어)를 어떻게 읽을지 ----
+# 'Hedwig' → '헤드위그', 'RAG' → '래그'처럼 읽기 직전에만 바꾼다. 화면의 본문과 하이라이트 위치(셀 textContent 기준
+# s·e)는 그대로다. 섹션 캐시 열쇠가 바뀐 글로 계산되므로 표를 고치면 그 말이 나오는 섹션만 다시 만든다.
+# 논문마다 작업 폴더의 speech_terms.json — {용어: 읽기}.
+_LATIN = re.compile(r"(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9]*(?:[-+.'’][A-Za-z0-9]+)*\+*(?![A-Za-z0-9])")
+
+
+def terms_path(root: Path) -> Path:
+    from narani.workdir import WorkDir
+
+    return WorkDir(Path(root)).root / "speech_terms.json"
+
+
+def load_terms(root: Path) -> dict[str, str]:
+    try:
+        data = json.loads(terms_path(root).read_text(encoding="utf-8"))
+        return {str(k): str(v) for k, v in data.items() if str(k).strip() and str(v).strip()} if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_terms(root: Path, terms: dict[str, str]) -> None:
+    clean = {k.strip(): v.strip() for k, v in terms.items() if k.strip() and v.strip()}
+    p = terms_path(root)
+    if not clean:
+        p.unlink(missing_ok=True)
+        return
+    p.write_text(json.dumps(dict(sorted(clean.items(), key=lambda kv: kv[0].lower())), ensure_ascii=False, indent=1),
+                 encoding="utf-8")
+
+
+def latin_terms(sections: list[Section], limit: int = 80) -> list[tuple[str, int]]:
+    """읽을 글에 나오는 로마자 낱말(두 글자 이상) — 자주 나온 순서로 [(용어, 횟수)]."""
+    from collections import Counter
+
+    c: Counter[str] = Counter()
+    for s in sections:
+        for u in s.units:
+            c.update(m.group(0) for m in _LATIN.finditer(u.text) if len(m.group(0)) >= 2)
+    return c.most_common(limit)
+
+
+def _terms_re(terms: dict[str, str]) -> re.Pattern | None:
+    keys = sorted((k for k in terms if k), key=len, reverse=True)
+    if not keys:
+        return None
+    return re.compile(r"(?<![A-Za-z0-9])(?:" + "|".join(re.escape(k) for k in keys) + r")(?![A-Za-z0-9])")
+
+
+def speak_text(text: str, terms: dict[str, str] | None, _rx: re.Pattern | None = None) -> str:
+    """읽을 글에 발음 용어집을 입힌다 (긴 용어 먼저, 낱말 경계에서만)."""
+    rx = _rx or (_terms_re(terms) if terms else None)
+    return rx.sub(lambda m: terms[m.group(0)], text) if rx else text
+
+
+def apply_terms(sections: list[Section], terms: dict[str, str] | None) -> list[Section]:
+    rx = _terms_re(terms) if terms else None
+    if not rx:
+        return sections
+    return [Section(s.title, s.row, [Unit(u.row, u.s, u.e, speak_text(u.text, terms, rx), u.head, u.end_of_block)
+                                     for u in s.units]) for s in sections]
+
+
+def suggest_readings(terms: list[str], lang: str, provider=None) -> dict[str, str]:  # noqa: ANN001
+    """로마자 용어들 → 그 언어 낭독자가 읽을 말(그 언어 글자로). 번역에 쓰는 AI로 한 번에."""
+    from pydantic import BaseModel
+
+    from narani import config, langs
+
+    class Reading(BaseModel):
+        term: str
+        reading: str
+
+    class Readings(BaseModel):
+        items: list[Reading]
+
+    if not terms:
+        return {}
+    name = langs.get(lang).english if hasattr(langs.get(lang), "english") else lang
+    system = (f"You decide how a {name} text-to-speech narrator should read Latin-script terms that appear inside a {name} "
+              f"translation of a research paper. For each term give the spoken reading written in {name} script. "
+              "Use the conventional pronunciation in the field: acronyms usually spoken as words are written that way "
+              "(e.g. for Korean: NASA→나사, LaTeX→레이텍, SQL→시퀄), other acronyms letter by letter (LLM→엘엘엠, "
+              "HCI→에이치씨아이), system and product names by their pronunciation (Hedwig→헤드위그, OpenReview→오픈리뷰). "
+              "Keep digits as they are. Return one item for every term, with the term exactly as given.")
+    prov = provider or config.build_provider()
+    out = prov.parse(system, "\n".join(terms), Readings, max_tokens=4096)
+    asked = set(terms)
+    return {it.term: it.reading.strip() for it in out.items if it.term in asked and it.reading.strip()}
+
+
 def minutes(sections: list[Section]) -> float:
     return sum(s.chars() for s in sections) / CPS / 60
 
@@ -747,7 +838,8 @@ def _make_section(engine, sec: Section, cache: Path, key: str, tmp: Path,  # noq
 
 
 def build(bundle: dict, engine, cache: Path, include: list[int] | None = None,
-          on_progress: Callable[[int, int, str], None] | None = None) -> tuple[bytes, dict]:
+          on_progress: Callable[[int, int, str], None] | None = None,
+          terms: dict[str, str] | None = None) -> tuple[bytes, dict]:
     """번들 → (m4a 바이트, 시간표). include는 넣을 섹션의 행 번호들(없으면 전부).
 
     on_progress(만든 문장 수, 새로 만들 문장 수, 섹션 제목) — 캐시에 있는 섹션은 세지 않는다.
@@ -758,6 +850,7 @@ def build(bundle: dict, engine, cache: Path, include: list[int] | None = None,
         secs = [s for s in secs if s.row in rows]
     if not secs:
         raise ValueError("읽을 본문이 없습니다")
+    secs = apply_terms(secs, terms)   # 발음 용어집 — 읽는 글만 바뀐다(위치·제목 표시는 원문)
     cache.mkdir(parents=True, exist_ok=True)
     keys = [section_key(engine, s) for s in secs]
     todo = [(s, k) for s, k in zip(secs, keys) if not ((cache / f"{k}.m4a").exists() and (cache / f"{k}.json").exists())]

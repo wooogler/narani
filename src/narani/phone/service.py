@@ -238,6 +238,28 @@ def sections(root: Path) -> list[dict]:
              "first": next((u.text for u in s.units if not u.head), "")} for s in secs]
 
 
+def speech_terms(root: Path) -> dict:
+    """발음 용어집 창에 보일 것 — 저장된 표 + 이 논문 읽을 글에 나오는 로마자 용어(자주 나온 순)."""
+    from narani.phone import bundle as bmod
+    from narani.phone import tts
+
+    _side, secs = tts.plan(bmod.build_paper(Path(root)))
+    return {"terms": tts.load_terms(root), "found": tts.latin_terms(secs)}
+
+
+def save_speech_terms(root: Path, terms: dict[str, str]) -> None:
+    from narani.phone import tts
+
+    tts.save_terms(root, terms)
+
+
+def suggest_speech_terms(root: Path, terms: list[str]) -> dict[str, str]:
+    """아직 읽기가 없는 용어들 → AI가 제안한 읽기 (번역에 쓰는 AI 키로, 몇 원어치)."""
+    from narani.phone import tts
+
+    return tts.suggest_readings(terms, paper_lang(root))
+
+
 def make_audio(roots: list[Path], voice: str | None = None, include: list[int] | None = None,
                on_progress=None, engine: str = "mac", model: str | None = None) -> dict:  # noqa: ANN001
     """논문들의 듣기 음성을 만들어 올린다 — 먼저 번들·메모를 맞추고(send), 음성은 바뀐 섹션만 새로 만든다.
