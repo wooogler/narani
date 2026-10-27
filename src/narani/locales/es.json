@@ -980,11 +980,9 @@
  "{date}에 올린 목록": "Lista enviada el {date}",
  "오프라인 {n}/{m}편": "{n}/{m} sin conexión",
  "새로 고침": "Actualizar",
- "모두 오프라인에 저장": "Guardar todo sin conexión",
  "{n}편은 받지 못했어요": "No se pudieron descargar {n}",
  "저장 중… {n}/{m}": "Guardando… {n}/{m}",
  "연결된 저장소가 없어요.": "No hay almacenamiento conectado.",
- "오프라인 — 받아 둔 목록이에요": "Sin conexión — mostrando la lista guardada",
  "목록을 불러오지 못했어요. 인터넷 연결을 확인하세요.": "No se pudo cargar la lista. Revisa tu conexión a internet.",
  "이 논문을 받지 못했어요. 인터넷에 연결된 뒤 다시 열어 보세요.": "No se pudo descargar este artículo. Ábrelo de nuevo cuando tengas conexión.",
  "Google Drive에 연결해 데스크톱에서 보낸 논문을 받아요.": "Conecta Google Drive para recibir los artículos que enviaste desde el escritorio.",
@@ -1100,5 +1098,11 @@
  "빈 답이 왔어요": "La respuesta llegó vacía",
  "답을 받지 못했어요: {e}": "No se pudo obtener respuesta: {e}",
  "번역으로 보기": "Ver traducción",
- "원문으로 보기": "Ver original"
+ "원문으로 보기": "Ver original",
+ "오프라인 — 받아 둔 논문만 열려요": "Sin conexión — solo se abren los artículos guardados",
+ "받아 두지 않음": "No guardado",
+ "오프라인 모드 — 모두 받아 두기": "Modo sin conexión — guardar todo",
+ "메모만": "Solo notas",
+ "아직 표시한 문장이 없어요. 본문의 문장을 누르면 색을 칠하거나 메모를 달 수 있어요.": "Aún no hay nada marcado. Toca una frase del texto para resaltarla o añadir una nota.",
+ "저장소에 연결해야 하이라이트·메모를 남길 수 있어요.": "Conecta un almacenamiento para dejar resaltados y notas."
 }

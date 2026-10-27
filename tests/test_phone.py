@@ -173,6 +173,16 @@ def test_phone_app_has_notes():
     assert "function sentenceActs" in js and "function notesOpen" in js
 
 
+def test_phone_app_notes_tab_and_offline_mode():
+    files = web.site_files(local=True)
+    html, js = files["index.html"][0].decode(), files["app.js"][0].decode()
+    # 메모 목록은 떠 있는 단추의 탭으로 (논문 머리의 목록은 없앴다)
+    assert 'id="tab-notes"' in html and 'id="fab-n"' in html and "anno-head" not in js
+    # 오프라인 모드: 하이라이트·메모 파일도 받아 두고, 목록을 정리할 때 지우지 않는다
+    assert "function saveOffline" in js and "getNotes(e)" in js
+    assert "keep['notes/' + fileId(e) + '.json'] = 1" in js
+
+
 def test_site_ships_about_and_privacy_pages():
     files = web.site_files()
     about, privacy = files["about.html"][0].decode(), files["privacy.html"][0].decode()

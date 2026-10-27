@@ -480,21 +480,25 @@ never leave the desktop.
 3. In the app, **Connect Google Drive** with the same account as the desktop.
 
 **Managing it from the desktop**
-- **Send / remove**: tick papers → **Send to mobile** / **Remove from mobile**, or list ⋯ → **Send all translated papers in
-  this list to mobile**. Removing keeps the paper's files; notes made on mobile are merged into this computer first.
+- **Send / remove**: tick papers → **Send to mobile** / **Remove from mobile**, or drag a card onto **Mobile** in the
+  left sidebar, or list ⋯ → **Send all translated papers in this list to mobile**. Removing keeps the paper's files; notes made on mobile are merged into this computer first.
 - **What's on mobile**: a 📱 mark on the card, and **Mobile** in the left sidebar lists them. Its header shows the
   connected account, count, size, last sync, plus **Sync now** and **Disconnect**.
 - **Automatic sync**: when the desktop app **starts**, papers on mobile that changed on the desktop (re-translated,
   edited) are uploaded again, mobile notes are merged, and desktop notes are uploaded. The mobile side picks them up when opened.
 
 **Reading on mobile**
-- Translation / Source / Both at the top, A−/A+ for size. Tap a sentence for its counterpart, a citation for the
-  reference. **Save all offline** to read without a connection.
+- **Translation ⇄** at the top switches between translation and source; the size button sets text size. Tap a sentence
+  for its counterpart, a citation for the reference.
+- **Offline mode**: turn on **Offline mode — save all** above the list to keep every paper and its desktop highlights and
+  notes on the device; each time the app opens it fetches only what's new or changed. Papers you've opened are kept
+  either way. Without a connection the list says so and papers that aren't saved are dimmed.
 - **Highlights and notes**: tap a sentence, pick a color or **Add note** — both sides of the sentence pair are marked
-  (the same shape as the desktop viewer's double-click highlight), with ✎ when there's a note. The list sits under
-  **Highlights & notes** at the top of the paper. Changes made offline wait on the device and upload when you're back online.
-- **Contents**: ☰ in the top bar opens the table of contents from the left, with the current section marked. Tap to jump.
-- **Ask (assistant)**: the ✦ button at the bottom right asks about the paper you're reading. Tap an [r12]-style citation
+  (the same shape as the desktop viewer's double-click highlight), with ✎ when there's a note. The **Notes** tab of the ✦ button at the
+  bottom right lists your highlights and notes for this paper in reading order (filter with **Notes only**); tap one to
+  jump there. The number on the button is the count. Changes made offline wait on the device and upload when you're back online.
+- **Contents**: tap the paper title in the top bar to open the table of contents from the left, with the current section marked. Tap to jump.
+- **Ask (assistant)**: the **Ask** tab of the ✦ button asks about the paper you're reading. Tap an [r12]-style citation
   in the answer to jump to that paragraph. The first time, enter **your own AI API key** (OpenAI, Anthropic or Gemini) on
   that device — it's stored only in that browser, and questions send the paper's text and your highlights and notes
   directly to the service you chose (billed to that key's account). The default service and model follow the desktop
