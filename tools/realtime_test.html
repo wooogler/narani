@@ -179,6 +179,14 @@ textarea.memo { width: 100%; font: inherit; font-size: 16px; border: 1px solid v
   function setState(cls, text){ $('state').className = cls; $('st').textContent = text; }
   function bubble(kind, text){ var d = doc.createElement('div'); d.className = 'm ' + kind; d.textContent = text; $('chat').appendChild(d); d.scrollIntoView({block: 'nearest'}); return d; }
   function send(obj){ if (RT && RT.dc && RT.dc.readyState === 'open') RT.dc.send(JSON.stringify(obj)); }
+  // 대답(response)은 한 번에 하나만 돈다 — 진행 중에 또 만들면 "active response in progress" 오류. 그동안 들어온
+  // 요청은 하나로 모아 두었다가 지금 대답이 끝나면 보낸다(도구 결과 여럿·말 끝 자동 대답과 겹칠 때).
+  function askResponse(extra){
+    if (!RT) return;
+    if (RT.active){ RT.pending = extra || RT.pending || {}; return; }
+    RT.active = true;
+    send(extra && extra.response ? {type: 'response.create', response: extra.response} : {type: 'response.create'});
+  }
   function where(){
     var i = sentAt(au.currentTime || 0), s = S[i] || {};
     return '사용자는 방금 [r' + s.r + '] 부근을 듣고 있었다 (섹션: ' + ((TL.sections[s.sec] || {}).title || '') + ', 문장: "' + (s.text || '') + '").';
@@ -215,13 +223,12 @@ textarea.memo { width: 100%; font: inherit; font-size: 16px; border: 1px solid v
       log('도구: resume_listening ' + (args.row != null ? args.row : ''));
       var at = null;
       if (args.row != null){ for (var i = 0; i < S.length; i++) if (S[i].r >= args.row){ at = S[i].t; break; } }
-      RT.resumeAt = at; RT.forceResume = true;
+      RT.resumeAt = at; RT.forceResume = true; RT.closing = true;
       send({type: 'conversation.item.create', item: {type: 'function_call_output', call_id: callId, output: JSON.stringify({ok: true})}});
       setTimeout(function(){ endTalk('사용자가 이어 듣기를 원함'); }, 1200);   // 짧은 대답이 나갈 틈
       return;
     }
     send({type: 'conversation.item.create', item: {type: 'function_call_output', call_id: callId, output: JSON.stringify(out)}});
-    send({type: 'response.create'});
   }
   var cur = null;
   function onEvent(ev){
@@ -231,6 +238,7 @@ textarea.memo { width: 100%; font: inherit; font-size: 16px; border: 1px solid v
     switch (e.type){
       case 'session.created': log('세션 열림'); break;
       case 'session.updated': log('세션 설정 반영'); break;
+      case 'response.created': RT.active = true; break;
       case 'input_audio_buffer.speech_started': RT.lastAct = now; RT.userSpeaking = true; setState('listening', '듣는 중 — 말씀하세요'); break;
       case 'input_audio_buffer.speech_stopped': RT.lastAct = now; RT.tStop = now; RT.userSpeaking = false; setState('thinking', '생각 중…'); break;
       case 'conversation.item.input_audio_transcription.completed': if (e.transcript) bubble('u', e.transcript.trim()); break;
@@ -244,14 +252,21 @@ textarea.memo { width: 100%; font: inherit; font-size: 16px; border: 1px solid v
       case 'output_audio_buffer.stopped': RT.botSpeaking = false; RT.lastAct = now; setState('listening', '듣는 중 — 더 물어보세요'); break;
       case 'response.done':
         RT.lastAct = now;
-        var r = e.response || {};
+        var r = e.response || {}, called = 0;
+        RT.active = false;
         addUsage(r.usage);
         (r.output || []).forEach(function(it){
-          if (it.type === 'function_call'){ var args = {}; try { args = JSON.parse(it.arguments || '{}'); } catch (x) {} runTool(it.name, args, it.call_id); }
+          if (it.type === 'function_call'){ var args = {}; try { args = JSON.parse(it.arguments || '{}'); } catch (x) {} runTool(it.name, args, it.call_id); called++; }
         });
+        if (!RT) break;                                   // resume_listening이 대화를 닫는 중
+        if (called && !RT.closing) askResponse();         // 도구 결과로 이어서 대답 — 여럿이어도 한 번
+        else if (RT.pending){ var pend = RT.pending; RT.pending = null; askResponse(pend); }
         if (r.status && r.status !== 'completed') log('응답 상태: ' + r.status + (r.status_details ? ' ' + JSON.stringify(r.status_details).slice(0, 200) : ''));
         break;
-      case 'error': log('오류: ' + JSON.stringify(e.error || e).slice(0, 300)); bubble('s', '오류: ' + ((e.error && e.error.message) || '')); break;
+      case 'error':
+        log('오류: ' + JSON.stringify(e.error || e).slice(0, 300));
+        if (!/active response in progress/i.test((e.error && e.error.message) || '')) bubble('s', '오류: ' + ((e.error && e.error.message) || ''));
+        break;
     }
   }
   async function startTalk(){
@@ -284,7 +299,7 @@ textarea.memo { width: 100%; font: inherit; font-size: 16px; border: 1px solid v
         send({type: 'session.update', session: {type: 'realtime', instructions: instructions(), tools: TOOLS, tool_choice: 'auto',
           audio: {input: {turn_detection: {type: 'semantic_vad'}, transcription: {model: 'gpt-4o-mini-transcribe', language: 'ko'}},
                   output: {voice: voice}}}});
-        send({type: 'response.create', response: {instructions: '한국어로 아주 짧게 "네, 질문하세요."라고만 말하세요.'}});
+        askResponse({response: {instructions: '한국어로 아주 짧게 "네, 질문하세요."라고만 말하세요.'}});
         setState('listening', '듣는 중 — 말씀하세요');
       };
       var offer = await pc.createOffer(); await pc.setLocalDescription(offer);
