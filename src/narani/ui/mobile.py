@@ -492,6 +492,7 @@ CORE_JS = r"""
     });
   }
   function onSentence(e, cell){
+    if (typeof sentenceTap === 'function' && sentenceTap(e, cell)) return;   // 쓰는 쪽이 누르기를 가로챌 수 있다(폰: 듣는 중엔 바로 거기부터)
     var row = cell.parentElement, side = cell.classList.contains('ko') ? 'ko' : 'en';
     if (!row.querySelector('.cell.en') || !row.querySelector('.cell.ko')){ clearSent(); closeSheet(); return; }  // 짝이 될 쪽이 없는 행
     var other = side === 'ko' ? 'en' : 'ko', label = other === 'en' ? md4T('원문') : md4T('번역');
