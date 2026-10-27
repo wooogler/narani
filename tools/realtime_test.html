@@ -1,0 +1,371 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="대화 시험">
+<link rel="manifest" href="realtime-test.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Narani 대화 시험</title>
+<style>
+:root { --bg: #fbfaf7; --fg: #24211c; --muted: #6b6862; --line: #e4e0d8; --card: #fff; --accent: #2f6fd6; --hl: #ffe08a; --bad: #b3261e; --ok: #1e7a3c; }
+@media (prefers-color-scheme: dark) { :root { --bg: #161615; --fg: #ecebe8; --muted: #a09d97; --line: #34322e; --card: #1f1e1c; --accent: #6aa0ff; --hl: #6b5a12; --bad: #ff8a80; --ok: #7ed39a; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+  padding: env(safe-area-inset-top) 16px calc(40px + env(safe-area-inset-bottom)); }
+h1 { font-size: 1.15em; margin: 16px 0 4px; }
+.sub { color: var(--muted); font-size: .85em; margin: 0 0 12px; }
+details { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; margin: 10px 0; }
+summary { font-weight: 600; cursor: pointer; }
+label.f { display: block; font-size: .8em; color: var(--muted); margin: 10px 0 4px; }
+input, select { width: 100%; font: inherit; font-size: 16px; color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+button.b { font: inherit; font-size: .9em; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+button.b.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+.hint { color: var(--muted); font-size: .82em; }
+/* 듣기 */
+.listen { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 10px 12px; margin: 12px 0; }
+.listen .now { font-size: .92em; min-height: 3em; }
+.listen .sec { font-size: .78em; color: var(--muted); }
+.listen .ctl { display: flex; gap: 6px; align-items: center; margin-top: 6px; }
+.listen .ctl button { font: inherit; border: 1px solid var(--line); background: var(--bg); color: var(--fg); border-radius: 10px; padding: 6px 10px; }
+.listen .t { margin-left: auto; font-size: .8em; color: var(--muted); font-variant-numeric: tabular-nums; }
+/* 대화 */
+#talk { width: 100%; font: inherit; font-size: 1.15em; font-weight: 700; border: 0; border-radius: 18px; padding: 22px 12px;
+  background: var(--accent); color: #fff; margin: 6px 0; }
+#talk.on { background: var(--bad); }
+#state { text-align: center; font-weight: 600; margin: 6px 0; min-height: 1.6em; }
+#state .lv { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--muted); margin-right: 6px; vertical-align: middle; }
+#state.listening .lv { background: var(--ok); } #state.speaking .lv { background: var(--accent); } #state.thinking .lv { background: #e6a700; }
+.meter { display: flex; gap: 12px; justify-content: center; font-size: .78em; color: var(--muted); font-variant-numeric: tabular-nums; }
+#chat { margin: 10px 0; }
+#chat .m { margin: 0 0 8px; padding: 8px 12px; border-radius: 12px; white-space: pre-wrap; }
+#chat .u { background: var(--card); border: 1px solid var(--line); margin-left: 15%; }
+#chat .a { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+#chat .s { color: var(--muted); font-size: .8em; text-align: center; background: none; padding: 2px; }
+#chat a.rr { font-size: .85em; }
+#paper p { margin: 0 0 8px; font-size: .9em; } #paper p.h { font-weight: 700; margin-top: 14px; }
+#paper p.hl { background: var(--hl); border-radius: 6px; }
+#paper p.cur { box-shadow: inset 3px 0 0 var(--accent); padding-left: 6px; }
+ol.check { padding-left: 1.3em; margin: 8px 0; font-size: .92em; }
+ol.check li { margin: 6px 0; }
+ol.check .st { display: inline-flex; gap: 4px; margin-left: 4px; vertical-align: middle; }
+ol.check .st button { font: inherit; font-size: .8em; padding: 2px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+ol.check .st button.on.y { background: var(--ok); border-color: var(--ok); color: #fff; }
+ol.check .st button.on.n { background: var(--bad); border-color: var(--bad); color: #fff; }
+textarea.memo { width: 100%; font: inherit; font-size: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); padding: 6px 8px; }
+#log { font: 12px/1.45 ui-monospace, Menlo, monospace; white-space: pre-wrap; max-height: 40vh; overflow-y: auto; margin: 8px 0 0; }
+.env { font-size: .8em; color: var(--muted); word-break: break-all; }
+</style></head><body>
+<h1>Narani 대화 시험</h1>
+<p class="sub" id="sub"></p>
+
+<details id="setup"><summary>설정 — OpenAI 키·모델·목소리</summary>
+<label class="f" for="key">OpenAI API 키 (이 기기의 브라우저에만 저장 · 요금은 이 키의 계정에)</label>
+<input id="key" type="password" autocomplete="off" spellcheck="false" placeholder="sk-…">
+<label class="f" for="model">모델</label>
+<select id="model"><option value="gpt-realtime-2.1-mini">gpt-realtime-2.1-mini (싸다)</option><option value="gpt-realtime-2.1">gpt-realtime-2.1 (더 똑똑)</option></select>
+<label class="f" for="voice">목소리</label>
+<select id="voice"></select>
+<div class="row"><label style="font-size:.9em"><input type="checkbox" id="resume" checked style="width:auto"> 대화가 끝나면 이어 듣기</label></div>
+<p class="hint">질문하면 이 논문의 번역 본문, 지금 듣던 위치, 대화가 OpenAI로 직접 갑니다(서버 없음). 조용히 20초가 지나면 대화를 끝냅니다.</p>
+</details>
+
+<div class="listen">
+  <div class="sec" id="l-sec"></div>
+  <div class="now" id="l-now"></div>
+  <div class="ctl"><button id="l-back">−15</button><button id="l-pp">▶ 듣기</button><button id="l-fwd">+15</button><span class="t" id="l-t">0:00</span></div>
+  <audio id="au" preload="metadata"></audio>
+</div>
+
+<button id="talk">🎙 질문하기</button>
+<div id="state"><span class="lv"></span><span id="st">대기</span></div>
+<div class="meter"><span id="m-lat">지연 —</span><span id="m-time">0:00</span><span id="m-cost">$0.000</span></div>
+<div id="chat"></div>
+<audio id="remote" autoplay playsinline></audio>
+
+<details><summary>시험 순서</summary>
+<p style="font-size:.9em;margin:6px 0">홈 화면에 추가한 앱으로, 차에서(CarPlay 또는 블루투스) 해 보세요. 듣기를 틀어 두고 🎙을 눌러 묻고, 끝나면 이어 듣기까지. ✓/✗를 누르고 <b>결과 복사</b>로 붙여 주세요.</p>
+<ol class="check" id="check"></ol>
+<textarea class="memo" id="memo" rows="2" placeholder="메모 (차종·iOS 버전·느낀 점)"></textarea>
+<div class="row"><button class="b pri" id="copy">결과 복사</button><button class="b" id="reset">결과·기록 지우기</button></div>
+<div class="env" id="env"></div>
+</details>
+<details><summary>AI가 보는 논문 본문</summary><div id="paper"></div></details>
+<details><summary>기록</summary><div id="log"></div></details>
+
+<script>
+(function(){
+  var P = /*PAPER*/null;
+  var doc = document, TL = P.tl, S = TL.sents;
+  function $(id){ return doc.getElementById(id); }
+  function ls(k, d){ try { var v = JSON.parse(localStorage.getItem('rttest:' + k) || 'null'); return v == null ? d : v; } catch (e) { return d; } }
+  function lss(k, v){ try { localStorage.setItem('rttest:' + k, JSON.stringify(v)); } catch (e) {} }
+  function fmt(s){ s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); }
+  var standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
+  var CTX = standalone ? 'app' : 'tab';
+
+  // ---- 기록 ----
+  var LOG = ls('log', []);
+  function log(msg){
+    var d = new Date(), line = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2) + ' [' + CTX + '] ' + msg;
+    LOG.push(line); if (LOG.length > 500) LOG = LOG.slice(-500); lss('log', LOG);
+    $('log').textContent = LOG.slice().reverse().join('\n');
+  }
+  $('log').textContent = LOG.slice().reverse().join('\n');
+  var ENV = '실행: ' + (standalone ? '홈 화면 앱' : '브라우저 탭') + ' · WebRTC ' + (window.RTCPeerConnection ? '있음' : '없음')
+    + ' · 마이크 ' + (navigator.mediaDevices && navigator.mediaDevices.getUserMedia ? '있음' : '없음') + '\n' + navigator.userAgent;
+  $('env').textContent = ENV;
+  $('sub').textContent = P.title + ' · 듣기 ' + fmt(TL.duration);
+  log('페이지 열림');
+
+  // ---- 설정 ----
+  var VOICES = ['marin', 'cedar', 'alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse'];
+  VOICES.forEach(function(v){ var o = doc.createElement('option'); o.value = o.textContent = v; $('voice').appendChild(o); });
+  $('key').value = ls('key', ''); $('model').value = ls('model', 'gpt-realtime-2.1-mini'); $('voice').value = ls('voice', 'marin');
+  $('resume').checked = ls('resume', true);
+  ['key', 'model', 'voice'].forEach(function(id){ $(id).onchange = function(){ lss(id, $(id).value.trim()); }; });
+  $('resume').onchange = function(){ lss('resume', $('resume').checked); };
+  if (!$('key').value) $('setup').open = true;
+
+  // ---- 본문 (AI가 보는 글) ----
+  var rowEl = {};
+  P.rows.forEach(function(r){
+    var p = doc.createElement('p'); p.className = r.h ? 'h' : ''; p.textContent = '[r' + r.r + '] ' + r.t; rowEl[r.r] = p; $('paper').appendChild(p);
+  });
+  var PAPER_TEXT = P.rows.map(function(r){ return '[r' + r.r + '] ' + (r.h ? '## ' : '') + r.t; }).join('\n');
+
+  // ---- 듣기 (듣기 시험과 같은 파일·시간표) ----
+  var au = $('au'); au.src = P.audio;
+  function sentAt(t){ var lo = 0, hi = S.length - 1; while (lo < hi){ var m = (lo + hi + 1) >> 1; if (S[m].t <= t + 0.05) lo = m; else hi = m - 1; } return lo; }
+  var curSent = -1;
+  au.addEventListener('timeupdate', function(){
+    var i = sentAt(au.currentTime);
+    $('l-t').textContent = fmt(au.currentTime) + ' / ' + fmt(TL.duration);
+    if (i !== curSent){
+      curSent = i; $('l-now').textContent = S[i].text; $('l-sec').textContent = (TL.sections[S[i].sec] || {}).title || '';
+      Object.keys(rowEl).forEach(function(k){ rowEl[k].classList.remove('cur'); });
+      if (rowEl[S[i].r]) rowEl[S[i].r].classList.add('cur');
+    }
+    if (Date.now() % 5000 < 300) lss('pos', au.currentTime);
+  });
+  au.addEventListener('loadedmetadata', function(){ var p = ls('pos', 0); if (p) au.currentTime = p; });
+  au.addEventListener('play', function(){ $('l-pp').textContent = '⏸ 멈춤'; });
+  au.addEventListener('pause', function(){ $('l-pp').textContent = '▶ 듣기'; lss('pos', au.currentTime); });
+  $('l-pp').onclick = function(){ if (au.paused) au.play().catch(function(e){ log('듣기 재생 실패: ' + e.name); }); else au.pause(); };
+  $('l-back').onclick = function(){ au.currentTime = Math.max(0, au.currentTime - 15); };
+  $('l-fwd').onclick = function(){ au.currentTime = au.currentTime + 15; };
+  if ('mediaSession' in navigator){
+    try { navigator.mediaSession.metadata = new MediaMetadata({title: P.title, artist: 'Narani 대화 시험', artwork: [{src: 'icon-512.png', sizes: '512x512', type: 'image/png'}]}); } catch (e) {}
+    navigator.mediaSession.setActionHandler('play', function(){ au.play(); });
+    navigator.mediaSession.setActionHandler('pause', function(){ au.pause(); });
+  }
+
+  // ---- 대화 (OpenAI realtime, WebRTC) ----
+  var RT = null;   // {pc, dc, mic, started, usage, cost, lastAct, tStop, wasPlaying, resumeAt}
+  var PRICE = {   // 100만 토큰당 달러 — mini는 공식 가격표(2026-10), 2.1은 어림
+    'gpt-realtime-2.1-mini': {ti: 0.6, tic: 0.06, ai: 10, aic: 0.3, ao: 20, to: 2.4},
+    'gpt-realtime-2.1': {ti: 4, tic: 0.4, ai: 32, aic: 0.4, ao: 64, to: 16}
+  };
+  var TOOLS = [
+    {type: 'function', name: 'jump_to', description: '근거가 되는 본문 행을 화면에 표시한다. 답의 근거가 특정 행에 있으면 부른다.',
+     parameters: {type: 'object', properties: {row: {type: 'integer', description: '행 번호 (rN의 N)'}}, required: ['row']}},
+    {type: 'function', name: 'read_rows', description: '본문 행의 글을 다시 읽어 온다(정확히 인용하거나 확인할 때).',
+     parameters: {type: 'object', properties: {from: {type: 'integer'}, to: {type: 'integer'}}, required: ['from', 'to']}},
+    {type: 'function', name: 'resume_listening', description: '대화를 끝내고 논문 듣기를 이어 간다. 사용자가 계속 읽어 달라·다시 듣겠다·그만 묻겠다고 하면 부른다. 특정 행부터 읽어 달라고 하면 row를 준다.',
+     parameters: {type: 'object', properties: {row: {type: 'integer'}}}},
+  ];
+  function setState(cls, text){ $('state').className = cls; $('st').textContent = text; }
+  function bubble(kind, text){ var d = doc.createElement('div'); d.className = 'm ' + kind; d.textContent = text; $('chat').appendChild(d); d.scrollIntoView({block: 'nearest'}); return d; }
+  function send(obj){ if (RT && RT.dc && RT.dc.readyState === 'open') RT.dc.send(JSON.stringify(obj)); }
+  function where(){
+    var i = sentAt(au.currentTime || 0), s = S[i] || {};
+    return '사용자는 방금 [r' + s.r + '] 부근을 듣고 있었다 (섹션: ' + ((TL.sections[s.sec] || {}).title || '') + ', 문장: "' + (s.text || '') + '").';
+  }
+  function instructions(){
+    return '너는 사용자가 차에서 듣고 있는 논문에 대해 음성으로 답하는 조수다. 사용자는 운전 중이라 화면을 보지 못한다.\n'
+      + '- 한국어로, 짧고 자연스럽게(보통 2~4문장) 말한다. 목록·표·수식을 읽지 말고 말로 풀어 설명한다.\n'
+      + '- 아래 논문 본문에 근거해 답한다. 본문에 없는 내용이면 그렇다고 말한다.\n'
+      + '- 근거 행이 있으면 jump_to로 그 행을 표시하되, 행 번호는 소리 내어 말하지 않는다.\n'
+      + '- 사용자가 계속 읽어 달라·다시 듣겠다·그만이라고 하면 resume_listening을 부른다(특정 부분부터면 row).\n\n'
+      + '# 논문: ' + P.title + '\n' + PAPER_TEXT + '\n\n# 지금 위치\n' + where();
+  }
+  function addUsage(u){
+    if (!u || !RT) return;
+    var p = PRICE[$('model').value] || PRICE['gpt-realtime-2.1-mini'], id = u.input_token_details || {}, od = u.output_token_details || {};
+    var cached = id.cached_tokens_details || {}, ct = cached.text_tokens || 0, ca = cached.audio_tokens || 0;
+    var c = ((id.text_tokens || 0) - ct) * p.ti + ct * p.tic + ((id.audio_tokens || 0) - ca) * p.ai + ca * p.aic
+      + (od.audio_tokens || 0) * p.ao + (od.text_tokens || 0) * p.to;
+    RT.cost += c / 1e6;
+    RT.tokens += (u.total_tokens || 0);
+    $('m-cost').textContent = '$' + RT.cost.toFixed(3);
+    log('사용량: 입력 ' + (u.input_tokens || 0) + '(캐시 ' + ((id.cached_tokens) || 0) + ') · 출력 ' + (u.output_tokens || 0) + ' · 누적 $' + RT.cost.toFixed(4));
+  }
+  function runTool(name, args, callId){
+    var out = {ok: true};
+    if (name === 'jump_to'){
+      Object.keys(rowEl).forEach(function(k){ rowEl[k].classList.remove('hl'); });
+      var el = rowEl[args.row]; if (el){ el.classList.add('hl'); el.parentNode.parentNode.open = true; el.scrollIntoView({block: 'center'}); }
+      bubble('s', '근거 → [r' + args.row + ']'); log('도구: jump_to ' + args.row);
+    } else if (name === 'read_rows'){
+      out = {text: P.rows.filter(function(r){ return r.r >= args.from && r.r <= args.to; }).map(function(r){ return '[r' + r.r + '] ' + r.t; }).join('\n').slice(0, 6000)};
+      log('도구: read_rows ' + args.from + '–' + args.to);
+    } else if (name === 'resume_listening'){
+      log('도구: resume_listening ' + (args.row != null ? args.row : ''));
+      var at = null;
+      if (args.row != null){ for (var i = 0; i < S.length; i++) if (S[i].r >= args.row){ at = S[i].t; break; } }
+      RT.resumeAt = at; RT.forceResume = true;
+      send({type: 'conversation.item.create', item: {type: 'function_call_output', call_id: callId, output: JSON.stringify({ok: true})}});
+      setTimeout(function(){ endTalk('사용자가 이어 듣기를 원함'); }, 1200);   // 짧은 대답이 나갈 틈
+      return;
+    }
+    send({type: 'conversation.item.create', item: {type: 'function_call_output', call_id: callId, output: JSON.stringify(out)}});
+    send({type: 'response.create'});
+  }
+  var cur = null;
+  function onEvent(ev){
+    var e; try { e = JSON.parse(ev.data); } catch (x) { return; }
+    if (!RT) return;
+    var now = performance.now();
+    switch (e.type){
+      case 'session.created': log('세션 열림'); break;
+      case 'session.updated': log('세션 설정 반영'); break;
+      case 'input_audio_buffer.speech_started': RT.lastAct = now; RT.userSpeaking = true; setState('listening', '듣는 중 — 말씀하세요'); break;
+      case 'input_audio_buffer.speech_stopped': RT.lastAct = now; RT.tStop = now; RT.userSpeaking = false; setState('thinking', '생각 중…'); break;
+      case 'conversation.item.input_audio_transcription.completed': if (e.transcript) bubble('u', e.transcript.trim()); break;
+      case 'response.output_audio_transcript.delta':
+        RT.lastAct = now;
+        if (RT.tStop){ var lat = Math.round(now - RT.tStop); $('m-lat').textContent = '지연 ' + (lat / 1000).toFixed(1) + '초'; log('지연 ' + lat + 'ms'); RT.tStop = 0; }
+        if (!cur) cur = bubble('a', '');
+        cur.textContent += e.delta || ''; setState('speaking', '말하는 중'); break;
+      case 'response.output_audio_transcript.done': cur = null; break;
+      case 'output_audio_buffer.started': RT.botSpeaking = true; RT.lastAct = now; break;
+      case 'output_audio_buffer.stopped': RT.botSpeaking = false; RT.lastAct = now; setState('listening', '듣는 중 — 더 물어보세요'); break;
+      case 'response.done':
+        RT.lastAct = now;
+        var r = e.response || {};
+        addUsage(r.usage);
+        (r.output || []).forEach(function(it){
+          if (it.type === 'function_call'){ var args = {}; try { args = JSON.parse(it.arguments || '{}'); } catch (x) {} runTool(it.name, args, it.call_id); }
+        });
+        if (r.status && r.status !== 'completed') log('응답 상태: ' + r.status + (r.status_details ? ' ' + JSON.stringify(r.status_details).slice(0, 200) : ''));
+        break;
+      case 'error': log('오류: ' + JSON.stringify(e.error || e).slice(0, 300)); bubble('s', '오류: ' + ((e.error && e.error.message) || '')); break;
+    }
+  }
+  async function startTalk(){
+    var key = $('key').value.trim();
+    if (!key){ $('setup').open = true; $('key').focus(); log('키가 없음'); return; }
+    lss('key', key);
+    var wasPlaying = !au.paused;
+    au.pause();
+    RT = {cost: 0, tokens: 0, lastAct: performance.now(), tStop: 0, started: Date.now(), wasPlaying: wasPlaying, resumeAt: null};
+    $('talk').classList.add('on'); $('talk').textContent = '■ 대화 끝내기';
+    setState('', '연결 중…'); bubble('s', '— 대화 시작 —');
+    var model = $('model').value, voice = $('voice').value;
+    try {
+      var t0 = performance.now();
+      RT.mic = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true}});
+      log('마이크 받음 (' + (RT.mic.getAudioTracks()[0] || {}).label + ')');
+      var tok = await fetch('https://api.openai.com/v1/realtime/client_secrets', {method: 'POST',
+        headers: {'Authorization': 'Bearer ' + key, 'Content-Type': 'application/json'},
+        body: JSON.stringify({session: {type: 'realtime', model: model, audio: {output: {voice: voice}}}})});
+      if (!tok.ok) throw new Error('단기 키 ' + tok.status + ': ' + (await tok.text()).slice(0, 200));
+      var ek = (await tok.json()).value;
+      var pc = new RTCPeerConnection(); RT.pc = pc;
+      pc.ontrack = function(ev){ var a = $('remote'); a.srcObject = ev.streams[0]; a.play().catch(function(x){ log('답 소리 재생 실패: ' + x.name); }); };
+      pc.onconnectionstatechange = function(){ log('연결 상태: ' + pc.connectionState); if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') endTalk('연결 끊김'); };
+      RT.mic.getTracks().forEach(function(tr){ pc.addTrack(tr, RT.mic); });
+      var dc = pc.createDataChannel('oai-events'); RT.dc = dc;
+      dc.onmessage = onEvent;
+      dc.onopen = function(){
+        log('연결됨 — ' + Math.round(performance.now() - t0) + 'ms');
+        send({type: 'session.update', session: {type: 'realtime', instructions: instructions(), tools: TOOLS, tool_choice: 'auto',
+          audio: {input: {turn_detection: {type: 'semantic_vad'}, transcription: {model: 'gpt-4o-mini-transcribe', language: 'ko'}},
+                  output: {voice: voice}}}});
+        send({type: 'response.create', response: {instructions: '한국어로 아주 짧게 "네, 질문하세요."라고만 말하세요.'}});
+        setState('listening', '듣는 중 — 말씀하세요');
+      };
+      var offer = await pc.createOffer(); await pc.setLocalDescription(offer);
+      var ans = await fetch('https://api.openai.com/v1/realtime/calls', {method: 'POST',
+        headers: {'Authorization': 'Bearer ' + ek, 'Content-Type': 'application/sdp'}, body: offer.sdp});
+      if (!ans.ok) throw new Error('연결 ' + ans.status + ': ' + (await ans.text()).slice(0, 200));
+      await pc.setRemoteDescription({type: 'answer', sdp: await ans.text()});
+    } catch (err){
+      log('대화 시작 실패: ' + (err.name || '') + ' ' + (err.message || err));
+      bubble('s', '시작하지 못했어요: ' + (err.message || err));
+      endTalk('시작 실패');
+    }
+  }
+  function endTalk(why){
+    if (!RT) return;
+    var r = RT; RT = null;
+    try { r.dc && r.dc.close(); } catch (x) {}
+    try { r.pc && r.pc.close(); } catch (x) {}
+    try { r.mic && r.mic.getTracks().forEach(function(tr){ tr.stop(); }); } catch (x) {}
+    $('remote').srcObject = null;
+    $('talk').classList.remove('on'); $('talk').textContent = '🎙 질문하기';
+    var secs = Math.round((Date.now() - r.started) / 1000);
+    setState('', '대기'); bubble('s', '— 대화 끝 (' + why + ' · ' + fmt(secs) + ' · $' + r.cost.toFixed(3) + ') —');
+    log('대화 끝: ' + why + ' · ' + secs + '초 · $' + r.cost.toFixed(4) + ' · 토큰 ' + r.tokens);
+    lss('sessions', ls('sessions', []).concat([{at: Date.now(), secs: secs, cost: r.cost, model: $('model').value}]).slice(-50));
+    if (($('resume').checked && r.wasPlaying) || r.forceResume){
+      if (r.resumeAt != null) au.currentTime = r.resumeAt;
+      au.play().then(function(){ log('이어 듣기 시작'); }, function(x){ log('이어 듣기 실패(▶을 눌러야 함): ' + x.name); bubble('s', '▶ 듣기를 눌러 이어 들으세요'); });
+    }
+  }
+  $('talk').onclick = function(){ if (RT) endTalk('끝내기 단추'); else startTalk(); };
+  setInterval(function(){   // 조용하면 저절로 끝 — 내가 말하거나 AI가 말하는 중이 아닐 때 20초
+    if (!RT || RT.userSpeaking || RT.botSpeaking) return;
+    var sec = Math.round((Date.now() - RT.started) / 1000);
+    $('m-time').textContent = fmt(sec);
+    if (performance.now() - RT.lastAct > 20000) endTalk('20초 조용함');
+  }, 1000);
+
+  // ---- 시험 항목 ----
+  var ITEMS = [
+    '홈 화면 앱에서 마이크 허락이 뜨고 대화가 된다',
+    'CarPlay(또는 블루투스)로 답이 들린다',
+    '차 마이크로 내 말이 들린다(내 말 전사가 맞다)',
+    '답이 스피커로 나와도 AI가 자기 말을 다시 듣지 않는다(반향)',
+    'AI가 말할 때 끼어들면 멈추고 들어 준다',
+    '대답이 충분히 빠르다(지연 표시)',
+    '한국어 답의 내용·발음이 괜찮다',
+    '듣기 → 🎙 → 대화 끝 → 이어 듣기가 자연스럽다',
+    '"계속 읽어 줘"·"그 부분부터 다시 읽어 줘"로 이어 듣기가 된다',
+    '조용하면 저절로 끝난다',
+    '10분쯤 대화한 비용이 괜찮다(위 $ 표시)'
+  ];
+  var CK = ls('check:' + CTX, {});
+  ITEMS.forEach(function(txt, i){
+    var li = doc.createElement('li'); li.appendChild(doc.createTextNode(txt));
+    var st = doc.createElement('span'); st.className = 'st';
+    [['y', '✓ 됨'], ['n', '✗ 안 됨']].forEach(function(p){
+      var b = doc.createElement('button'); b.className = p[0] + (CK[i] === p[0] ? ' on' : ''); b.textContent = p[1];
+      b.onclick = function(){ CK[i] = CK[i] === p[0] ? null : p[0]; lss('check:' + CTX, CK);
+        [].forEach.call(st.children, function(x){ x.classList.toggle('on', CK[i] === x.className.charAt(0)); }); };
+      st.appendChild(b);
+    });
+    li.appendChild(st); $('check').appendChild(li);
+  });
+  $('memo').value = ls('memo:' + CTX, ''); $('memo').oninput = function(){ lss('memo:' + CTX, $('memo').value); };
+  $('copy').onclick = function(){
+    var ses = ls('sessions', []), tot = ses.reduce(function(n, s){ return n + s.cost; }, 0), secs = ses.reduce(function(n, s){ return n + s.secs; }, 0);
+    var lines = ['# Narani 대화 시험 결과', ENV, '모델 ' + $('model').value + ' · 목소리 ' + $('voice').value,
+                 '대화 ' + ses.length + '번 · ' + fmt(secs) + ' · $' + tot.toFixed(3), ''];
+    ITEMS.forEach(function(t, i){ lines.push((i + 1) + '. ' + (CK[i] === 'y' ? '✓' : CK[i] === 'n' ? '✗' : '–') + ' ' + t); });
+    if ($('memo').value.trim()) lines.push('', '메모: ' + $('memo').value.trim());
+    lines.push('', '## 기록 (최근 150줄)'); lines = lines.concat(LOG.slice(-150));
+    var text = lines.join('\n');
+    function done(){ $('copy').textContent = '복사했어요'; setTimeout(function(){ $('copy').textContent = '결과 복사'; }, 1500); }
+    function fallback(){ var t = doc.createElement('textarea'); t.value = text; doc.body.appendChild(t); t.select(); try { doc.execCommand('copy'); done(); } catch (e) {} t.remove(); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
+  };
+  $('reset').onclick = function(){
+    if (!confirm('이 화면의 결과와 기록을 지울까요? (키는 그대로)')) return;
+    LOG = []; lss('log', LOG); CK = {}; lss('check:' + CTX, CK); lss('memo:' + CTX, ''); lss('sessions', []); location.reload();
+  };
+})();
+</script>
+</body></html>
