@@ -829,7 +829,27 @@
   window.addEventListener('online', function(){ loadIndex(true); });
 
   labels(); topTitle.textContent = APP;
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function(){});
+  // ---- 새 판 ----
+  // 홈 화면 앱은 닫았다 열어도 메모리에서 되살아나 새 판을 확인하지 않는다 — 다시 보일 때마다 확인하고,
+  // 새 판이 자리 잡으면 목록에선 바로 다시 열고, 읽는 중이면 위에 '새 판 적용' 막대를 띄운다(듣기·쓰는 메모를 끊지 않게).
+  if ('serviceWorker' in navigator){
+    var hadSW = !!navigator.serviceWorker.controller, swReg = null, lastCheck = 0;
+    navigator.serviceWorker.register('sw.js', {updateViaCache: 'none'}).then(function(r){ swReg = r; }, function(){});
+    doc.addEventListener('visibilitychange', function(){
+      if (doc.visibilityState !== 'visible' || !swReg || Date.now() - lastCheck < 60000) return;
+      lastCheck = Date.now(); swReg.update().catch(function(){});
+    });
+    navigator.serviceWorker.addEventListener('controllerchange', function(){
+      if (!hadSW){ hadSW = true; return; }               // 처음 설치 — 이미 새 판이다
+      var busy = cur || (au && !au.paused) || sheet.classList.contains('open');
+      if (!busy){ location.reload(); return; }
+      var bar = doc.getElementById('upd');
+      bar.textContent = '';
+      bar.appendChild(doc.createTextNode(md4T('새 판이 준비됐어요') + ' '));
+      bar.appendChild(button(md4T('적용'), function(){ location.reload(); }));
+      bar.classList.add('on');
+    });
+  }
   loadIndex(false);
 
   var COLORS = ['yellow', 'green', 'blue', 'pink', 'purple'], ACTX = 40;

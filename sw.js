@@ -1,9 +1,12 @@
 
 // 앱 껍데기 캐시 — 먼저 캐시로 띄우고 뒤에서 새로 받아 둔다. 데이터(data/·__data/)는 앱이 직접 캐시한다.
-var V = '38b2a96379e9', SHELL = 'narani-shell-' + V;
+var V = '99b5a6a8db1f', SHELL = 'narani-shell-' + V;
 var FILES = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', function(e){
-  e.waitUntil(caches.open(SHELL).then(function(c){ return c.addAll(FILES); }).then(function(){ return self.skipWaiting(); }));
+  // 새 판의 껍데기는 늘 서버에서 새로 — GitHub Pages가 10분짜리 HTTP 캐시를 주므로 그냥 받으면 옛 app.js가 섞인다
+  e.waitUntil(caches.open(SHELL).then(function(c){
+    return c.addAll(FILES.map(function(f){ return new Request(f, {cache: 'reload'}); }));
+  }).then(function(){ return self.skipWaiting(); }));
 });
 self.addEventListener('activate', function(e){
   e.waitUntil(caches.keys().then(function(ks){
@@ -25,7 +28,7 @@ self.addEventListener('fetch', function(e){
     var key = shell ? './' : req;
     return c.match(key, {ignoreSearch: true}).then(function(hit){
       // 받은 것은 늘 캐시에 — 폰이 캐시 일부를 비웠어도 다음 실행부터 다시 오프라인으로 뜨게
-      var net = fetch(req).then(function(r){ if (r.ok) c.put(key, r.clone()); return r; });
+      var net = fetch(req, {cache: 'no-cache'}).then(function(r){ if (r.ok) c.put(key, r.clone()); return r; });
       if (hit){ net.catch(function(){}); return hit; }
       return net;
     });
