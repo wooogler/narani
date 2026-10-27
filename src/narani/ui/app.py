@@ -3416,6 +3416,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             edit_state["pending"] = None  # 되돌리면 기다리던 편집은 버린다
             ctrl.save_and_reassemble(keep_edits=False)
             canvas.refresh()   # 에디터 내용까지 파일에서 다시 읽어야 한다
+            toc_panel.refresh()  # 헤더·단어 수도 원본으로
             edit_toggle.refresh()
             ui.notify(t("섹션 트리 기준으로 다시 만들었습니다."), type="info")
 
