@@ -7,8 +7,8 @@
 읽는 것: 제목, 초록, 본문 섹션(제목은 알린다). 건너뛰는 것: 그림·표·코드·블록 수식·긴 인라인 수식,
 인용 표기 [12, Kim 2020], 각주 번호, URL, 저자 줄, CCS·키워드 같은 앞쪽 메타, 참고문헌·부록·감사의 글 이후.
 
-엔진: Mac 내장 목소리(`say`, 무료·오프라인)와 Gemini TTS(유료, 사용자 키 — 문단마다 한 번 부르고 쉼으로
-문장을 가른다). 섹션마다 합성 결과를 논문 작업
+엔진: Mac 내장 목소리(`say`, 무료·오프라인), Qwen3-TTS(무료·로컬, Apple Silicon — 따로 설치한 작은 파이썬
+환경에서 mlx-audio로, 문장마다), Gemini TTS(유료, 사용자 키 — 섹션 안 여러 문단을 묶어 부르고 쉼으로 문장을 가른다). 섹션마다 합성 결과를 논문 작업
 폴더의 `audio/`에 캐시한다 — 다시 번역해 몇 섹션만 바뀌면 그 섹션만 다시 만든다. 캐시는 64kbps AAC로
 두고(작게), 합칠 때 한 번 풀어 32kbps 모노 m4a로 다시 묶는다(시간당 약 15MB).
 """
@@ -528,6 +528,173 @@ class GeminiVoice:
         return out
 
 
+# ---- Qwen3-TTS (무료·로컬, Apple Silicon) ----
+# mlx-audio는 무겁고(transformers 5·새 numpy) 앱의 의존성과 부딪칠 수 있어 앱 환경에 넣지 않는다. 설정 폴더의
+# local-tts/.venv에 따로 깔고(qwen_install), 그 파이썬으로 작은 일꾼(worker)을 띄워 문장을 하나씩 보낸다 — 앱
+# 업데이트(uv tool install --force)가 건드리지 않는다. 모델(약 2.5GB)은 처음 쓸 때 Hugging Face 캐시로 받는다.
+QWEN_MODELS = {"0.6b": "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-bf16"}
+QWEN_SPEAKERS = ("Sohee", "Vivian", "Serena", "Ono_Anna", "Ryan", "Aiden", "Eric", "Dylan", "Uncle_Fu")
+QWEN_LANG = {"ko": "Korean", "ja": "Japanese", "zh": "Chinese", "zh-Hans": "Chinese", "zh-Hant": "Chinese", "en": "English",
+             "es": "Spanish", "fr": "French", "de": "German", "it": "Italian", "pt": "Portuguese", "ru": "Russian"}
+QWEN_DEFAULT_SPEAKER = {"ko": "Sohee", "ja": "Ono_Anna", "zh": "Vivian", "zh-Hans": "Vivian"}
+# 실시간 대비 대략 속도 — M5·16GB 실측: 문장마다 1.26배, 문단째 1.53배(데운 뒤). 메모리가 모자라면 0.5배까지 떨어진다.
+# 문장마다 보내는 쪽을 고른다 — 20%쯤 느려도 문장 시각이 정확해 폰의 문장 하이라이트가 어긋나지 않는다.
+QWEN_SPEED = 1.2
+_QWEN_WORKER = r'''
+import json, sys
+import numpy as np, soundfile as sf
+from mlx_audio.tts.utils import load_model
+
+cfg = json.loads(sys.stdin.readline())
+model = load_model(cfg["model"])
+print(json.dumps({"ready": True, "rate": int(model.sample_rate)}), flush=True)
+for line in sys.stdin:
+    job = json.loads(line)
+    try:
+        parts = [np.array(r.audio) for r in model.generate_custom_voice(
+            text=job["text"], speaker=job["speaker"], language=job["language"])]
+        a = np.concatenate(parts) if parts else np.zeros(1, dtype=np.float32)
+        sf.write(job["out"], a, int(model.sample_rate), subtype="PCM_16")
+        print(json.dumps({"ok": True}), flush=True)
+    except Exception as e:
+        print(json.dumps({"error": f"{type(e).__name__}: {e}"}), flush=True)
+'''
+
+
+def qwen_dir() -> Path:
+    from narani import config
+
+    return config.CONFIG_DIR / "local-tts"
+
+
+def qwen_python() -> Path:
+    import os
+
+    override = os.environ.get("NARANI_QWEN_PYTHON")
+    return Path(override) if override else qwen_dir() / ".venv" / "bin" / "python"
+
+
+def qwen_supported() -> bool:
+    import platform
+
+    return sys.platform == "darwin" and platform.machine() == "arm64"
+
+
+def qwen_ready() -> bool:
+    """Qwen 환경이 깔려 있는지 — 설치가 끝까지 됐으면 표시 파일이 있다(환경 변수로 지정한 파이썬은 있기만 하면)."""
+    import os
+
+    if not qwen_supported():
+        return False
+    if os.environ.get("NARANI_QWEN_PYTHON"):
+        return qwen_python().exists()
+    return qwen_python().exists() and (qwen_dir() / "ready").exists()
+
+
+def qwen_install() -> None:
+    """설정 폴더에 Qwen용 파이썬 환경을 만들고 mlx-audio를 깐다(수백 MB, uv로 몇십 초). 모델은 처음 쓸 때 받는다."""
+    from narani import updater
+
+    if not qwen_supported():
+        raise RuntimeError("Qwen3 로컬 목소리는 Apple Silicon Mac에서만 됩니다")
+    uv = updater.find_uv()
+    if not uv:
+        raise RuntimeError("uv를 찾지 못했습니다")
+    d = qwen_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    py = d / ".venv" / "bin" / "python"
+    for cmd in ([uv, "venv", "--python", "3.12", str(d / ".venv")] if not py.exists() else [],
+                [uv, "pip", "install", "--python", str(py), "mlx-audio>=0.6", "soundfile"],
+                [str(py), "-c", "import mlx_audio, soundfile"]):
+        if cmd:
+            r = subprocess.run(cmd, capture_output=True, text=True)
+            if r.returncode:
+                raise RuntimeError((r.stderr or r.stdout).strip()[-400:] or "설치 실패")
+    (d / "ready").write_text("ok", encoding="utf-8")
+
+
+class QwenVoice:
+    """Qwen3-TTS — 따로 깐 환경의 일꾼 프로세스에 문장을 하나씩 보내 WAV를 받는다. 모델은 일꾼이 한 번만 올린다."""
+
+    kind = "qwen"
+    sample_rate = 24000
+
+    def __init__(self, speaker: str = "Sohee", lang: str = "ko", size: str = "0.6b") -> None:
+        self.speaker, self.size = speaker, size if size in QWEN_MODELS else "0.6b"
+        self.language = QWEN_LANG.get(lang) or QWEN_LANG.get(lang.split("-")[0], "English")
+        self._proc = None
+        self._tmp = None
+
+    @property
+    def id(self) -> str:
+        return f"qwen:{self.size}:{self.speaker}"
+
+    @staticmethod
+    def available() -> bool:
+        return qwen_ready() and bool(shutil.which("afconvert"))
+
+    def _read(self) -> dict:
+        while True:
+            line = self._proc.stdout.readline()
+            if not line:
+                log = (qwen_dir() / "worker.log")
+                tail = log.read_text(encoding="utf-8", errors="replace")[-400:] if log.exists() else ""
+                raise RuntimeError(f"Qwen 일꾼이 멈췄습니다: {tail}")
+            line = line.strip()
+            if line.startswith("{"):
+                try:
+                    return json.loads(line)
+                except ValueError:
+                    pass
+
+    def _start(self) -> None:
+        if self._proc and self._proc.poll() is None:
+            return
+        qwen_dir().mkdir(parents=True, exist_ok=True)
+        worker = qwen_dir() / "worker.py"
+        worker.write_text(_QWEN_WORKER, encoding="utf-8")
+        self._tmp = tempfile.mkdtemp(prefix="narani-qwen-")
+        log = open(qwen_dir() / "worker.log", "w", encoding="utf-8")  # noqa: SIM115 — 일꾼이 살아 있는 동안
+        self._proc = subprocess.Popen([str(qwen_python()), str(worker)], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                                      stderr=log, text=True, encoding="utf-8")
+        self._proc.stdin.write(json.dumps({"model": QWEN_MODELS[self.size]}) + "\n")
+        self._proc.stdin.flush()
+        msg = self._read()
+        if not msg.get("ready"):
+            raise RuntimeError(f"Qwen 모델을 올리지 못했습니다: {msg}")
+        self.sample_rate = int(msg.get("rate") or 24000)
+
+    def synth_units(self, units: list[Unit], tick: Callable[[], None] | None = None) -> list[bytes]:
+        self._start()
+        out = []
+        for i, u in enumerate(units):
+            path = Path(self._tmp) / f"{i:05d}.wav"
+            self._proc.stdin.write(json.dumps({"text": u.text, "speaker": self.speaker, "language": self.language,
+                                               "out": str(path)}, ensure_ascii=False) + "\n")
+            self._proc.stdin.flush()
+            msg = self._read()
+            if msg.get("error"):
+                raise RuntimeError(f"Qwen 합성 실패: {msg['error']}")
+            with wave.open(str(path)) as w:
+                out.append(w.readframes(w.getnframes()))
+            path.unlink(missing_ok=True)
+            if tick:
+                tick()
+        return out
+
+    def close(self) -> None:
+        if self._proc and self._proc.poll() is None:
+            try:
+                self._proc.stdin.close()
+                self._proc.wait(timeout=10)
+            except Exception:  # noqa: BLE001
+                self._proc.kill()
+        self._proc = None
+        if self._tmp:
+            shutil.rmtree(self._tmp, ignore_errors=True)
+            self._tmp = None
+
+
 # ---- 합치기 ----
 def _afconvert(*args: str) -> None:
     subprocess.run(["afconvert", *args], check=True, capture_output=True)
@@ -573,7 +740,7 @@ def _make_section(engine, sec: Section, cache: Path, key: str, tmp: Path,  # noq
     wav = tmp / f"{key}.wav"
     _write_wav(wav, bytes(pcm), rate)
     _afconvert("-f", "m4af", "-d", "aac", "-b", str(CACHE_BITRATE), str(wav), str(cache / f"{key}.m4a"))
-    (cache / f"{key}.json").write_text(json.dumps({"marks": marks}), encoding="utf-8")
+    (cache / f"{key}.json").write_text(json.dumps({"marks": marks, "voice": engine.id}), encoding="utf-8")
 
 
 def build(bundle: dict, engine, cache: Path, include: list[int] | None = None,
@@ -592,6 +759,14 @@ def build(bundle: dict, engine, cache: Path, include: list[int] | None = None,
     keys = [section_key(engine, s) for s in secs]
     todo = [(s, k) for s, k in zip(secs, keys) if not ((cache / f"{k}.m4a").exists() and (cache / f"{k}.json").exists())]
     total = sum(len(s.units) for s, _ in todo)
+    try:
+        return _build(bundle, engine, cache, side, secs, keys, todo, total, on_progress)
+    finally:
+        if hasattr(engine, "close"):
+            engine.close()   # Qwen 일꾼처럼 붙잡고 있는 프로세스·메모리를 놓는다
+
+
+def _build(bundle, engine, cache, side, secs, keys, todo, total, on_progress):  # noqa: ANN001, ANN202
     done = [0]
     with tempfile.TemporaryDirectory() as td:
         tmp = Path(td)
@@ -616,11 +791,19 @@ def build(bundle: dict, engine, cache: Path, include: list[int] | None = None,
         out = tmp / "all.m4a"
         _afconvert("-f", "m4af", "-d", "aac", "-b", str(BITRATE), str(wav), str(out))
         data = out.read_bytes()
-    # 지금 판에 쓰지 않는 섹션 캐시는 지운다 (다른 목소리로 바꿨거나 본문이 바뀐 것)
+    # 같은 목소리의 옛 섹션(본문이 바뀐 것)만 지운다 — 다른 목소리 캐시는 둔다: Qwen(느림)·Gemini(유료)로 만든 것을
+    # 목소리를 바꿔 봤다가 돌아와도 다시 만들지 않게. 목소리 표시가 없는 옛 캐시는 예전처럼 지운다.
     live = set(keys)
-    for f in cache.iterdir():
-        if f.suffix in (".m4a", ".json") and f.stem not in live:
+    for f in cache.glob("*.json"):
+        if f.stem in live:
+            continue
+        try:
+            voice = json.loads(f.read_text(encoding="utf-8")).get("voice")
+        except (OSError, ValueError):
+            voice = None
+        if voice in (None, engine.id):
             f.unlink(missing_ok=True)
+            (cache / f"{f.stem}.m4a").unlink(missing_ok=True)
     tl = {"format": FORMAT, "key": bundle["key"], "src": bundle.get("hash", ""), "voice": engine.id,
           "lang": bundle.get("lang") if side == "ko" else "en", "side": side, "duration": round(t, 2),
           "sections": sections, "sents": sents}

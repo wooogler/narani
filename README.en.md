@@ -359,14 +359,15 @@ The **Ask** tab of the **✦** button at the bottom right asks about the paper y
 Make audio of the translation read aloud on the desktop, then listen on the phone.
 
 - **Make it (desktop, macOS only for now)** — on Home, tick papers and click **Make mobile audio**. Pick a voice (**Preview** to hear it) and, for a single paper, the sections to include. The audio goes to the `Narani` folder in your Drive (about 15 MB per hour), and papers with audio get a 🎧 on their card.
-  - **Free — Mac voice**: made on this computer; an hour of audio takes a few minutes.
+  - **Free — Mac voice**: made on this computer; an hour of audio takes a few minutes. Download **Yuna (Premium)** in System Settings → Accessibility → Spoken Content → System voice → Manage Voices for a much more natural voice; it's picked first when present.
+  - **Qwen3 — free, local (Apple Silicon Mac)**: an open model (Qwen3-TTS 0.6B) far more natural than the Mac voice. Click **Install** in the dialog once to set up a small environment kept separate from the app (a few hundred MB); the model (about 2.5 GB) downloads the first time you make audio. It runs offline and free but takes about 50 minutes per hour of audio (M5 · 16 GB; more if memory is tight). It runs as a background job.
   - **Gemini (paid)**: more natural voices. Available once you add a **Gemini key** in Settings → AI; the dialog shows the estimated cost (an hour of audio is about $0.5 with flash-lite, $0.8 with flash — double from 2027). The paper's translated text is sent to Google with your key and billed to that account. Paid audio isn't remade automatically when you change a translation (the phone marks it as outdated) — remake it when you want.
 - **What it reads** — title, abstract and body, announcing section titles. Figures, tables, equations, citation marks, footnote numbers, references and appendices are skipped.
 - **Listen (phone)** — open a paper with audio and a **🎧** button appears above ✦. It starts **where you were looking**; the bar at the bottom has play, 15 seconds back/forward, previous/next section and speed. You can also tap a sentence and choose **Listen from here**.
 - **Range** — **Range** on the bar: start to finish · this section only · from here to the end · choose sections.
 - **With the screen on**, the sentence being read is highlighted and the page follows along. **With the screen off** it keeps playing, and the lock screen, CarPlay and earbud buttons play/pause and move between sections. Your place is remembered and the paper opens there next time.
 - **Offline** — audio is saved the first time you play it. With **Offline mode** on, **Save audio too** downloads it all in advance (use Wi-Fi).
-- When you change a translation, the next desktop start remakes free-voice audio for the changed sections only. To delete audio, tick papers and click **Delete mobile audio**.
+- When you change a translation, the next desktop start remakes free-voice audio (Mac, Qwen3) for the changed sections only. Switching voices keeps the pieces made with the other voice, so switching back doesn't synthesize again. To delete audio, tick papers and click **Delete mobile audio**.
 
 ### 7. Getting a new version
 

@@ -1263,5 +1263,14 @@
  "조용해서 끝냈어요": "ended after silence",
  "Gemini 요청 한도에 걸렸습니다{wait} — 무료 등급 키는 TTS가 하루 몇 번뿐이라 논문 한 편을 만들기 어렵습니다. Google AI Studio에서 결제를 켠 키를 쓰거나 Mac 목소리로 만드세요. 다 만든 섹션은 남아 있어 다시 하면 이어서 만듭니다.": "Hit the Gemini request limit{wait} — free-tier keys allow only a few TTS requests a day, not enough for a whole paper. Use a key with billing enabled in Google AI Studio, or the Mac voice. Finished sections are kept, so running it again continues where it stopped.",
  " (약 {h}시간 뒤에 풀림)": " (resets in about {h} h)",
- " · 요청 약 {n}번 — 무료 등급 키는 TTS가 하루 10번쯤이라 모자랄 수 있어요": " · about {n} requests — free-tier keys allow about 10 TTS requests a day, which may not be enough"
+ " · 요청 약 {n}번 — 무료 등급 키는 TTS가 하루 10번쯤이라 모자랄 수 있어요": " · about {n} requests — free-tier keys allow about 10 TTS requests a day, which may not be enough",
+ "먼저 Qwen3를 설치하세요.": "Install Qwen3 first.",
+ "목소리를 준비하는 중…": "Preparing the voice…",
+ "Qwen3 — 무료·로컬, 자연스러움": "Qwen3 — free, local, natural",
+ "Qwen3 설치하는 중… (수백 MB, 1~2분)": "Installing Qwen3… (a few hundred MB, 1–2 min)",
+ "Qwen3를 설치하지 못했습니다: {e}": "Couldn't install Qwen3: {e}",
+ "Qwen3를 설치했습니다 — 처음 만들 때 모델(약 2.5GB)을 한 번 받습니다.": "Qwen3 installed — the model (about 2.5 GB) downloads once the first time you make audio.",
+ "이 Mac에 Qwen3 로컬 목소리를 설치합니다 — 앱과 따로 두는 작은 환경(수백 MB)이고, 처음 만들 때 모델(약 2.5GB)을 한 번 받습니다. 인터넷 없이·무료로 돌지만 Mac 목소리보다 느립니다(한 시간 분량에 약 50분).": "Installs the Qwen3 local voice on this Mac — a small environment kept separate from the app (a few hundred MB); the model (about 2.5 GB) downloads once the first time. It runs offline and free but slower than the Mac voice (about 50 min per hour of audio).",
+ "설치하기": "Install",
+ " · 무료 · 만드는 데 약 {w}분 (이 Mac에서, 처음엔 모델 받기 더)": " · free · about {w} min to make (on this Mac; first time adds the model download)"
 }
