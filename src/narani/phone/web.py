@@ -155,6 +155,26 @@ ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3p
 #pl-pp { width: 46px; height: 46px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 1.15em; }
 #pl-range, #pl-spd { font-size: .8em; color: var(--muted); }
 ::highlight(tts) { background-color: rgba(255, 196, 0, .45); }
+/* 말로 묻기 — 막대의 🎙, 대화 중 상태 막대(재생 막대 위·없으면 아래) */
+#pl-mic { border: 0; border-radius: 999px; background: var(--accent); color: #fff; font: inherit; font-size: .95em; font-weight: 600;
+  padding: 2px 10px; margin-left: 4px; }
+#ag-mic { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); font-size: 1.05em;
+  align-self: flex-end; }
+#talkbar { position: fixed; left: 12px; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 13; display: none;
+  align-items: center; gap: 8px; background: var(--fg); color: var(--bg); border-radius: 16px; padding: 10px 10px 10px 14px;
+  box-shadow: 0 8px 24px rgba(0,0,0,.25); font-weight: 600; }
+.js.reading.listening #talkbar { bottom: calc(126px + env(safe-area-inset-bottom)); }
+#talkbar.on { display: flex; }
+#talkbar .lv { width: 12px; height: 12px; border-radius: 50%; background: #9a968e; flex: none; }
+#talkbar.listening .lv { background: #4caf50; animation: tkPulse 1.2s infinite; } #talkbar.speaking .lv { background: #6aa0ff; }
+#talkbar.thinking .lv { background: #e6a700; }
+@keyframes tkPulse { 50% { transform: scale(1.35); opacity: .6; } }
+#tk-st { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#tk-meta { font-weight: 400; font-size: .8em; opacity: .7; font-variant-numeric: tabular-nums; }
+#tk-end { border: 0; border-radius: 999px; background: #c4554d; color: #fff; font: inherit; padding: 6px 14px; }
+#talkbar:not(.listening):not(.speaking):not(.thinking) #tk-end { display: none; }
+.js.talking #pl-mic { background: #c4554d; }
+.js.talking #fab.rd, .js.talking #lis { display: none; }   /* 대화 중엔 대화 막대만 */
 .row.tts-row { background: var(--hl2); border-radius: 6px; }
 .rng label { display: block; margin: 6px 0; }
 .rng-secs { margin: 4px 0 0 22px; max-height: 32vh; overflow-y: auto; font-size: .9em; }
@@ -1015,7 +1035,7 @@ _READER_JS = r"""
   doc.getElementById('ag-x').onclick = closeDrawers;
   [tocd, agent].forEach(function(d){ d.addEventListener('click', function(e){ e.stopPropagation(); }); });
   function readerOpened(b){ body.classList.add('reading'); AG.key = b.key; AG.lang = b.lang || 'ko'; AG.title = b.title_ko || b.title; AG.msgs = null; }
-  function readerClosed(){ body.classList.remove('reading'); closeDrawers(); stopAudio(); }
+  function readerClosed(){ body.classList.remove('reading'); closeDrawers(); if (TK) talkEnd(md4T('논문을 닫음'), true); stopAudio(); }
   function flashRow(row){
     if (!row) return;
     row.scrollIntoView({block: 'start'});
@@ -1116,7 +1136,7 @@ _READER_JS = r"""
   });
   function msgEl(m){
     var d = el('div', 'm ' + (m.role === 'user' ? 'u' : (m.err ? 'a err' : 'a')));
-    if (m.role === 'user' || m.err) d.textContent = m.content; else d.innerHTML = md(m.content);
+    if (m.role === 'user' || m.err) d.textContent = (m.voice && m.role === 'user' ? '🎙 ' : '') + m.content; else d.innerHTML = md(m.content);
     return d;
   }
   function setTabs(){
@@ -1157,16 +1177,23 @@ _READER_JS = r"""
     function keyHint(){ key.value = ''; key.placeholder = c.keys[sel.value] ? md4T('저장됨 — 바꾸려면 새로 입력') : md4T('키를 붙여 넣으세요'); }
     keyHint();
     sel.onchange = function(){ fillModels(); model.value = c.models[sel.value] || ((INDEX && INDEX.agent && INDEX.agent.provider === sel.value) ? INDEX.agent.model : (tiers[sel.value] || [])[0] || ''); keyHint(); };
+    agBody.appendChild(el('label', '', md4T('말로 묻기 (OpenAI realtime) — 모델 · 목소리')));
+    var rt = c.rt || {}, rtRow = el('div', 'acts'), rtm = el('select'), rtv = el('select');
+    RT_MODELS.forEach(function(m){ var o = el('option', '', m); o.value = m; if (m === (rt.model || RT_MODELS[0])) o.selected = true; rtm.appendChild(o); });
+    RT_VOICES.forEach(function(v){ var o = el('option', '', v); o.value = v; if (v === (rt.voice || RT_VOICES[0])) o.selected = true; rtv.appendChild(o); });
+    rtRow.appendChild(rtm); rtRow.appendChild(rtv); agBody.appendChild(rtRow);
+    agBody.appendChild(el('p', 'hint', md4T('말로 묻기는 OpenAI 키를 씁니다(위에서 OpenAI를 골라 키를 넣어 두세요). 묻는 동안 내 목소리와 이 논문의 본문·메모가 OpenAI로 직접 가고, 10분에 대략 몇백 원입니다.')));
     agBody.appendChild(el('p', 'hint', md4T('키는 이 기기의 브라우저에만 저장됩니다. 질문하면 이 논문의 본문과 내 하이라이트·메모, 대화가 고른 AI 서비스로 직접 보내집니다. 요금은 그 키의 계정에 청구됩니다.')));
     var acts = el('div', 'acts'), save = el('button', 'pri', md4T('저장')), del = el('button', '', md4T('이 서비스 키 지우기'));
     save.onclick = function(){
       c.provider = sel.value; c.models[c.provider] = model.value.trim();
       if (key.value.trim()) c.keys[c.provider] = key.value.trim();
-      lsSet('narani:ai', {provider: c.provider, models: c.models, keys: c.keys});
+      c.rt = {model: rtm.value, voice: rtv.value};
+      lsSet('narani:ai', {provider: c.provider, models: c.models, keys: c.keys, rt: c.rt});
       try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
       showChat();
     };
-    del.onclick = function(){ delete c.keys[sel.value]; lsSet('narani:ai', {provider: c.provider, models: c.models, keys: c.keys}); keyHint(); };
+    del.onclick = function(){ delete c.keys[sel.value]; lsSet('narani:ai', {provider: c.provider, models: c.models, keys: c.keys, rt: c.rt}); keyHint(); };
     acts.appendChild(save); if (c.keys[c.provider]) acts.appendChild(del);
     if (c.keys[c.provider]){ var back = el('button', '', md4T('취소')); back.onclick = showChat; acts.appendChild(back); }
     agBody.appendChild(acts);
@@ -1513,6 +1540,8 @@ _AUDIO_JS = r"""
   doc.getElementById('pl-x').onclick = function(){ au.pause(); savePos(); body.classList.remove('listening'); unmarkNow(); };
   function audioLabels(){
     setText('pl-range', md4T('범위'));
+    setText('pl-mic', '🎙 ' + md4T('묻기')); setText('tk-end', md4T('끝'));
+    var am = doc.getElementById('ag-mic'); if (am) am.setAttribute('aria-label', md4T('말로 묻기'));
     [['lis', md4T('여기부터 듣기')], ['pl-range', md4T('듣기 범위')], ['pl-prev', md4T('이전 섹션')], ['pl-back', md4T('15초 뒤로')],
      ['pl-pp', md4T('재생')], ['pl-fwd', md4T('15초 앞으로')], ['pl-next', md4T('다음 섹션')], ['pl-spd', md4T('속도')],
      ['pl-x', md4T('듣기 닫기')], ['pl-seek', md4T('재생 위치')]].forEach(function(x){
@@ -1625,6 +1654,198 @@ _AUDIO_JS = r"""
   window.addEventListener('pageshow', function(e){ if (e.persisted && au.paused) AU.ready = false; });
 """
 
+# 말로 묻기 — 듣다가 🎙로 이 논문에 대해 음성으로 묻는다(OpenAI realtime, 이 기기에 넣은 내 키).
+_TALK_JS = r"""
+  // ---- 말로 묻기 (OpenAI realtime) — 듣다가 🎙: 듣기를 멈추고 이 논문에 대해 음성으로 묻고 답을 듣는다 ----
+  // 서버 없이: 이 기기에 넣어 둔 OpenAI 키로 단기 키(client_secrets)를 받아 WebRTC(calls)로 붙는다(마이크·재생·반향
+  // 제거는 브라우저가). AI는 이 논문 본문([rN])·지금 듣던 자리·내 메모를 알고, 근거 행을 jump_to로 짚고(대화 기록에
+  // [rN]), '계속 읽어 줘'면 resume_listening으로 끝내고 이어 듣는다. 조용히 20초면 끝, 끝나면 듣던 것을 이어 간다.
+  // 실기기 시험(realtime-test.html)에서 확인한 흐름 그대로. 대답(response)은 한 번에 하나만 요청한다.
+  var TK = null, tkBar = doc.getElementById('talkbar');
+  var RT_VOICES = ['marin', 'cedar', 'alloy', 'ash', 'ballad', 'coral', 'echo', 'sage', 'shimmer', 'verse'];
+  var RT_MODELS = ['gpt-realtime-2.1-mini', 'gpt-realtime-2.1'];
+  var RT_PRICE = {   // 100만 토큰당 달러 — mini는 공식 가격표(2026-10), 2.1은 어림
+    'gpt-realtime-2.1-mini': {ti: 0.6, tic: 0.06, ai: 10, aic: 0.3, ao: 20, to: 2.4},
+    'gpt-realtime-2.1': {ti: 4, tic: 0.4, ai: 32, aic: 0.4, ao: 64, to: 16}
+  };
+  function rtCfg(){
+    var c = aiCfg(), rt = c.rt || {};
+    return {key: c.keys.openai || '', model: RT_MODELS.indexOf(rt.model) >= 0 ? rt.model : RT_MODELS[0],
+            voice: RT_VOICES.indexOf(rt.voice) >= 0 ? rt.voice : RT_VOICES[0]};
+  }
+  function voiceText(){   // 듣는 쪽(번역)으로 — 행마다 [rN]
+    var side = (AU.tl && AU.tl.side) || (cur && cur.querySelector('.cell.ko') ? 'ko' : 'en'), out = [], n = 0;
+    [].forEach.call(cur.querySelectorAll('.row'), function(r){
+      var k = r.id.replace(/^p\d+-r/, ''), c = r.querySelector('.cell.' + side) || r.querySelector('.cell.same') || r.querySelector('.cell.en');
+      var t = c ? c.textContent.replace(/\s+/g, ' ').trim() : '';
+      if (t && n < 90000){ out.push('[r' + k + '] ' + t); n += t.length; }
+    });
+    return out.join('\n');
+  }
+  function talkWhere(){
+    if (AU.tl && AU.e && body.classList.contains('listening')){
+      var s = AU.tl.sents[sentAtT(au.currentTime || 0)], sec = SEC()[secAt(au.currentTime || 0)] || {};
+      return 'The user was listening (audio) around [r' + (s ? s[1] : 0) + '] (section: ' + (sec.title || '') + ').';
+    }
+    var r = topRow();
+    return 'The user was reading on screen around ' + (r ? '[r' + r.id.replace(/^p\d+-r/, '') + ']' : '?') + '.';
+  }
+  function talkInstructions(){
+    var notes = notesText();
+    return 'You are a voice assistant answering questions about the research paper below, which the user is listening to or reading '
+      + '(possibly while driving, without looking at the screen). Reply in the language the user speaks (default: ' + (AG.lang || 'ko') + '), '
+      + 'briefly and naturally (usually 2-4 sentences). Do not read lists, tables or formulas aloud; explain them in words. '
+      + 'Ground answers in the paper; if it is not in the paper, say so. When a specific row supports your answer, call jump_to with it, '
+      + 'but never say row numbers aloud. If the user wants to continue listening / go back to reading / stop asking, call resume_listening '
+      + '(with row if they name a place).\n\n# Paper: ' + (AG.title || '') + '\n' + voiceText()
+      + (notes ? '\n\n# My highlights and notes\n' + notes : '') + '\n\n# Where the user is\n' + talkWhere();
+  }
+  var TK_TOOLS = [
+    {type: 'function', name: 'jump_to', description: 'Show the paper row that supports the answer.',
+     parameters: {type: 'object', properties: {row: {type: 'integer'}}, required: ['row']}},
+    {type: 'function', name: 'read_rows', description: 'Read rows of the paper again (to quote or check).',
+     parameters: {type: 'object', properties: {from: {type: 'integer'}, to: {type: 'integer'}}, required: ['from', 'to']}},
+    {type: 'function', name: 'resume_listening', description: 'End the conversation and continue listening to the paper (from row if given).',
+     parameters: {type: 'object', properties: {row: {type: 'integer'}}}}
+  ];
+  function tkState(cls, text){ tkBar.className = 'on ' + cls; setText('tk-st', text); }
+  function tkSend(o){ if (TK && TK.dc && TK.dc.readyState === 'open') TK.dc.send(JSON.stringify(o)); }
+  function tkAsk(extra){   // 대답 요청은 한 번에 하나 — 진행 중이면 끝난 뒤로
+    if (!TK) return;
+    if (TK.active){ TK.pending = extra || TK.pending || {}; return; }
+    TK.active = true;
+    tkSend(extra && extra.response ? {type: 'response.create', response: extra.response} : {type: 'response.create'});
+  }
+  function tkChat(role, text){
+    if (!text) return;
+    var msgs = chat(); msgs.push({role: role, content: text, voice: true}); saveChat();
+    if (agent.classList.contains('open') && AG.mode === 'chat') showChat();
+  }
+  function tkUsage(u){
+    if (!u || !TK) return;
+    var p = RT_PRICE[TK.model] || RT_PRICE[RT_MODELS[0]], id = u.input_token_details || {}, od = u.output_token_details || {};
+    var cc = id.cached_tokens_details || {}, ct = cc.text_tokens || 0, ca = cc.audio_tokens || 0;
+    TK.cost += (((id.text_tokens || 0) - ct) * p.ti + ct * p.tic + ((id.audio_tokens || 0) - ca) * p.ai + ca * p.aic
+               + (od.audio_tokens || 0) * p.ao + (od.text_tokens || 0) * p.to) / 1e6;
+  }
+  function tkTool(name, args, callId){
+    var out = {ok: true};
+    if (name === 'jump_to'){
+      var el = doc.getElementById(PID + '-r' + args.row);
+      if (el && doc.visibilityState === 'visible') flashRow(el);
+      var msgs = chat(), last = msgs[msgs.length - 1];   // 대화 기록의 마지막 답에 근거 [rN]
+      if (last && last.role === 'assistant' && last.content.indexOf('[r' + args.row + ']') < 0){ last.content += ' [r' + args.row + ']'; saveChat(); }
+    } else if (name === 'read_rows'){
+      out = {text: voiceText().split('\n').filter(function(l){ var m = /^\[r(\d+)\]/.exec(l); return m && +m[1] >= args.from && +m[1] <= args.to; }).join('\n').slice(0, 6000)};
+    } else if (name === 'resume_listening'){
+      TK.closing = true; TK.resumeRow = args.row != null ? args.row : null; TK.resume = true;
+      tkSend({type: 'conversation.item.create', item: {type: 'function_call_output', call_id: callId, output: '{"ok":true}'}});
+      setTimeout(function(){ talkEnd(md4T('이어 듣기')); }, 1200);
+      return;
+    }
+    tkSend({type: 'conversation.item.create', item: {type: 'function_call_output', call_id: callId, output: JSON.stringify(out)}});
+  }
+  function tkEvent(ev){
+    var e; try { e = JSON.parse(ev.data); } catch (x) { return; }
+    if (!TK) return;
+    var now = Date.now();
+    switch (e.type){
+      case 'response.created': TK.active = true; break;
+      case 'input_audio_buffer.speech_started': TK.last = now; TK.userTalking = true; tkState('listening', md4T('듣는 중 — 말씀하세요')); break;
+      case 'input_audio_buffer.speech_stopped': TK.last = now; TK.userTalking = false; tkState('thinking', md4T('생각 중…')); break;
+      case 'conversation.item.input_audio_transcription.completed': tkChat('user', (e.transcript || '').trim()); break;
+      case 'response.output_audio_transcript.delta': TK.last = now; tkState('speaking', md4T('말하는 중')); break;
+      case 'response.output_audio_transcript.done': tkChat('assistant', (e.transcript || '').trim()); break;
+      case 'output_audio_buffer.started': TK.botTalking = true; TK.last = now; break;
+      case 'output_audio_buffer.stopped': TK.botTalking = false; TK.last = now; tkState('listening', md4T('듣는 중 — 더 물어보세요')); break;
+      case 'response.done':
+        var r = e.response || {}, called = 0;
+        TK.active = false; TK.last = now;
+        tkUsage(r.usage);
+        (r.output || []).forEach(function(it){
+          if (it.type === 'function_call'){ var a = {}; try { a = JSON.parse(it.arguments || '{}'); } catch (x) {} tkTool(it.name, a, it.call_id); called++; }
+        });
+        if (!TK || TK.closing) break;
+        if (called) tkAsk();
+        else if (TK.pending){ var pd = TK.pending; TK.pending = null; tkAsk(pd); }
+        break;
+      case 'error':
+        var msg = (e.error && e.error.message) || '';
+        if (!/active response in progress/i.test(msg)) tkChat('assistant', md4T('음성 대화 오류: {e}', {e: msg}));
+        break;
+    }
+  }
+  function openAgentSettings(note){
+    closeSheet(); agent.classList.add('open'); scrim.classList.add('open'); showSettings(note);
+  }
+  async function talkStart(){
+    if (TK) return;
+    var c = rtCfg();
+    if (!c.key){ openAgentSettings(md4T('말로 묻기는 OpenAI 키가 필요해요 — 이 기기에 한 번 넣어 주세요(질문하기와 같은 키).')); return; }
+    if (navigator.onLine === false){ tkState('', md4T('오프라인이라 말로 물을 수 없어요.')); setTimeout(function(){ if (!TK) tkBar.className = ''; }, 3000); return; }
+    var wasPlaying = !!(AU.e && !au.paused);
+    au.pause();
+    TK = {model: c.model, cost: 0, started: Date.now(), last: Date.now(), wasPlaying: wasPlaying, active: false};
+    body.classList.add('talking'); tkState('', md4T('연결 중…'));
+    try {
+      TK.mic = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true}});
+      var tok = await fetch('https://api.openai.com/v1/realtime/client_secrets', {method: 'POST',
+        headers: {'Authorization': 'Bearer ' + c.key, 'Content-Type': 'application/json'},
+        body: JSON.stringify({session: {type: 'realtime', model: c.model, audio: {output: {voice: c.voice}}}})});
+      if (!tok.ok) throw new Error((tok.status === 401 ? md4T('OpenAI 키가 맞지 않아요') : 'HTTP ' + tok.status) + ' — ' + (await tok.text()).slice(0, 160));
+      var ek = (await tok.json()).value;
+      if (!TK) return;
+      var pc = new RTCPeerConnection(); TK.pc = pc;
+      pc.ontrack = function(ev){ var a = doc.getElementById('tk-au'); a.srcObject = ev.streams[0]; a.play().catch(function(){}); };
+      pc.onconnectionstatechange = function(){ if (pc.connectionState === 'failed' || pc.connectionState === 'disconnected') talkEnd(md4T('연결이 끊겼어요')); };
+      TK.mic.getTracks().forEach(function(tr){ pc.addTrack(tr, TK.mic); });
+      var dc = pc.createDataChannel('oai-events'); TK.dc = dc;
+      dc.onmessage = tkEvent;
+      dc.onopen = function(){
+        tkSend({type: 'session.update', session: {type: 'realtime', instructions: talkInstructions(), tools: TK_TOOLS, tool_choice: 'auto',
+          audio: {input: {turn_detection: {type: 'semantic_vad'}, transcription: {model: 'gpt-4o-mini-transcribe'}}, output: {voice: c.voice}}}});
+        tkAsk({response: {instructions: 'Say only a very short phrase inviting the question (like "Yes, go ahead."), in the language ' + (AG.lang || 'ko') + '.'}});
+        tkState('listening', md4T('듣는 중 — 말씀하세요'));
+      };
+      var offer = await pc.createOffer(); await pc.setLocalDescription(offer);
+      var ans = await fetch('https://api.openai.com/v1/realtime/calls', {method: 'POST',
+        headers: {'Authorization': 'Bearer ' + ek, 'Content-Type': 'application/sdp'}, body: offer.sdp});
+      if (!ans.ok) throw new Error('HTTP ' + ans.status + ' — ' + (await ans.text()).slice(0, 160));
+      await pc.setRemoteDescription({type: 'answer', sdp: await ans.text()});
+    } catch (err){
+      var m = (err && err.name === 'NotAllowedError') ? md4T('마이크를 허락해야 말로 물을 수 있어요.') : ((err && err.message) || String(err));
+      tkChat('assistant', md4T('음성 대화를 시작하지 못했어요: {e}', {e: m}));
+      talkEnd(md4T('시작 실패'), true);
+    }
+  }
+  function talkEnd(why, quiet){
+    if (!TK) return;
+    var t = TK; TK = null;
+    try { t.dc && t.dc.close(); } catch (x) {}
+    try { t.pc && t.pc.close(); } catch (x) {}
+    try { t.mic && t.mic.getTracks().forEach(function(tr){ tr.stop(); }); } catch (x) {}
+    doc.getElementById('tk-au').srcObject = null;
+    body.classList.remove('talking');
+    var secs = Math.round((Date.now() - t.started) / 1000);
+    tkBar.className = 'on'; setText('tk-st', md4T('대화 끝 · {t} · 약 ${c}', {t: fmtT(secs), c: t.cost.toFixed(3)})); setText('tk-meta', '');
+    setTimeout(function(){ if (!TK) tkBar.className = ''; }, quiet ? 4000 : 2500);
+    if ((t.wasPlaying || t.resume) && AU.e){
+      if (t.resumeRow != null) listenFrom(t.resumeRow, null);
+      else startAt(null);
+    }
+  }
+  setInterval(function(){   // 조용하면 저절로 끝 · 시간·비용 표시 · 30분 상한
+    if (!TK) return;
+    var secs = Math.round((Date.now() - TK.started) / 1000);
+    setText('tk-meta', fmtT(secs) + ' · $' + TK.cost.toFixed(3));
+    if (secs > 1800) talkEnd(md4T('30분이 지나 끝냈어요'));
+    else if (!TK.userTalking && !TK.botTalking && TK.dc && Date.now() - TK.last > 20000) talkEnd(md4T('조용해서 끝냈어요'));
+  }, 1000);
+  doc.getElementById('pl-mic').onclick = function(){ if (TK) talkEnd(md4T('끝')); else talkStart(); };
+  doc.getElementById('ag-mic').onclick = function(){ if (TK) talkEnd(md4T('끝')); else { closeDrawers(); talkStart(); } };
+  doc.getElementById('tk-end').onclick = function(){ talkEnd(md4T('끝')); };
+"""
+
 _SW_JS = r"""
 // 앱 껍데기 캐시 — 먼저 캐시로 띄우고 뒤에서 새로 받아 둔다. 데이터(data/·__data/)는 앱이 직접 캐시한다.
 var V = '%(version)s', SHELL = 'narani-shell-' + V;
@@ -1670,7 +1891,7 @@ def _js_strings(*codes: str) -> set[str]:
 
 def _catalogs() -> dict[str, dict[str, str]]:
     """화면 언어별 카탈로그 — 리더 JS가 쓰는 문구만 (전부 실으면 index.html이 커진다)."""
-    used = _js_strings(mobile.CORE_JS, _APP_JS, _NOTES_JS, _READER_JS, _AUDIO_JS)
+    used = _js_strings(mobile.CORE_JS, _APP_JS, _NOTES_JS, _READER_JS, _AUDIO_JS, _TALK_JS)
     out: dict[str, dict[str, str]] = {}
     for lang in i18n.available():
         if lang == i18n.SOURCE:
@@ -1734,7 +1955,8 @@ def _index_html(cfg: dict) -> str:
         "<path fill=\"currentColor\" d=\"M12 3a9 9 0 0 0-9 9v6a3 3 0 0 0 3 3h1a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H5v-1a7 7 0 0 1"
         " 14 0v1h-2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1a3 3 0 0 0 3-3v-6a9 9 0 0 0-9-9z\"/></svg></button>"
         "<div id=\"player\" role=\"region\"><div class=\"pl-top\"><span id=\"pl-sec\"></span>"
-        "<span class=\"pl-t\"><span id=\"pl-cur\">0:00</span> / <span id=\"pl-dur\">0:00</span></span></div>"
+        "<span class=\"pl-t\"><span id=\"pl-cur\">0:00</span> / <span id=\"pl-dur\">0:00</span></span>"
+        "<button id=\"pl-mic\"></button></div>"
         "<input type=\"range\" id=\"pl-seek\" min=\"0\" step=\"1\" value=\"0\">"
         "<div class=\"pl-ctl\"><button id=\"pl-range\"></button><button id=\"pl-prev\">⏮</button>"
         "<button id=\"pl-back\">−15</button><button id=\"pl-pp\">▶</button><button id=\"pl-fwd\">+15</button>"
@@ -1747,7 +1969,10 @@ def _index_html(cfg: dict) -> str:
         "<button id=\"tab-notes\"></button><button id=\"tab-chat\"></button></div>"
         "<button id=\"ag-clear\"></button><button id=\"ag-set\">⚙</button><button id=\"ag-x\">×</button></div>"
         "<div id=\"ag-body\"></div><form id=\"ag-form\"><textarea id=\"ag-in\" rows=\"1\"></textarea>"
-        "<button id=\"ag-send\" type=\"submit\">↑</button></form></section>"
+        "<button id=\"ag-mic\" type=\"button\">🎙</button><button id=\"ag-send\" type=\"submit\">↑</button></form></section>"
+        # 말로 묻기 — 대화 중 상태 막대와 답 소리
+        "<div id=\"talkbar\" role=\"status\"><span class=\"lv\"></span><span id=\"tk-st\"></span>"
+        "<span id=\"tk-meta\"></span><button id=\"tk-end\"></button></div><audio id=\"tk-au\" autoplay playsinline></audio>"
         "<script src=\"app.js\"></script></body></html>"
     )
 
@@ -1760,7 +1985,7 @@ def site_files(*, local: bool = False, google_client_id: str = "") -> dict[str, 
            "ai_models": {p: list(m) for p, m in config.MODEL_TIERS.items()},  # 모바일 에이전트의 모델 고르기
            "google_client_id": google_client_id, "catalogs": _catalogs()}
     app_js = (_PRELUDE_JS + "(function(){\n" + sentpair.JS + mobile.CORE_JS + _APP_JS + _NOTES_JS + _READER_JS
-              + _AUDIO_JS              + "})();\n")
+              + _AUDIO_JS + _TALK_JS              + "})();\n")
     manifest = {
         "name": APP_NAME, "short_name": APP_NAME, "start_url": "./", "scope": "./", "display": "standalone",
         "background_color": "#fbfaf7", "theme_color": "#fbfaf7",
