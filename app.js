@@ -349,7 +349,8 @@
         go.textContent = md4T('논문 링크 열기'); acts.push(go);
       }
       acts.push(button(m[2] === 'ref' ? md4T('참고문헌 목록에서 보기') : md4T('각주로 이동'), function(){
-        closeSheet(); var t = visibleTarget(id); if (t) t.scrollIntoView({block: 'start'});
+        closeSheet(); var t = visibleTarget(id);
+        if (t){ if (typeof beforeJump === 'function') beforeJump(); t.scrollIntoView({block: 'start'}); }
       }));
       openSheet((m[2] === 'ref' ? md4T('참고문헌 {n}', {n: m[3]}) : md4T('각주 {n}', {n: m[3]})), [para(text || md4T('(서지 정보를 찾지 못했어요)'))], acts);
       return;
@@ -358,7 +359,11 @@
     var pm = /^(p\d+)$/.exec(id);
     if (pm){ openPaper(pm[1], true); return; }
     var t = visibleTarget(id);
-    if (t) t.scrollIntoView({block: 'start'});
+    if (t){
+      if (typeof beforeJump === 'function') beforeJump();   // 쓰는 쪽이 떠나기 전 자리를 집는다(폰: '읽던 자리로')
+      t.scrollIntoView({block: 'start'});
+      if (t.classList.contains('row')){ t.classList.remove('flash'); void t.offsetWidth; t.classList.add('flash'); }
+    }
   }
 
   doc.addEventListener('click', function(e){
@@ -800,6 +805,7 @@
       if (seq !== loadSeq) return;
       loading.style.display = 'none'; mount(b, target);
       notesOpen(e, b);
+      navOpened();
       audioOpened(e);
       if (INDEX) renderLib();
     }, function(err){
@@ -1001,6 +1007,7 @@
     for (var i = 0; i < ms.length; i++) if (ms[i].offsetParent){ m = ms[i]; break; }   // 지금 보기(번역·원문)에 보이는 쪽
     m = m || ms[0];
     if (!m) return;
+    beforeJump();
     m.scrollIntoView({block: 'center'});
     var r = m.closest('.row'); if (r){ r.classList.remove('flash'); void r.offsetWidth; r.classList.add('flash'); }
   }
@@ -1204,10 +1211,11 @@
   doc.getElementById('tocd-x').onclick = closeDrawers;
   doc.getElementById('ag-x').onclick = closeDrawers;
   [tocd, agent].forEach(function(d){ d.addEventListener('click', function(e){ e.stopPropagation(); }); });
-  function readerOpened(b){ body.classList.add('reading'); AG.key = b.key; AG.lang = b.lang || 'ko'; AG.title = b.title_ko || b.title; AG.msgs = null; }
-  function readerClosed(){ body.classList.remove('reading'); closeDrawers(); if (TK) talkEnd(md4T('논문을 닫음'), true); stopAudio(); }
+  function readerOpened(b){ JB.length = 0; jbShow(); body.classList.add('reading'); AG.key = b.key; AG.lang = b.lang || 'ko'; AG.title = b.title_ko || b.title; AG.msgs = null; }
+  function readerClosed(){ JB.length = 0; jbShow(); FIGS = []; body.classList.remove('reading'); closeDrawers(); if (TK) talkEnd(md4T('논문을 닫음'), true); stopAudio(); }
   function flashRow(row){
     if (!row) return;
+    beforeJump();
     row.scrollIntoView({block: 'start'});
     row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash');
   }
@@ -1222,10 +1230,37 @@
     });
     return best;
   }
+  // 서랍은 '목차 | 그림·표' 두 칸 — 고른 칸을 기억한다
+  function tocTabs(which){
+    var t = doc.getElementById('tocd-t-toc'), f = doc.getElementById('tocd-t-fig');
+    t.textContent = md4T('목차');
+    f.textContent = md4T('그림·표'); if (FIGS.length) f.appendChild(el('span', 'cnt', String(FIGS.length)));
+    [[t, which === 'toc'], [f, which === 'fig']].forEach(function(x){ x[0].classList.toggle('on', x[1]); x[0].setAttribute('aria-selected', x[1] ? 'true' : 'false'); });
+  }
+  doc.getElementById('tocd-t-toc').onclick = function(){ lsSet('narani:toctab', 'toc'); openToc(); };
+  doc.getElementById('tocd-t-fig').onclick = function(){ lsSet('narani:toctab', 'fig'); openFigs(); };
+  function openFigs(){
+    if (!cur) return;
+    var list = doc.getElementById('tocd-list');
+    list.innerHTML = ''; list.className = 'figs'; tocTabs('fig');
+    doc.getElementById('tocd-title').textContent = (DATA[PID] || {}).title || md4T('목차');
+    FIGS.forEach(function(f){
+      var item = el('li'), b = el('a'); b.href = '#';
+      var th = el('span', 'th');
+      if (f.img) { var im = el('img'); im.src = f.img; im.alt = ''; im.loading = 'lazy'; th.appendChild(im); }
+      else th.textContent = f.kind === 't' ? '▦' : '▣';
+      var tx = el('span', 'tx'); tx.appendChild(el('strong', '', f.label)); tx.appendChild(el('span', 'cap', f.caption));
+      b.appendChild(th); b.appendChild(tx);
+      b.onclick = function(ev){ ev.preventDefault(); closeDrawers(); goFig(f.href); };
+      item.appendChild(b); list.appendChild(item);
+    });
+    if (!FIGS.length) list.appendChild(el('li', 'empty', md4T('그림·표가 없는 논문이에요.')));
+    tocd.classList.add('open'); scrim.classList.add('open');
+  }
   function openToc(){
     if (!cur) return;
     var list = doc.getElementById('tocd-list'), here = currentSection();
-    list.innerHTML = '';
+    list.innerHTML = ''; list.className = ''; tocTabs('toc');
     doc.getElementById('tocd-title').textContent = (DATA[PID] || {}).title || md4T('목차');
     [].forEach.call(cur.querySelectorAll('.toc li'), function(li){
       var a = li.querySelector('a'); if (!a) return;
@@ -1239,7 +1274,129 @@
     tocd.classList.add('open'); scrim.classList.add('open');
     var h = list.querySelector('.here'); if (h) h.scrollIntoView({block: 'center'});
   }
-  topTitle.onclick = function(e){ if (!cur) return; e.stopPropagation(); openToc(); };
+  topTitle.onclick = function(e){
+    if (!cur) return; e.stopPropagation();
+    if (lsGet('narani:toctab', 'toc') === 'fig' && FIGS.length) openFigs(); else openToc();
+  };
+
+  // ---- 그림·표 — 캡션("Figure 3:" · "표 1:")으로 찾아 서랍의 '그림·표' 칸과 본문 참조 바로가기에 쓴다 ----
+  var FIG_RX = /^(Figures?|Figs?\.?|Tables?|그림|표|図|表|Figura|Tabla)\s*(\d+)/i;
+  var FIGREF_RX = /(^|[^\w가-힣])((?:Figures?|Figs?\.|Fig|Tables?|그림|표|図|表|Figura|Tabla)\s?(\d+))/g;
+  var FIGS = [];
+  function figKind(w){ return /^(tab|표|表)/i.test(w) ? 't' : 'f'; }
+  function hasVisual(x){ return !!(x && x.querySelector('img, table')); }
+  function capsOf(row, side){
+    var c = row.querySelector('.cell.' + side);
+    return c ? [].slice.call(c.querySelectorAll('blockquote > p:first-child > strong:first-child')).filter(function(st){ return FIG_RX.test(st.textContent.trim()); }) : [];
+  }
+  // 캡션이 가리키는 자리 — 캡션 바로 앞이 그림(문단 속 img·표)이면 그 그림, 아니면 캡션 자체. 원문·번역 셀에 하나씩
+  // 'p0-en-fig-f3'·'p0-ko-fig-f3' 이름을 붙여 두면 visibleTarget이 지금 보이는 쪽을 고른다.
+  function capAnchor(st, side, key){
+    var bq = st.closest('blockquote'), prev = bq.previousElementSibling, a = hasVisual(prev) || (prev && prev.matches('img, table')) ? prev : bq;
+    if (!a.id) a.id = PID + '-' + side + '-fig-' + key;
+    return a;
+  }
+  function indexFigs(){
+    FIGS = [];
+    if (!cur) return;
+    var side = (doc.getElementById('m-en') || {}).checked ? 'en' : 'ko', seen = {};
+    [].forEach.call(cur.querySelectorAll('.row'), function(row){
+      var base = row.querySelector('.cell.en') ? 'en' : 'same', caps = capsOf(row, base);
+      if (!caps.length) return;
+      var mine = capsOf(row, row.querySelector('.cell.' + side) ? side : base);
+      caps.forEach(function(st, i){
+        var m = FIG_RX.exec(st.textContent.trim()), key = figKind(m[1]) + m[2];
+        if (seen[key]) return;
+        seen[key] = 1;
+        var href, img = null;
+        if (caps.length === 1 && !hasVisual(row)){
+          // 캡션만 있는 행 — 바로 앞 몇 행 안의 그림 행으로 (그림 행 · 그림 속 글자 행 · 캡션 행으로 나뉜 논문)
+          var r = row.previousElementSibling, k = 0;
+          while (r && k < 3 && !(hasVisual(r) && !capsOf(r, base).length)){ r = r.previousElementSibling; k++; }
+          var target = r && k < 3 && hasVisual(r) ? r : row;
+          href = target.id; img = target.querySelector('img');
+        } else if (caps.length === 1){
+          href = row.id; img = row.querySelector('img');
+        } else {
+          var ea = capAnchor(st, base, key), kc = base === 'en' ? capsOf(row, 'ko')[i] : null;   // 두 언어 다 이름을 붙여 둔다
+          var ka = kc ? capAnchor(kc, 'ko', key) : null, a = side === 'ko' && ka ? ka : ea;
+          href = PID + '-ko-fig-' + key;
+          img = a.matches('img') ? a : a.querySelector('img');
+        }
+        var shown = (mine[i] || st).parentNode, lab = shown.querySelector('strong');
+        FIGS.push({key: key, kind: key[0], href: href, img: img ? img.getAttribute('src') : '',
+                   label: (lab ? lab.textContent : st.textContent).replace(/[:.\s]+$/, ''),
+                   caption: shown.textContent.replace(lab ? lab.textContent : '', '').replace(/\s+/g, ' ').trim()});
+      });
+    });
+  }
+  // 본문의 "Figure 3" · "그림 3" · "표 1"을 그 그림으로 가는 링크로 감싼다 — 글자는 그대로라(textContent 불변)
+  // 메모 위치·문장 짝·듣기 하이라이트의 셀 안 위치가 어긋나지 않는다
+  function linkFigRefs(){
+    if (!cur || !FIGS.length) return;
+    var byKey = {}; FIGS.forEach(function(f){ byKey[f.key] = f; });
+    [].forEach.call(cur.querySelectorAll('.cell.ko, .cell.en'), function(cell){
+      var w = doc.createTreeWalker(cell, NodeFilter.SHOW_TEXT, null), nodes = [], n;
+      while ((n = w.nextNode())) if (/\d/.test(n.nodeValue)) nodes.push(n);
+      nodes.forEach(function(t){
+        var p = t.parentNode;
+        if (p.closest('a, h1, h2, h3, h4, h5, h6, blockquote > p:first-child > strong')) return;
+        var v = t.nodeValue, last = 0, frag = null, m;
+        FIGREF_RX.lastIndex = 0;
+        while ((m = FIGREF_RX.exec(v))){
+          var f = byKey[figKind(m[2]) + m[3]]; if (!f) continue;
+          var at = m.index + m[1].length;
+          frag = frag || doc.createDocumentFragment();
+          frag.appendChild(doc.createTextNode(v.slice(last, at)));
+          var a = el('a', 'figref', m[2]); a.href = '#' + f.href; frag.appendChild(a);
+          last = at + m[2].length;
+        }
+        if (frag){ frag.appendChild(doc.createTextNode(v.slice(last))); p.replaceChild(frag, t); }
+      });
+    });
+  }
+  function navOpened(){ indexFigs(); linkFigRefs(); }
+  function goFig(id){
+    var t = visibleTarget(id); if (!t) return;
+    var row = t.classList.contains('row') ? t : t.closest('.row');
+    beforeJump();
+    t.scrollIntoView({block: t === row ? 'start' : 'center'});
+    if (row){ row.classList.remove('flash'); void row.offsetWidth; row.classList.add('flash'); }
+  }
+
+  // ---- 읽던 자리로 — 목차·그림·표·참조·인용·메모로 건너뛰기 직전 자리를 쌓아 두고 알약으로 돌아온다(데스크톱과 같은 감각).
+  // 손대지 않고 4초 안에 또 뛰면 같은 이동의 연장으로 보고 쌓지 않는다. 화면 안쪽으로의 짧은 이동은 쌓지 않는다.
+  var JB = [], jbAt = {y: -1, t: 0}, jbPill = doc.getElementById('jback');
+  function jbShow(){
+    if (!jbPill) return;
+    jbPill.classList.toggle('on', JB.length > 0);
+    setText('jback-t', md4T('읽던 자리로') + (JB.length > 1 ? ' · ' + JB.length : ''));
+  }
+  function beforeJump(){
+    if (!cur) return;
+    var y = window.scrollY;
+    if (!(Date.now() - jbAt.t < 4000 && Math.abs(y - jbAt.y) < 40)){
+      JB.push(y); if (JB.length > 6) JB.shift();
+    }
+    setTimeout(function(){   // 착지 — 가까운 이동이었으면 쌓은 자리를 내려놓는다
+      var top = JB[JB.length - 1];
+      if (top != null && Math.abs(window.scrollY - top) < window.innerHeight * 0.6) JB.pop();
+      jbAt = {y: window.scrollY, t: Date.now()}; jbShow();
+    }, 450);
+  }
+  jbPill.onclick = function(e){
+    e.stopPropagation();
+    var y = JB.pop(); if (y == null) return;
+    window.scrollTo(0, y); jbAt = {y: -1, t: 0}; jbShow();
+  };
+  var jbTick = false;
+  window.addEventListener('scroll', function(){   // 손으로 그 자리 가까이 돌아오면 알약을 내린다
+    if (jbTick || !JB.length) return; jbTick = true;
+    requestAnimationFrame(function(){
+      jbTick = false;
+      if (JB.length && Math.abs(window.scrollY - JB[JB.length - 1]) < window.innerHeight * 0.3){ JB.pop(); jbShow(); }
+    });
+  }, {passive: true});
 
   // ---- 번역 ⇄ 원문 토글 (대조는 화면에서 뺐다 — 문장을 누르면 짝 문장이 뜬다) ----
   if (doc.getElementById('m-both').checked){ doc.getElementById('m-ko').checked = true; store('mode', 'ko'); }
