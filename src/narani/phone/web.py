@@ -159,6 +159,12 @@ ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3p
 .rng label { display: block; margin: 6px 0; }
 .rng-secs { margin: 4px 0 0 22px; max-height: 32vh; overflow-y: auto; font-size: .9em; }
 .li-meta .au { margin-left: 6px; }
+/* 새 판 알림 — 읽는 중일 때만 (목록에선 바로 다시 연다) */
+#upd { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 60px); transform: translateX(-50%); z-index: 20;
+  display: none; align-items: center; gap: 8px; background: var(--fg); color: var(--bg); border-radius: 999px;
+  padding: 6px 8px 6px 14px; font-size: .85em; box-shadow: 0 6px 18px rgba(0,0,0,.2); white-space: nowrap; }
+#upd.on { display: flex; }
+#upd button { border: 0; border-radius: 999px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; padding: 5px 12px; }
 /* 오프라인 — 받아 두지 않은 논문은 흐리게 */
 #lib-list li.na a { opacity: .45; }
 .li-meta .na-t { margin-left: 6px; }
@@ -649,7 +655,27 @@ _APP_JS = r"""
   window.addEventListener('online', function(){ loadIndex(true); });
 
   labels(); topTitle.textContent = APP;
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(function(){});
+  // ---- 새 판 ----
+  // 홈 화면 앱은 닫았다 열어도 메모리에서 되살아나 새 판을 확인하지 않는다 — 다시 보일 때마다 확인하고,
+  // 새 판이 자리 잡으면 목록에선 바로 다시 열고, 읽는 중이면 위에 '새 판 적용' 막대를 띄운다(듣기·쓰는 메모를 끊지 않게).
+  if ('serviceWorker' in navigator){
+    var hadSW = !!navigator.serviceWorker.controller, swReg = null, lastCheck = 0;
+    navigator.serviceWorker.register('sw.js', {updateViaCache: 'none'}).then(function(r){ swReg = r; }, function(){});
+    doc.addEventListener('visibilitychange', function(){
+      if (doc.visibilityState !== 'visible' || !swReg || Date.now() - lastCheck < 60000) return;
+      lastCheck = Date.now(); swReg.update().catch(function(){});
+    });
+    navigator.serviceWorker.addEventListener('controllerchange', function(){
+      if (!hadSW){ hadSW = true; return; }               // 처음 설치 — 이미 새 판이다
+      var busy = cur || (au && !au.paused) || sheet.classList.contains('open');
+      if (!busy){ location.reload(); return; }
+      var bar = doc.getElementById('upd');
+      bar.textContent = '';
+      bar.appendChild(doc.createTextNode(md4T('새 판이 준비됐어요') + ' '));
+      bar.appendChild(button(md4T('적용'), function(){ location.reload(); }));
+      bar.classList.add('on');
+    });
+  }
   loadIndex(false);
 """
 
@@ -1604,7 +1630,10 @@ _SW_JS = r"""
 var V = '%(version)s', SHELL = 'narani-shell-' + V;
 var FILES = ['./', 'index.html', 'app.js', 'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png'];
 self.addEventListener('install', function(e){
-  e.waitUntil(caches.open(SHELL).then(function(c){ return c.addAll(FILES); }).then(function(){ return self.skipWaiting(); }));
+  // 새 판의 껍데기는 늘 서버에서 새로 — GitHub Pages가 10분짜리 HTTP 캐시를 주므로 그냥 받으면 옛 app.js가 섞인다
+  e.waitUntil(caches.open(SHELL).then(function(c){
+    return c.addAll(FILES.map(function(f){ return new Request(f, {cache: 'reload'}); }));
+  }).then(function(){ return self.skipWaiting(); }));
 });
 self.addEventListener('activate', function(e){
   e.waitUntil(caches.keys().then(function(ks){
@@ -1626,7 +1655,7 @@ self.addEventListener('fetch', function(e){
     var key = shell ? './' : req;
     return c.match(key, {ignoreSearch: true}).then(function(hit){
       // 받은 것은 늘 캐시에 — 폰이 캐시 일부를 비웠어도 다음 실행부터 다시 오프라인으로 뜨게
-      var net = fetch(req).then(function(r){ if (r.ok) c.put(key, r.clone()); return r; });
+      var net = fetch(req, {cache: 'no-cache'}).then(function(r){ if (r.ok) c.put(key, r.clone()); return r; });
       if (hit){ net.catch(function(){}); return hit; }
       return net;
     });
@@ -1697,7 +1726,7 @@ def _index_html(cfg: dict) -> str:
         "<div id=\"sheet\" role=\"dialog\" aria-live=\"polite\"><div class=\"sh-grip\"></div>"
         "<div class=\"sh-label\"></div><div class=\"sh-text\"></div><div class=\"sh-acts\"></div></div>"
         # 목차 서랍(왼쪽) · 에이전트(떠 있는 단추 → 아래에서 올라오는 창) · 둘 뒤의 어둠막
-        "<div id=\"scrim\"></div>"
+        "<div id=\"scrim\"></div><div id=\"upd\" role=\"status\"></div>"
         "<nav id=\"tocd\"><div class=\"dh\"><span id=\"tocd-title\"></span><button id=\"tocd-x\">×</button></div>"
         "<ol id=\"tocd-list\"></ol></nav>"
         # 듣기 — 🎧(음성이 있는 논문) · 아래 재생 막대
