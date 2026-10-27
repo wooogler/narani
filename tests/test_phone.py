@@ -244,3 +244,13 @@ def test_new_version_reaches_home_screen_app():
     assert "cache: 'reload'" in sw and "cache: 'no-cache'" in sw
     assert "updateViaCache: 'none'" in js and "controllerchange" in js and "swReg.update()" in js
     assert 'id="upd"' in html
+
+
+def test_phone_app_has_voice_talk():
+    # 말로 묻기 — OpenAI realtime(WebRTC), 대답 요청은 한 번에 하나, 논문을 닫으면 끝, 개인정보처리방침에 마이크 소리
+    files = web.site_files(local=True)
+    js, html = files["app.js"][0].decode(), files["index.html"][0].decode()
+    assert "/v1/realtime/client_secrets" in js and "/v1/realtime/calls" in js and "oai-events" in js
+    assert "function tkAsk" in js and "resume_listening" in js and "if (TK) talkEnd(" in js
+    assert 'id="pl-mic"' in html and 'id="ag-mic"' in html and 'id="talkbar"' in html
+    assert "OpenAI Realtime API" in files["privacy.html"][0].decode()

@@ -350,6 +350,7 @@ The **Ask** tab of the **✦** button at the bottom right asks about the paper y
 - The first time, enter **your own AI API key** (OpenAI, Anthropic or Gemini) **on that device**. The key is stored only in that device's browser.
 - When you ask, the paper's text, your highlights and notes, and the conversation go directly to the AI service you chose, billed to that key's account.
 - The default service and model follow what you chose in the desktop agent panel.
+- **Ask by voice (🎙)** — while listening, tap **🎙 Ask** on the player bar (or 🎙 in the Ask tab): listening pauses and you ask and hear answers by voice (OpenAI realtime, needs an **OpenAI key**). You can interrupt; the supporting paragraph is shown and the conversation is kept in the Ask history. Say "keep reading" or stay quiet for 20 seconds to end it and continue listening where you were. Keep the screen on (locking it stops the microphone). Roughly $0.1–0.3 per 10 minutes; model and voice under ⚙ in the Ask tab.
 
 <br clear="right">
 
