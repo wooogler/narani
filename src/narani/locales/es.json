@@ -1228,5 +1228,7 @@
  "낡은 번역이 있으면 다시 번역합니다 — 띄우기 전에 편수·대략 비용을 확인합니다": "Vuelve a traducir las traducciones desactualizadas — antes de empezar muestra el número y el coste aproximado",
  "음성 다시 만들기": "Rehacer audio",
  "맞추기": "Sincronizar",
- "이 컬렉션에서 빼기": "Quitar de esta colección"
+ "이 컬렉션에서 빼기": "Quitar de esta colección",
+ "{m}분": "{m} min",
+ "모바일 음성 — {what}": "Audio móvil — {what}"
 }

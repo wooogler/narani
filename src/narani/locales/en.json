@@ -1228,5 +1228,7 @@
  "낡은 번역이 있으면 다시 번역합니다 — 띄우기 전에 편수·대략 비용을 확인합니다": "Retranslates outdated translations — shows the count and rough cost before starting",
  "음성 다시 만들기": "Remake audio",
  "맞추기": "Sync",
- "이 컬렉션에서 빼기": "Remove from this collection"
+ "이 컬렉션에서 빼기": "Remove from this collection",
+ "{m}분": "{m} min",
+ "모바일 음성 — {what}": "Mobile audio — {what}"
 }

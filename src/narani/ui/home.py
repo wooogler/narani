@@ -263,6 +263,7 @@ html.md4-filedrag .md4-dropov { display: flex; }
 .md4-pv-bulk .q-btn__content { justify-content: flex-start; flex-wrap: nowrap; }
 .md4-act-main.q-btn { width: 100%; margin-bottom: 4px; }
 .md4-pv-bulk > .md4-act.q-btn { width: 100%; }
+.md4-act-note { font-size: 12px; color: #6b6862; margin: 0 0 6px; }
 .md4-act-h { font-size: 11px; font-weight: 700; letter-spacing: .05em; color: #9a968e; margin: 10px 0 2px; }
 .md4-act-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; }
 .md4-act.q-btn { background: rgba(55,53,47,.05); color: #37352f !important; border-radius: 8px; min-height: 34px;
@@ -439,6 +440,24 @@ _SORTS = {"recent": N_("최근순"), "name": N_("제목순"), "year": N_("연도
 _PHASE_ICON = {"pending": "schedule", "extracting": "sync", "cite": "sync", "glossary": "sync",
                "meta": "sync", "bib": "sync", "done": "check_circle", "failed": "error"}
 _AI_PHASES = ("cite", "glossary", "meta")
+
+
+def audio_label(a: dict) -> str:
+    """모바일 음성 한 줄 — 무엇으로(엔진·목소리) · 길이 · 언제. 예: 'Mac · Yuna · 68분 · 3시간 전'."""
+    from narani.ui.app import _relative_time
+
+    v = str(a.get("voice") or "")
+    if v.startswith("gemini:"):
+        _, model, name = (v.split(":") + ["", ""])[:3]
+        who = f"Gemini {'flash-lite' if 'lite' in model else 'flash'} · {name}"
+    elif v.startswith("mac:"):
+        who = "Mac · " + re.sub(r"\s+\([^()]*\([^()]*\)\)$", "", v[4:].split("@")[0])
+    else:
+        who = v or "?"
+    bits = [who, t("{m}분", m=round(float(a.get("duration") or 0) / 60))]
+    if a.get("built"):
+        bits.append(_relative_time(float(a["built"])))
+    return " · ".join(bits)
 
 
 def _bib_line(r: dict) -> str:
@@ -1856,7 +1875,7 @@ def build_home(state: dict) -> None:
                             a = (data["mobile"][r["name"]] or {}).get("audio")
                             if a:
                                 ui.icon("headphones", size="14px").classes("text-grey-6") \
-                                    .tooltip(t("모바일에서 들을 음성 {m}분", m=round(float(a.get("duration") or 0) / 60)))
+                                    .tooltip(t("모바일 음성 — {what}", what=audio_label(a)))
                         # 소속 프로젝트 = 이 논문의 저장 폴더까지 정하는 값이라 카드에서 바로 바꾼다.
                         tags_box = ui.element("div").classes("md4-ptags")
                         paint_tags(tags_box, r)
@@ -2499,6 +2518,9 @@ def build_home(state: dict) -> None:
 
             def mobile_part(first: bool) -> None:
                 ui.label(t("모바일")).classes("md4-act-h")
+                if len(paths) == 1 and with_audio:   # 지금 있는 음성 — 무엇으로·언제 (다시 만들지 고를 때 보라고)
+                    a = data["mobile"][paths[0].stem]["audio"]
+                    ui.label("🎧 " + audio_label(a)).classes("md4-act-note")
                 send_tip = t("Google Drive를 거쳐 모바일 리더({site})에서 읽습니다 — 모바일에서 단 하이라이트·메모도 이때 합칩니다",
                              site=pages.DOMAIN)
                 audio_tip = t("번역 본문을 읽은 음성을 만들어 모바일에서 듣습니다 — 화면을 꺼도, CarPlay에서도")
