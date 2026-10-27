@@ -446,3 +446,14 @@ def test_switching_voices_keeps_the_other_voices_cache(tmp_path):
     calls = a.calls
     tts.build(b, a, cache)                       # 돌아오면 다시 합성하지 않는다
     assert a.calls == calls
+
+
+def test_english_gloss_after_korean_is_not_read_twice():
+    def say(t):
+        return [x[0] for x in tts._sentences([(c, i) for i, c in enumerate(t)])]
+    assert say("프롬프팅(prompting)을 쓴다.") == ["프롬프팅을 쓴다."]
+    assert say("대규모 언어 모델(LLM)과 공개 동료심사(Open Peer Review)를 본다.") == ["대규모 언어 모델과 공개 동료심사를 본다."]
+    assert say("형성적 연구(N=8)를 했다.") == ["형성적 연구(N=8)를 했다."]          # 숫자·기호가 든 괄호는 내용
+    assert say("Hedwig (a CLI agent) is new.") == ["Hedwig (a CLI agent) is new."]  # 영어 본문은 그대로
+    s, b, e = tts._sentences([(c, i) for i, c in enumerate("앞. 프롬프팅(prompting)을 쓴다.")])[1]
+    assert (b, e) == (3, 23)                                                       # 셀 안 위치는 원문 기준 그대로(괄호 포함)

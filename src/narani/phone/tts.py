@@ -46,6 +46,9 @@ _CAPTION = re.compile(r"^\s*(?:figure|fig\.|table|그림|표|図|表|图|figura|
 _SENT = re.compile(r"(?<=[.?!])\s+(?=\S)|(?<=[。！？])")
 _DROP = (re.compile(r"\s*\[\s*\d+(?:\s*[,–-]\s*\d+)*\s*\]"),   # 링크 없이 남은 [28, 71]
          re.compile(r"https?://\S+"),
+         # 번역문에 덧붙인 원어 '프롬프팅(prompting)'·'대규모 언어 모델(LLM)' — 같은 말을 두 번 읽지 않게. 글자·공백·
+         # 하이픈 정도만 든 괄호만(숫자·기호가 든 '(N=8)'·'(p<.05)'는 내용이라 읽는다)
+         re.compile(r"(?<=[가-힣ぁ-んァ-ヶ一-龥])\s*\([A-Za-z][A-Za-z \-'’&/.]*\)"),
          re.compile(r"\s*[\[(]\s*[;,]?\s*[\])]"),               # 인용 링크를 뺀 자리에 남은 빈 괄호
          re.compile(r"\s+(?=[.,;:!?。、，])"))                     # 그 자리에 남은 문장부호 앞 공백
 _SKIP_TAGS = {"figure", "table", "pre", "svg", "sup", "script", "style", "img"}
