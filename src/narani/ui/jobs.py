@@ -27,13 +27,17 @@ from pathlib import Path
 from typing import Any
 
 
+class Cancelled(Exception):
+    """사용자가 멈춘 작업 — 진행 콜백(job.progress)이나 대기열에서 던져 작업을 그 자리에서 끝낸다."""
+
+
 @dataclass
 class Job:
     root: str  # 논문 작업 폴더 (resolve된 문자열)
     kind: str  # translate | layout | cite | terms | mobile_audio
     label: str  # 사람이 읽는 이름 ("번역", "레이아웃 수정" …)
     title: str = ""  # 논문 제목 (헤더의 진행 목록용)
-    status: str = "running"  # running | done | failed
+    status: str = "running"  # running | done | failed | cancelled
     done: int = 0
     total: int = 0
     detail: dict = field(default_factory=dict)  # 종류별 진행 정보 (예: 번역의 섹션별 상태)
@@ -43,6 +47,8 @@ class Job:
     started: float = field(default_factory=time.time)
     finished: float = 0.0
     seen: bool = False  # 완료를 어느 화면이든 한 번 알렸는가 — 돌아온 페이지가 다시 알리지 않게
+    working: float = 0.0  # 대기열을 지나 실제로 돌기 시작한 시각 (경과·남은 시간은 이때부터)
+    stop: bool = False  # 멈춤 요청 — 다음 진행 콜백(또는 대기열)에서 Cancelled로 끝난다
 
     @property
     def running(self) -> bool:
@@ -53,8 +59,23 @@ class Job:
         return (self.done / self.total) if self.total else 0.0
 
     def progress(self, done: int, total: int) -> None:
-        """워커 스레드에서 부르는 진행 콜백 — 숫자만 바꾼다(화면은 페이지 타이머가 그린다)."""
+        """워커 스레드에서 부르는 진행 콜백 — 숫자만 바꾼다(화면은 페이지 타이머가 그린다). 멈춤 요청이면 여기서 끝낸다."""
         self.done, self.total = done, total
+        if self.stop:
+            raise Cancelled
+
+    def cancel(self) -> None:
+        """멈춰 달라고 한다 — 진행 콜백을 부르는 작업만 실제로 멈춘다(지금은 모바일 음성)."""
+        self.stop = True
+
+    def eta(self) -> tuple[float, float | None]:
+        """(경과 초, 남은 초 어림) — 진행이 아직 없으면 남은 시간은 None."""
+        if not self.working:
+            return 0.0, None
+        el = time.time() - self.working
+        if not self.total or not self.done or el < 5:
+            return el, None
+        return el, el * (self.total - self.done) / self.done
 
 
 _JOBS: dict[tuple[str, str], Job] = {}
@@ -119,6 +140,8 @@ class Gate:
         try:
             while self.active >= self.limit or self.waiting[0] is not job:
                 job.detail["queued"] = True
+                if job.stop:   # 기다리다 멈추면 자리를 잡지 않고 빠진다
+                    raise Cancelled
                 await asyncio.sleep(self._POLL_S)
         finally:
             self.waiting.remove(job)
@@ -156,8 +179,13 @@ async def _run(job: Job, work: Callable[[Job], Any], gate: Gate | None = None) -
         if gate is not None:
             await gate.enter(job)
             entered = True
+        if job.stop:
+            raise Cancelled
+        job.working = time.time()
         job.result = await asyncio.to_thread(work, job)
         job.status = "done"
+    except Cancelled:
+        job.status = "cancelled"
     except Exception as ex:  # noqa: BLE001 — API 오류 등은 그대로 화면에 보여 준다
         job.status, job.error = "failed", str(ex) or type(ex).__name__
     finally:

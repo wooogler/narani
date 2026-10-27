@@ -451,6 +451,34 @@ _AI_PHASES = ("cite", "glossary", "meta")
 _AUDIO_GATE = jobs.Gate(1)  # 모바일 음성 만들기 — 서버 수명 동안 하나, 한 번에 한 편씩
 
 
+_CONVERT_STEPS = ("extracting", "cite", "glossary", "meta", "bib")   # 변환 큐 ①~⑤ (AI 키가 없으면 ①·⑤만)
+
+
+def _convert_fraction(status: str, elapsed: float, pages: int) -> float:
+    """변환 진행 막대 — 추출기는 쪽별 진행을 알려 주지 않으니 단계(①~⑤)마다 1/5씩, 단계 안에서는 걸린 시간으로
+    천천히 차오르게 어림한다(끝나기 전엔 그 단계의 90%를 넘지 않는다). 추출은 쪽 수만큼 길게 잡는다."""
+    import math
+
+    i = _CONVERT_STEPS.index(status)
+    tau = max(15.0, pages * 2.5) if status == "extracting" else 20.0
+    return (i + 0.9 * (1 - math.exp(-elapsed / tau))) / len(_CONVERT_STEPS)
+
+
+def _bar(value: float) -> None:
+    """작업 카드의 얇은 진행 막대."""
+    from nicegui import ui
+
+    ui.linear_progress(value=max(0.0, min(1.0, value)), show_value=False) \
+        .props("rounded size=4px instant-feedback").classes("w-full q-mt-xs")
+
+
+def _mmss(sec: float) -> str:
+    """작업 카드의 시간 — 1:05 · 12:30 · 1:02:03."""
+    sec = max(0, int(sec))
+    h, m, s_ = sec // 3600, sec % 3600 // 60, sec % 60
+    return f"{h}:{m:02d}:{s_:02d}" if h else f"{m}:{s_:02d}"
+
+
 def audio_label(a: dict) -> str:
     """모바일 음성 한 줄 — 무엇으로(엔진·목소리) · 길이 · 언제. 예: 'Mac · Yuna · 68분 · 3시간 전'."""
     from narani.ui.app import _relative_time
@@ -1789,6 +1817,10 @@ def build_home(state: dict) -> None:
                     sub = t("{label} 중…{pct} · 눌러서 열기", label=j.label, pct=pct)
                     if j.kind == "mobile_audio" and j.detail.get("section"):
                         sub = t("{label} 중…{pct} · {sec}", label=j.label, pct=pct, sec=j.detail["section"][:30])
+                timing = ""
+                if j.kind == "mobile_audio" and not queued:   # 음성은 오래 걸린다 — 경과·남은 시간 어림
+                    el, left = j.eta()
+                    timing = t("경과 {e}", e=_mmss(el)) + (t(" · 남은 약 {r}", r=_mmss(left)) if left is not None else "")
                 with ui.card().classes("w-full q-pa-sm cursor-pointer").on(
                         "click", lambda _, r=j.root: ui.navigate.to(_review_url(Path(r)))):
                     with ui.row().classes("items-center w-full no-wrap gap-2"):
@@ -1797,6 +1829,17 @@ def build_home(state: dict) -> None:
                         with ui.column().classes("gap-0 flex-grow min-w-0"):
                             ui.label(j.title or Path(j.root).stem).classes("text-sm truncate w-full")
                             ui.label(sub).classes("text-xs text-gray-400")
+                            if timing:
+                                ui.label(timing).classes("text-xs text-gray-400")
+                            if not queued:   # 번역(섹션)·음성(문장) — 작업이 알려 주는 진행 그대로
+                                _bar(j.fraction)
+                        if j.kind == "mobile_audio":   # 멈추기 — 다음 문장에서 멈춘다(만든 섹션은 캐시에 남는다)
+                            if j.stop:
+                                ui.label(t("멈추는 중…")).classes("text-xs text-gray-400 shrink-0")
+                            else:
+                                ui.button(icon="stop_circle", on_click=lambda _, j=j: (j.cancel(), queue_panel.refresh())) \
+                                    .props("flat dense round size=sm color=grey-7").classes("shrink-0") \
+                                    .tooltip(t("멈추기")).on("click.stop", lambda _: None)
             if hidden_waits:
                 ui.label(t("외 {n}편 번역 대기 중 — 동시에 {limit}편씩 차례로 돕니다", n=len(hidden_waits), limit=translate_job.gate().limit)) \
                     .classes("text-xs text-gray-400 q-px-sm")
@@ -1845,6 +1888,8 @@ def build_home(state: dict) -> None:
                     with ui.column().classes("gap-0 flex-grow min-w-0"):
                         ui.label(it["name"]).classes("text-sm truncate w-full")  # w-full 없으면 긴 파일명이 카드 밖으로
                         ui.label(sub).classes("text-xs " + ("text-red-500" if st == "failed" else "text-gray-400"))
+                        if st in _CONVERT_STEPS:
+                            _bar(_convert_fraction(st, el, it.get("pages") or 0))
                     if it.get("garbled"):
                         ui.icon("warning", size="18px").classes("text-orange-500 shrink-0") \
                             .tooltip(t("깨진 문자 {garbled}개 — 다른 변환 방식을 시도해 보세요", garbled=it['garbled']))
@@ -2824,6 +2869,8 @@ def build_home(state: dict) -> None:
             name = j.title or Path(j.root).stem
             if j.status == "done":
                 ui.notify(t("'{t}' — {msg}", t=name[:40], msg=j.message), type="positive")
+            elif j.status == "cancelled":
+                ui.notify(t("'{t}' 음성 만들기를 멈췄습니다 — 이미 만든 섹션은 남아 다음에 이어서 만듭니다.", t=name[:40]))
             else:
                 ui.notify(t("'{t}' 음성을 만들지 못했습니다: {e}", t=name[:40], e=j.error), type="negative", timeout=8000)
         if audio_done:
