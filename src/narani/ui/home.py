@@ -263,8 +263,8 @@ html.md4-filedrag .md4-dropov { display: flex; }
 .md4-pv-bulk .q-btn__content { justify-content: flex-start; flex-wrap: nowrap; }
 .md4-act-main.q-btn { width: 100%; margin-bottom: 4px; }
 .md4-pv-bulk > .md4-act.q-btn { width: 100%; }
-/* 발음 용어집 — 용어 | 읽기 두 칸, 줄을 낮게 */
-.md4-terms { display: grid; grid-template-columns: 40% 1fr; column-gap: 10px; align-items: center; font-size: 12px; }
+/* 발음 용어집 — (용어 | 읽기) 두 단, 줄을 낮게 */
+.md4-terms { display: grid; grid-template-columns: repeat(2, minmax(0, 4fr) minmax(0, 5fr)); column-gap: 10px; align-items: center; font-size: 12px; }
 .md4-term-k { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #37352f; }
 .md4-terms .q-field--dense .q-field__control, .md4-terms .q-field--dense .q-field__marginal { height: 26px; min-height: 26px; }
 .md4-terms .q-field__native { padding: 0; font-size: 12px; min-height: 26px; }
@@ -1163,7 +1163,7 @@ def build_home(state: dict) -> None:
             f.write_bytes(wav)
             subprocess.Popen(["afplay", str(f)])
 
-        with host, ui.dialog() as dlg, ui.card().classes("gap-2").style("width:480px;max-height:92vh;overflow-y:auto"):
+        with host, ui.dialog() as dlg, ui.card().classes("gap-2").style("width:540px;max-height:92vh;overflow-y:auto"):
             ui.label(t("모바일에서 들을 음성 만들기")).classes("font-bold")
             ui.label(t("번역 본문을 읽은 음성을 만들어 Drive의 Narani 폴더에 올립니다(시간당 약 15MB). 그림·표·수식·인용 "
                        "표기·참고문헌은 건너뛰고, 섹션 제목은 알립니다.")).classes("text-xs text-gray-500")
@@ -1218,10 +1218,10 @@ def build_home(state: dict) -> None:
                 ui.button(t("들어 보기"), icon="volume_up", on_click=preview).props("flat dense no-caps")
                 ui.label(f"“{sample}”").classes("text-xs text-gray-500 truncate min-w-0").tooltip(sample)
             est = ui.label().classes("text-xs text-gray-600")
-            checks: list = []
+            own = [True] * len(secs)        # 섹션마다 넣을지 — 나무의 체크는 이것에서 그린다
 
             def total() -> None:
-                chosen = ([sec for c, sec in zip(checks, secs) if c.value] if secs
+                chosen = ([sec for c, sec in zip(own, secs) if c] if secs
                           else [sec for p in per for sec in p])
                 m = sum(sec["minutes"] for sec in chosen)
                 mac_row.set_visibility(eng.value == "mac")
@@ -1280,11 +1280,67 @@ def build_home(state: dict) -> None:
             elif len(roots) > 1:
                 ui.label(t("논문마다 저장해 둔 발음 용어집으로 읽습니다.")).classes("text-xs text-gray-500")
             if secs:
+                # 섹션 나무 — 제목 단계(h1·h2·h3)로 묶는다. 위 섹션을 누르면 그 아래가 다 따라가고, 아래가 섞이면
+                # 위는 반쯤(–)으로 보인다. 펼치기 화살표로 하위 섹션을 연다(처음엔 맨 위 단계만).
+                kids: list[list[int]] = [[] for _ in secs]
+                stack: list[int] = []
+                for i, sec in enumerate(secs):
+                    while stack and secs[stack[-1]].get("level", 1) >= sec.get("level", 1):
+                        stack.pop()
+                    if stack:
+                        kids[stack[-1]].append(i)
+                    stack.append(i)
+                tops = [i for i in range(len(secs)) if not any(i in k for k in kids)]
+
+                def under(i: int) -> list[int]:
+                    out = [i]
+                    for k in kids[i]:
+                        out += under(k)
+                    return out
+                boxes: dict[int, ui.checkbox] = {}
+                busy = {"on": False}
+
+                def paint() -> None:
+                    busy["on"] = True
+                    for i, cb in boxes.items():
+                        vals = {own[j] for j in under(i)}
+                        cb.value = None if len(vals) > 1 else vals.pop()
+                    busy["on"] = False
+                    total()
+
+                def flip(i: int, v) -> None:  # noqa: ANN001
+                    if busy["on"]:
+                        return
+                    for j in under(i):
+                        own[j] = v is not False      # 반쯤(–)을 누르면 다 넣는다
+                    paint()
+
+                def node(i: int) -> None:
+                    sec, sub = secs[i], under(i)
+                    mins = sum(secs[j]["minutes"] for j in sub)
+                    with ui.row().classes("items-center gap-0 w-full no-wrap"):
+                        if kids[i]:
+                            arrow = ui.button(icon="chevron_right").props("flat dense round size=sm") \
+                                .classes("shrink-0 text-gray-500")
+                        else:
+                            ui.element("div").classes("shrink-0").style("width:28px")
+                        boxes[i] = ui.checkbox(f"{sec['title']} · {mins:.0f}′", value=True,
+                                               on_change=lambda e, i=i: flip(i, e.value)).props("dense") \
+                            .classes("min-w-0")
+                    if kids[i]:
+                        with ui.column().classes("gap-0 w-full").style("padding-left:18px") as box:
+                            for k in kids[i]:
+                                node(k)
+                        box.set_visibility(False)
+
+                        def toggle(_=None, box=box, arrow=arrow) -> None:  # noqa: ANN001
+                            box.set_visibility(not box.visible)
+                            arrow.props(f"icon={'expand_more' if box.visible else 'chevron_right'}")
+                        arrow.on_click(toggle)
                 ui.label(t("넣을 섹션")).classes("text-xs")
                 with ui.scroll_area().style("height:240px").classes("w-full border rounded"):
-                    for sec in secs:
-                        checks.append(ui.checkbox(f"{sec['title']} · {sec['minutes']:.0f}′", value=True,
-                                                  on_change=lambda _: total()).props("dense"))
+                    for i in tops:
+                        node(i)
             else:
                 ui.label(t("{n}편 — 본문 전체로 만듭니다.", n=len(roots))).classes("text-xs")
             total()
@@ -1295,7 +1351,7 @@ def build_home(state: dict) -> None:
         await dlg
         if not picked["go"]:
             return
-        include = [sec["row"] for c, sec in zip(checks, secs) if c.value] if secs else None
+        include = [sec["row"] for c, sec in zip(own, secs) if c] if secs else None
         if secs and not include:
             ui.notify(t("넣을 섹션을 하나 이상 고르세요."), type="warning")
             return

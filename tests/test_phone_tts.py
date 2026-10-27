@@ -107,6 +107,7 @@ def test_plan_reads_body_and_skips_meta_citations_figures_refs(tmp_path):
     side, secs = tts.plan(b)
     assert side == "ko"
     assert [s.title for s in secs] == [b["title_ko"], "1 서론", "2 방법"]
+    assert secs[0].level == 1 and all(s.level >= 1 for s in secs)          # 음성 만들기 창의 섹션 나무 단계
     texts = [u.text for s in secs for u in s.units]
     joined = " ".join(texts)
     assert "이는 오늘날 가르치고 배우는 일에 매우 중요하다." in texts            # 초록은 읽는다
