@@ -446,3 +446,43 @@ def test_switching_voices_keeps_the_other_voices_cache(tmp_path):
     calls = a.calls
     tts.build(b, a, cache)                       # 돌아오면 다시 합성하지 않는다
     assert a.calls == calls
+
+
+def test_english_gloss_after_korean_is_not_read_twice():
+    def say(t):
+        return [x[0] for x in tts._sentences([(c, i) for i, c in enumerate(t)])]
+    assert say("프롬프팅(prompting)을 쓴다.") == ["프롬프팅을 쓴다."]
+    assert say("대규모 언어 모델(LLM)과 공개 동료심사(Open Peer Review)를 본다.") == ["대규모 언어 모델과 공개 동료심사를 본다."]
+    assert say("형성적 연구(N=8)를 했다.") == ["형성적 연구(N=8)를 했다."]          # 숫자·기호가 든 괄호는 내용
+    assert say("Hedwig (a CLI agent) is new.") == ["Hedwig (a CLI agent) is new."]  # 영어 본문은 그대로
+    s, b, e = tts._sentences([(c, i) for i, c in enumerate("앞. 프롬프팅(prompting)을 쓴다.")])[1]
+    assert (b, e) == (3, 23)                                                       # 셀 안 위치는 원문 기준 그대로(괄호 포함)
+
+
+def test_pronunciation_terms_change_only_spoken_text(tmp_path):
+    wd = _wd(tmp_path)
+    b = bundle.build_paper(wd.root)
+    _, secs = tts.plan(b)
+    assert tts.speak_text("RAG QA와 RAGAS를 쓴다. LLM.", {"RAG": "래그", "LLM": "엘엘엠", "RAG QA": "래그 큐에이"}) \
+        == "래그 큐에이와 RAGAS를 쓴다. 엘엘엠."                                   # 긴 용어 먼저, 낱말 경계만
+    tts.save_terms(wd.root, {"N": "엔", "  ": "x", "빈": ""})
+    assert tts.load_terms(wd.root) == {"N": "엔"}
+    after = tts.apply_terms(secs, {"N": "엔"})
+    a = [u for s in after for u in s.units]
+    o = [u for s in secs for u in s.units]
+    assert [(u.row, u.s, u.e) for u in a] == [(u.row, u.s, u.e) for u in o]        # 위치는 그대로
+    assert any("엔=8" in u.text for u in a) and [s.title for s in after] == [s.title for s in secs]
+    sec = tts.Section("x", 0, [tts.Unit(0, 0, 1, "Hedwig은 LLM과 RAG를 쓴다. Hedwig, GPT-4, C++ 그리고 N."),
+                               tts.Unit(1, 0, 1, "Hedwig의 LLM.")])
+    assert tts.latin_terms([sec]) == [("Hedwig", 3), ("LLM", 2), ("RAG", 1), ("GPT-4", 1), ("C++", 1)]  # 한 글자(N) 빼고
+
+
+def test_suggest_readings_uses_provider_and_keeps_asked_terms():
+    from narani.llm.base import FakeProvider
+
+    def parse(system, user, schema):  # noqa: ANN001
+        assert "Korean" in system and user.split("\n") == ["Hedwig", "LLM"]
+        return schema(items=[{"term": "Hedwig", "reading": "헤드위그"}, {"term": "LLM", "reading": " 엘엘엠 "},
+                             {"term": "extra", "reading": "x"}])
+    got = tts.suggest_readings(["Hedwig", "LLM"], "ko", provider=FakeProvider(parse_fn=parse))
+    assert got == {"Hedwig": "헤드위그", "LLM": "엘엘엠"}

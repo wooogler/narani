@@ -1301,5 +1301,19 @@
  "기본값으로": "Reset to defaults",
  "섹션별": "By section",
  "(첫 제목 앞)": "(before the first heading)",
- "세지 않는 것: 인용 표기([12], (Smith et al., 2020), 링크된 인용 묶음), 본문의 각주 번호, 링크 주소(링크 글자는 셈), 이미지, HTML 태그, 디스플레이 수식, 표 구분선, 참고문헌 번호. 각주 글은 그 각주를 부른 섹션에 셉니다. 글자나 숫자가 든 낱말만 한 단어 — 하이픈 낱말은 하나, '—'·'→'는 0.": "Not counted: citations ([12], (Smith et al., 2020), linked citation groups), footnote markers in the text, link URLs (link text is counted), images, HTML tags, display math, table rules, reference numbers. Footnote text is counted in the section that cites it. Only tokens containing a letter or digit are words — a hyphenated word is one; '—' and '→' are zero."
+ "세지 않는 것: 인용 표기([12], (Smith et al., 2020), 링크된 인용 묶음), 본문의 각주 번호, 링크 주소(링크 글자는 셈), 이미지, HTML 태그, 디스플레이 수식, 표 구분선, 참고문헌 번호. 각주 글은 그 각주를 부른 섹션에 셉니다. 글자나 숫자가 든 낱말만 한 단어 — 하이픈 낱말은 하나, '—'·'→'는 0.": "Not counted: citations ([12], (Smith et al., 2020), linked citation groups), footnote markers in the text, link URLs (link text is counted), images, HTML tags, display math, table rules, reference numbers. Footnote text is counted in the section that cites it. Only tokens containing a letter or digit are words — a hyphenated word is one; '—' and '→' are zero.",
+ "모바일과 동기화하는 중…": "Syncing with mobile…",
+ "모바일과 동기화했습니다 — 다시 올림 {up}편 · 메모 {m}개 합침": "Synced with mobile — re-uploaded {up} papers · merged {m} notes",
+ "{when} 동기화": "synced {when}",
+ "지금 동기화": "Sync now",
+ "동기화": "Sync",
+ "빈 칸이 없습니다.": "No empty rows.",
+ "AI가 읽는 법을 정하는 중… ({n}개)": "AI is choosing readings… ({n})",
+ "AI로 채우지 못했습니다: {e}": "Couldn't fill with AI: {e}",
+ "{n}개를 채웠습니다 — 확인하고 고친 뒤 만들기를 누르세요.": "Filled {n} — check and edit them, then press Create.",
+ "발음 용어집 — 영어 용어를 어떻게 읽을지 ({n}개)": "Pronunciation glossary — how to read English terms ({n})",
+ "비워 두면 목소리가 알아서 읽습니다. 고치면 그 말이 나오는 섹션만 다시 만듭니다.": "Leave blank to let the voice decide. Changing a reading remakes only the sections that use it.",
+ "AI로 채우기": "Fill with AI",
+ "{n}번 나옴": "appears {n} times",
+ "논문마다 저장해 둔 발음 용어집으로 읽습니다.": "Each paper is read with its saved pronunciation glossary."
 }

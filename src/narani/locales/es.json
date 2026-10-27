@@ -1301,5 +1301,19 @@
  "기본값으로": "Restablecer",
  "섹션별": "Por sección",
  "(첫 제목 앞)": "(antes del primer título)",
- "세지 않는 것: 인용 표기([12], (Smith et al., 2020), 링크된 인용 묶음), 본문의 각주 번호, 링크 주소(링크 글자는 셈), 이미지, HTML 태그, 디스플레이 수식, 표 구분선, 참고문헌 번호. 각주 글은 그 각주를 부른 섹션에 셉니다. 글자나 숫자가 든 낱말만 한 단어 — 하이픈 낱말은 하나, '—'·'→'는 0.": "No se cuentan: citas ([12], (Smith et al., 2020), grupos de citas enlazadas), marcas de nota en el texto, URL de enlaces (sí el texto del enlace), imágenes, etiquetas HTML, fórmulas en bloque, separadores de tabla y números de referencia. El texto de cada nota se cuenta en la sección que la cita. Solo cuentan como palabra los tokens con alguna letra o dígito: una palabra con guiones es una; '—' y '→' son cero."
+ "세지 않는 것: 인용 표기([12], (Smith et al., 2020), 링크된 인용 묶음), 본문의 각주 번호, 링크 주소(링크 글자는 셈), 이미지, HTML 태그, 디스플레이 수식, 표 구분선, 참고문헌 번호. 각주 글은 그 각주를 부른 섹션에 셉니다. 글자나 숫자가 든 낱말만 한 단어 — 하이픈 낱말은 하나, '—'·'→'는 0.": "No se cuentan: citas ([12], (Smith et al., 2020), grupos de citas enlazadas), marcas de nota en el texto, URL de enlaces (sí el texto del enlace), imágenes, etiquetas HTML, fórmulas en bloque, separadores de tabla y números de referencia. El texto de cada nota se cuenta en la sección que la cita. Solo cuentan como palabra los tokens con alguna letra o dígito: una palabra con guiones es una; '—' y '→' son cero.",
+ "모바일과 동기화하는 중…": "Sincronizando con el móvil…",
+ "모바일과 동기화했습니다 — 다시 올림 {up}편 · 메모 {m}개 합침": "Sincronizado con el móvil — {up} artículos resubidos · {m} notas combinadas",
+ "{when} 동기화": "sincronizado {when}",
+ "지금 동기화": "Sincronizar ahora",
+ "동기화": "Sincronizar",
+ "빈 칸이 없습니다.": "No hay filas vacías.",
+ "AI가 읽는 법을 정하는 중… ({n}개)": "La IA está eligiendo las lecturas… ({n})",
+ "AI로 채우지 못했습니다: {e}": "No se pudo completar con IA: {e}",
+ "{n}개를 채웠습니다 — 확인하고 고친 뒤 만들기를 누르세요.": "Se completaron {n} — revísalas y edítalas, luego pulsa Crear.",
+ "발음 용어집 — 영어 용어를 어떻게 읽을지 ({n}개)": "Glosario de pronunciación — cómo leer los términos en inglés ({n})",
+ "비워 두면 목소리가 알아서 읽습니다. 고치면 그 말이 나오는 섹션만 다시 만듭니다.": "Déjalo en blanco para que la voz decida. Cambiar una lectura rehace solo las secciones que la usan.",
+ "AI로 채우기": "Completar con IA",
+ "{n}번 나옴": "aparece {n} veces",
+ "논문마다 저장해 둔 발음 용어집으로 읽습니다.": "Cada artículo se lee con su glosario de pronunciación guardado."
 }

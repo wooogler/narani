@@ -263,6 +263,12 @@ html.md4-filedrag .md4-dropov { display: flex; }
 .md4-pv-bulk .q-btn__content { justify-content: flex-start; flex-wrap: nowrap; }
 .md4-act-main.q-btn { width: 100%; margin-bottom: 4px; }
 .md4-pv-bulk > .md4-act.q-btn { width: 100%; }
+/* 발음 용어집 — 용어 | 읽기 두 칸, 줄을 낮게 */
+.md4-terms { display: grid; grid-template-columns: 40% 1fr; column-gap: 10px; align-items: center; font-size: 12px; }
+.md4-term-k { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #37352f; }
+.md4-terms .q-field--dense .q-field__control, .md4-terms .q-field--dense .q-field__marginal { height: 26px; min-height: 26px; }
+.md4-terms .q-field__native { padding: 0; font-size: 12px; min-height: 26px; }
+.md4-terms .q-field { border-bottom: 1px solid rgba(55,53,47,.08); }
 .md4-act-note { font-size: 12px; color: #6b6862; margin: 0 0 6px; }
 .md4-act-h { font-size: 11px; font-weight: 700; letter-spacing: .05em; color: #9a968e; margin: 10px 0 2px; }
 .md4-act-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; }
@@ -1115,6 +1121,11 @@ def build_home(state: dict) -> None:
         secs = per[0] if len(roots) == 1 else []
         gc = phone_service.gemini_choice()
         qs = await run.io_bound(phone_service.qwen_status)
+        st = await run.io_bound(phone_service.speech_terms, roots[0]) if len(roots) == 1 else {"terms": {}, "found": []}
+        term_inputs: dict = {}
+
+        def cur_terms() -> dict:
+            return {k: (inp.value or "").strip() for k, inp in term_inputs.items() if (inp.value or "").strip()}
         picked = {"go": False}
 
         def go() -> None:
@@ -1128,8 +1139,9 @@ def build_home(state: dict) -> None:
             import subprocess
             import tempfile
 
+            spoken = tts.speak_text(sample, cur_terms())
             if eng.value == "mac":
-                subprocess.Popen(["say", "-v", voice.value, "--", sample])
+                subprocess.Popen(["say", "-v", voice.value, "--", spoken])
                 return
             if eng.value == "qwen" and not qs["ready"]:
                 ui.notify(t("먼저 Qwen3를 설치하세요."), type="warning")
@@ -1137,9 +1149,9 @@ def build_home(state: dict) -> None:
             n = ui.notification(t("목소리를 준비하는 중…"), spinner=True, timeout=None) if eng.value == "qwen" else None
             try:
                 if eng.value == "qwen":
-                    wav = await run.io_bound(phone_service.voice_preview, "qwen", qvoice.value, langs[0], sample)
+                    wav = await run.io_bound(phone_service.voice_preview, "qwen", qvoice.value, langs[0], spoken)
                 else:
-                    wav = await run.io_bound(phone_service.gemini_preview, gvoice.value, gmodel.value, sample)
+                    wav = await run.io_bound(phone_service.gemini_preview, gvoice.value, gmodel.value, spoken)
             except Exception as e:  # noqa: BLE001
                 if n:
                     n.dismiss()
@@ -1151,7 +1163,7 @@ def build_home(state: dict) -> None:
             f.write_bytes(wav)
             subprocess.Popen(["afplay", str(f)])
 
-        with host, ui.dialog() as dlg, ui.card().classes("gap-2").style("width:480px"):
+        with host, ui.dialog() as dlg, ui.card().classes("gap-2").style("width:480px;max-height:92vh;overflow-y:auto"):
             ui.label(t("모바일에서 들을 음성 만들기")).classes("font-bold")
             ui.label(t("번역 본문을 읽은 음성을 만들어 Drive의 Narani 폴더에 올립니다(시간당 약 15MB). 그림·표·수식·인용 "
                        "표기·참고문헌은 건너뛰고, 섹션 제목은 알립니다.")).classes("text-xs text-gray-500")
@@ -1230,6 +1242,43 @@ def build_home(state: dict) -> None:
                 est.set_text(txt)
             eng.on_value_change(lambda _: total())
             gmodel.on_value_change(lambda _: total())
+            if secs and (st["terms"] or st["found"]):
+                async def fill_terms() -> None:
+                    empty = [k for k, inp in term_inputs.items() if not (inp.value or "").strip()]
+                    if not empty:
+                        ui.notify(t("빈 칸이 없습니다."), type="info")
+                        return
+                    fb.disable()
+                    n = ui.notification(t("AI가 읽는 법을 정하는 중… ({n}개)", n=len(empty)), spinner=True, timeout=None)
+                    try:
+                        got = await run.io_bound(phone_service.suggest_speech_terms, roots[0], empty)
+                    except Exception as e:  # noqa: BLE001
+                        ui.notify(t("AI로 채우지 못했습니다: {e}", e=e), type="negative")
+                        return
+                    finally:
+                        n.dismiss()
+                        fb.enable()
+                    for k, v in got.items():
+                        if k in term_inputs:
+                            term_inputs[k].value = v
+                    ui.notify(t("{n}개를 채웠습니다 — 확인하고 고친 뒤 만들기를 누르세요.", n=len(got)), type="positive")
+                saved, found = st["terms"], dict(st["found"])
+                rows = list(dict.fromkeys(list(saved) + [k for k, _ in st["found"]]))
+                with ui.expansion(t("발음 용어집 — 영어 용어를 어떻게 읽을지 ({n}개)", n=len(rows)), icon="record_voice_over") \
+                        .props("dense").classes("w-full text-sm"):
+                    with ui.row().classes("items-center gap-2 w-full no-wrap"):
+                        ui.label(t("비워 두면 목소리가 알아서 읽습니다. 고치면 그 말이 나오는 섹션만 다시 만듭니다.")) \
+                            .classes("text-xs text-gray-500 grow")
+                        fb = ui.button(t("AI로 채우기"), icon="auto_awesome", on_click=fill_terms) \
+                            .props("flat dense no-caps").classes("shrink-0")
+                    with ui.scroll_area().style("height:200px").classes("w-full"):
+                        with ui.element("div").classes("md4-terms"):
+                            for k in rows:
+                                ui.label(k).classes("md4-term-k").tooltip(t("{n}번 나옴", n=found.get(k, 0)))
+                                term_inputs[k] = ui.input(value=saved.get(k, ""), placeholder="—") \
+                                    .props("dense borderless hide-bottom-space")
+            elif len(roots) > 1:
+                ui.label(t("논문마다 저장해 둔 발음 용어집으로 읽습니다.")).classes("text-xs text-gray-500")
             if secs:
                 ui.label(t("넣을 섹션")).classes("text-xs")
                 with ui.scroll_area().style("height:240px").classes("w-full border rounded"):
@@ -1252,6 +1301,8 @@ def build_home(state: dict) -> None:
             return
         if include is not None and len(include) == len(secs):
             include = None
+        if term_inputs:   # 발음 용어집 — 만들기 전에 저장(빈 칸은 저장하지 않는다)
+            await run.io_bound(phone_service.save_speech_terms, roots[0], cur_terms())
         # 오래 걸리는 일이라 백그라운드 작업으로 — 논문마다 카드(진행 %)가 목록 위에 뜨고, 논문 탭을 열어도
         # 끝까지 돈다. 한 번에 한 편씩(합성이 이미 여러 스레드를 쓴다). Drive 연결은 여기서 먼저 확인한다.
         if not phone_service.configured():
@@ -1329,10 +1380,10 @@ def build_home(state: dict) -> None:
 
     async def sync_mobile_now() -> None:
         """모바일에 있는 논문 맞추기 — 바뀐 논문 다시 올리기, 메모 주고받기 (앱을 켤 때도 저절로 한다)."""
-        s = await mobile_call(lambda _: phone_service.refresh(), [], t("모바일과 맞추는 중…"))
+        s = await mobile_call(lambda _: phone_service.refresh(), [], t("모바일과 동기화하는 중…"))
         if s is None:
             return
-        ui.notify(t("모바일과 맞췄습니다 — 다시 올림 {up}편 · 메모 {m}개 합침", up=s["uploaded"], m=s["merged"]),
+        ui.notify(t("모바일과 동기화했습니다 — 다시 올림 {up}편 · 메모 {m}개 합침", up=s["uploaded"], m=s["merged"]),
                   type="positive")
         mobile_changed()
 
@@ -1560,9 +1611,9 @@ def build_home(state: dict) -> None:
                 if i.get("audio"):
                     bits.append(t("음성 {n}편", n=i["audio"]))
                 if i["synced"]:
-                    bits.append(t("{when} 맞춤", when=_relative_time(i["synced"])))
+                    bits.append(t("{when} 동기화", when=_relative_time(i["synced"])))
                 ui.label(" · ".join(bits)).classes("truncate")
-                ui.button(t("지금 맞추기"), icon="sync", color=None, on_click=sync_mobile_now) \
+                ui.button(t("지금 동기화"), icon="sync", color=None, on_click=sync_mobile_now) \
                     .props("flat dense no-caps size=sm").classes("text-grey-7") \
                     .tooltip(t("바뀐 논문을 다시 올리고 하이라이트·메모를 주고받습니다 — 앱을 켤 때도 저절로 합니다"))
                 ui.button(t("연결 끊기"), icon="link_off", color=None, on_click=disconnect_drive) \
@@ -2597,9 +2648,9 @@ def build_home(state: dict) -> None:
                     act(t("음성 다시 만들기") if remake else t("음성 만들기"), "headphones",
                         lambda: make_mobile_audio(paths), audio_tip, main=True)
                 with ui.element("div").classes("md4-act-grid"):
-                    if not first:
-                        act(t("음성 만들기"), "headphones", lambda: make_mobile_audio(paths), audio_tip)
-                    act(t("맞추기") if all_there else t("보내기"), "sync" if all_there else "smartphone",
+                    if not first and on_mobile:   # 음성은 모바일에 있는 논문만 — 모바일에서 듣는 것이므로
+                        act(t("음성 만들기"), "headphones", lambda: make_mobile_audio(on_mobile), audio_tip)
+                    act(t("동기화") if all_there else t("보내기"), "sync" if all_there else "smartphone",
                         lambda: send_to_mobile(paths), send_tip)
                     if first:
                         if with_audio:

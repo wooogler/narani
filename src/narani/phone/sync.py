@@ -172,7 +172,7 @@ def push_audio(store: Store, jobs: list[tuple[Path, object, list[int] | None]],
         def prog(done: int, total: int, title: str, n: int = n) -> None:
             if on_progress:
                 on_progress(n, len(jobs), done, total, title)
-        data, tl = tts.build(b, engine, WorkDir(root).root / "audio", include, prog)
+        data, tl = tts.build(b, engine, WorkDir(root).root / "audio", include, prog, terms=tts.load_terms(root))
         a_name, t_name = audio_names(root.stem)
         store.write(a_name, data, "audio/mp4")
         store.write(t_name, bmod.dumps(tl))
