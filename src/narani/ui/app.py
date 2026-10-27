@@ -22,7 +22,7 @@ from narani.ir import Flavor, GlossaryEntry
 from narani.ui import (
     agent_panel, annotations, desktop, figrefs, figure_crop, figure_ko, find_bar, formula_pop, jobs,
     jump_back, live_preview, md_keys, split_view, mdrender, pdf_zoom, reanchor,
-    scroll_memory, sentpair, spa, tabstore, term_examples, translate_job, update_banner,
+    scroll_memory, sentpair, spa, tabstore, term_examples, translate_job, update_banner, wordcount_view,
 )
 from narani.ui.controller import LEVEL_OPTIONS, RUNIN_LEVEL_OPTIONS, UIController
 from narani.workdir import WorkDir, left_panel, paper_title, set_left_panel, set_project
@@ -3006,6 +3006,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     spa.add_body_html(i18n.html(formula_pop.HTML))
     spa.add_css(figure_crop.CSS)  # 확대 뷰어 ✂ → 그림 영역 다시 지정 (위 영역 지정 화면을 같이 쓴다)
     spa.add_body_html(figure_crop.HTML)
+    spa.add_css(wordcount_view.CSS)  # 목차 머리의 원문 단어 수 · 범위별·섹션별 표
     spa.add_css(figure_ko.CSS)  # 확대 뷰어 '가' → 그림 속 글자 번역 (번역 그림 보기·만들기·고치기)
     spa.add_body_html(figure_ko.HTML)
 
@@ -3415,6 +3416,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             edit_state["pending"] = None  # 되돌리면 기다리던 편집은 버린다
             ctrl.save_and_reassemble(keep_edits=False)
             canvas.refresh()   # 에디터 내용까지 파일에서 다시 읽어야 한다
+            toc_panel.refresh()  # 헤더·단어 수도 원본으로
             edit_toggle.refresh()
             ui.notify(t("섹션 트리 기준으로 다시 만들었습니다."), type="info")
 
@@ -3526,6 +3528,10 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         config.set_section_value("ui", "toc_lang", v)
         toc_panel.refresh()
 
+    def _open_wordcount(md: str) -> None:
+        with wc_host:  # refreshable(목차) 밖 — 설정을 바꿔 목차를 다시 그려도 대화상자는 남는다
+            wordcount_view.open_dialog(md, toc_panel.refresh)
+
     @ui.refreshable
     def toc_panel() -> None:
         """왼쪽 패널의 목차 — 제목 언어는 영어 / 한국어 / 병기 중 하나(번역이 있을 때만 고를 수 있다).
@@ -3546,30 +3552,45 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             ko_head = _heading_of(kob) if (info["aligned"] and kob) else None
             ko_text = ko_head[1] if ko_head and _head_key(ko_head[1]) != _head_key(head[1]) else None
             entries.append((head[0], head[1], ko_text, k))
+        # 원문 단어 수(인용 빼고, §wordcount) — 섹션은 목차와 같은 순서로 센다. 수가 어긋나면 섹션별 수는 접는다
+        en_md = ctrl.en_markdown()
+        wc = wordcount_view.counted(en_md) if en_md else None
+        wc_kinds, wc_elems, wc_toc = wordcount_view.prefs()
+        wc_secs = [s for s in wc.sections if s.index is not None] if wc else []
+        sec_n = [s.total(wc_elems, wc_kinds) for s in wc_secs] if wc_toc and len(wc_secs) == len(entries) else None
         with ui.row().classes("items-center w-full no-wrap gap-2"):
             ui.label(t("목차")).classes("md4-panel-title")
+            if wc:
+                badge = ui.label(t("{n} 단어", n=f"{wc.total(wc_kinds, wc_elems):,}")).classes("md4-wcbadge")
+                with badge:
+                    ui.tooltip(t("원문 단어 수 (인용 제외) — 눌러서 섹션별·범위별로") + "\n"
+                               + wordcount_view.criteria(wc_kinds, wc_elems)).style("white-space:pre-line")
+                badge.on("click", lambda: _open_wordcount(en_md))
             ui.space()
             if has_ko_titles:
                 # 작은 글자 셋만 — 목차의 주인공은 항목이지 이 스위치가 아니다(테두리·배경 없이, 고른 것만 파랗게)
                 ui.toggle(_toc_lang_options(ctrl.wd.lang), value=mode, on_change=lambda e: set_toc_lang(e.value)) \
                     .props("flat dense no-caps toggle-color=primary") \
-                    .classes("md4-toclang").tooltip(t("목차 제목을 어느 언어로 보일지"))
+                    .classes("md4-toclang shrink-0").tooltip(t("목차 제목을 어느 언어로 보일지"))
         with ui.element("div").classes("vtoc"):
             if not entries:
                 ui.label(t("섹션 없음")).classes("text-xs text-gray-400 px-2")
-            for level, text, ko_text, k in entries:
+            for i, (level, text, ko_text, k) in enumerate(entries):
                 if mode == "ko":
                     first, second = (ko_text or text), None
                 elif mode == "en":
                     first, second = text, None
                 else:
                     first, second = (ko_text, text) if (ko_first and ko_text) else (text, ko_text)
-                item = ui.element("div").classes("vtoc-item").style(
+                n = sec_n[i] if sec_n else 0
+                item = ui.element("div").classes("vtoc-item" + (" vtoc-hasn" if n else "")).style(
                     f"padding-left:{8 + (max(level, 1) - 1) * 12}px")
                 with item:
                     ui.label(first).classes("vtoc-l1")
                     if second:
                         ui.label(second).classes("vtoc-l2")
+                    if n:
+                        ui.label(f"{n:,}").classes("vtoc-n")
                 item.tooltip(text + (f"\n{ko_text}" if ko_text else ""))
                 item.on("click", lambda _, kk=k: ui.run_javascript(_toc_js(kk)))
 
@@ -5977,6 +5998,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     with chip_slot:  # 헤더 상태 칩 — 패널보다 먼저 그린다(번역 중에 돌아온 화면은 패널을 짓다가 칩을 갱신한다)
         status_chip()
 
+    wc_host = ui.element("div").style("display:none")  # 단어 수 대화상자 자리 (목차 refreshable 밖)
     # md4-body: 에이전트 창·메모 서랍이 열리면 이 폭이 줄어 본문이 덮이지 않는다 (§agent_panel.CSS)
     with ui.row().classes("w-full no-wrap gap-0 md4-steps md4-body"):
         with ui.column().classes("md4-rail gap-0"):
