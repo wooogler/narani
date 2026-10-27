@@ -332,7 +332,7 @@ Sent papers get a 📱 mark on their card and are listed under **Mobile** in the
 - **Offline mode** — turn on **Offline mode — save all** above the list to keep every paper and its desktop highlights and notes on the phone; each time the app opens it fetches only what's new or changed (planes, subways). Papers you've opened are kept either way. Without internet the list says so, and papers that aren't saved are dimmed.
 - **Top bar** — **‹** back to the list. Tap the **title** to slide out the **table of contents** from the left, with the current section marked. **Translation ⇄** switches between translation and source; **A** changes the text size.
 - **Tap a sentence** and its **counterpart** (the source, if you're reading the translation) slides up from the bottom. Tap a citation to see the reference.
-- **Your notes** — the **Notes** tab of the **✦** button at the bottom right lists this paper's highlights and notes in reading order (filter with **Notes only**); tap one to jump there. The number on the button is the count.
+- **Your notes** — the **Notes** tab of the **💬** button at the bottom right lists this paper's highlights and notes in reading order (filter with **Notes only**); tap one to jump there. The number on the button is the count.
 
 ### 4. Highlights, notes and sync
 
@@ -345,7 +345,7 @@ Sent papers get a 📱 mark on their card and are listed under **Mobile** in the
 
 <img src="docs/images/en/mobile-agent.png" width="200" align="right" alt="Mobile agent — AI key stored on this device">
 
-The **Ask** tab of the **✦** button at the bottom right asks about the paper you're reading. Tap a source like [r12] in the answer to jump to that paragraph.
+Pick **Ask** in the **💬** button at the bottom right to ask about the paper you're reading. Tap a source like [r12] in the answer to jump to that paragraph.
 
 - The first time, enter **your own AI API key** (OpenAI, Anthropic or Gemini) **on that device**. The key is stored only in that device's browser.
 - When you ask, the paper's text, your highlights and notes, and the conversation go directly to the AI service you chose, billed to that key's account.
@@ -364,7 +364,7 @@ Make audio of the translation read aloud on the desktop, then listen on the phon
   - **Gemini (paid)**: more natural voices. Available once you add a **Gemini key** in Settings → AI; the dialog shows the estimated cost (an hour of audio is about $0.5 with flash-lite, $0.8 with flash — double from 2027). The paper's translated text is sent to Google with your key and billed to that account. Paid audio isn't remade automatically when you change a translation (the phone marks it as outdated) — remake it when you want.
 - **Pronunciation glossary** — decide how English names and acronyms left in the translation (Hedwig, RAG, LLM…) are read. Expand **Pronunciation glossary** in the make-audio dialog to see the paper's frequent English terms, use **Fill with AI** for a draft (with your translation AI key, a fraction of a cent), adjust, then create. Blank terms are left to the voice; changing the table remakes only the sections that use those terms. English glosses in parentheses after Korean words, like `프롬프팅(prompting)`, aren't read twice.
 - **What it reads** — title, abstract and body, announcing section titles. Figures, tables, equations, citation marks, footnote numbers, references and appendices are skipped.
-- **Listen (phone)** — open a paper with audio and a **🎧** button appears above ✦. It starts **where you were looking**; the bar at the bottom has play, 15 seconds back/forward, previous/next section and speed. You can also tap a sentence and choose **Listen from here**.
+- **Listen (phone)** — open a paper with audio and a **🎧** button appears above 💬. It starts **where you were looking**; the bar at the bottom has play, 15 seconds back/forward, previous/next section and speed. You can also tap a sentence and choose **Listen from here**.
 - **Range** — **Range** on the bar: start to finish · this section only · from here to the end · choose sections.
 - **With the screen on**, the sentence being read is highlighted and the page follows along. **With the screen off** it keeps playing, and the lock screen, CarPlay and earbud buttons play/pause and move between sections. Your place is remembered and the paper opens there next time.
 - **Offline** — audio is saved the first time you play it. With **Offline mode** on, **Save audio too** downloads it all in advance (use Wi-Fi).
