@@ -141,6 +141,38 @@ def voices(lang: str) -> list[str]:
     return names
 
 
+def gemini_ready() -> bool:
+    """Gemini 키가 있는지 — 유료 목소리를 고를 수 있는지."""
+    return bool(config.resolve_key("gemini"))
+
+
+def gemini_choice() -> dict:
+    """지난번에 고른 Gemini 목소리·모델 (처음이면 Kore · flash-lite)."""
+    from narani.phone import tts
+
+    g = load_cache().get("gemini") or {}
+    model = g.get("model") if g.get("model") in tts.GEMINI_MODELS else next(iter(tts.GEMINI_MODELS))
+    voice = g.get("voice") if g.get("voice") in tts.GEMINI_VOICES else tts.GEMINI_VOICES[0]
+    return {"voice": voice, "model": model}
+
+
+def gemini_preview(voice: str, model: str, text: str) -> bytes:
+    """목소리 들어 보기 — 한 문장을 만들어 WAV 바이트로 (몇 원어치)."""
+    import io
+    import wave
+
+    from narani.phone import tts
+
+    pcm = tts.GeminiVoice(voice, model).synth_units([tts.Unit(0, 0, 0, text, end_of_block=True)])[0]
+    buf = io.BytesIO()
+    with wave.open(buf, "wb") as w:
+        w.setnchannels(1)
+        w.setsampwidth(2)
+        w.setframerate(tts.GeminiVoice.sample_rate)
+        w.writeframes(pcm)
+    return buf.getvalue()
+
+
 def paper_lang(root: Path) -> str:
     """읽을 언어 — 번역이 있으면 번역 언어, 없으면 en."""
     from narani.workdir import WorkDir
@@ -159,10 +191,11 @@ def sections(root: Path) -> list[dict]:
 
 
 def make_audio(roots: list[Path], voice: str | None = None, include: list[int] | None = None,
-               on_progress=None) -> dict:  # noqa: ANN001
+               on_progress=None, engine: str = "mac", model: str | None = None) -> dict:  # noqa: ANN001
     """논문들의 듣기 음성을 만들어 올린다 — 먼저 번들·메모를 맞추고(send), 음성은 바뀐 섹션만 새로 만든다.
 
-    voice가 없으면 논문 언어마다 지난번 목소리(없으면 좋은 기본값). include는 논문 하나일 때 넣을 섹션 행들.
+    engine: mac(무료 — voice가 없으면 논문 언어마다 지난번 목소리) | gemini(유료 — 사용자 키, voice·model).
+    include는 논문 하나일 때 넣을 섹션 행들.
     """
     from narani.phone import tts
 
@@ -170,16 +203,25 @@ def make_audio(roots: list[Path], voice: str | None = None, include: list[int] |
     sync.push(roots, store, prune=False, extra=_extra(_rows()))
     jobs = []
     chosen: dict[str, str] = {}
+    gem = None
+    if engine == "gemini":
+        g = gemini_choice()
+        gem = {"voice": voice or g["voice"], "model": model or g["model"]}
     for root in roots:
+        inc = include if len(roots) == 1 else None
+        if gem:
+            jobs.append((Path(root), tts.GeminiVoice(gem["voice"], gem["model"]), inc))
+            continue
         lang = paper_lang(root)
         name = voice or (voices(lang) or [""])[0]
         if not name:
             raise RuntimeError(f"이 컴퓨터에 '{lang}' 목소리가 없습니다")
         chosen[lang] = name
-        jobs.append((Path(root), tts.MacVoice(name), include if len(roots) == 1 else None))
+        jobs.append((Path(root), tts.MacVoice(name), inc))
     out = sync.push_audio(store, jobs, on_progress)
     c = load_cache()
-    _remember(sync.read_index(store), voices={**(c.get("voices") or {}), **chosen})
+    extra = {"gemini": gem} if gem else {}
+    _remember(sync.read_index(store), voices={**(c.get("voices") or {}), **chosen}, **extra)
     return out
 
 

@@ -357,13 +357,15 @@ The **Ask** tab of the **✦** button at the bottom right asks about the paper y
 
 Make audio of the translation read aloud on the desktop, then listen on the phone.
 
-- **Make it (desktop, macOS only for now)** — on Home, tick papers and click **Make mobile audio**. Pick a voice (**Preview** to hear it) and, for a single paper, the sections to include. It uses a built-in Mac voice, so it's **free** and runs on this computer. An hour of audio takes a few minutes; it goes to the `Narani` folder in your Drive (about 15 MB per hour). Papers with audio get a 🎧 on their card.
+- **Make it (desktop, macOS only for now)** — on Home, tick papers and click **Make mobile audio**. Pick a voice (**Preview** to hear it) and, for a single paper, the sections to include. The audio goes to the `Narani` folder in your Drive (about 15 MB per hour), and papers with audio get a 🎧 on their card.
+  - **Free — Mac voice**: made on this computer; an hour of audio takes a few minutes.
+  - **Gemini (paid)**: more natural voices. Available once you add a **Gemini key** in Settings → AI; the dialog shows the estimated cost (an hour of audio is about $0.5 with flash-lite, $0.8 with flash — double from 2027). The paper's translated text is sent to Google with your key and billed to that account. Paid audio isn't remade automatically when you change a translation (the phone marks it as outdated) — remake it when you want.
 - **What it reads** — title, abstract and body, announcing section titles. Figures, tables, equations, citation marks, footnote numbers, references and appendices are skipped.
 - **Listen (phone)** — open a paper with audio and a **🎧** button appears above ✦. It starts **where you were looking**; the bar at the bottom has play, 15 seconds back/forward, previous/next section and speed. You can also tap a sentence and choose **Listen from here**.
 - **Range** — **Range** on the bar: start to finish · this section only · from here to the end · choose sections.
 - **With the screen on**, the sentence being read is highlighted and the page follows along. **With the screen off** it keeps playing, and the lock screen, CarPlay and earbud buttons play/pause and move between sections. Your place is remembered and the paper opens there next time.
 - **Offline** — audio is saved the first time you play it. With **Offline mode** on, **Save audio too** downloads it all in advance (use Wi-Fi).
-- When you change a translation, the next desktop start remakes the audio for the changed sections only. To delete audio, tick papers and click **Delete mobile audio**.
+- When you change a translation, the next desktop start remakes free-voice audio for the changed sections only. To delete audio, tick papers and click **Delete mobile audio**.
 
 ### 7. Getting a new version
 

@@ -7,7 +7,8 @@
 읽는 것: 제목, 초록, 본문 섹션(제목은 알린다). 건너뛰는 것: 그림·표·코드·블록 수식·긴 인라인 수식,
 인용 표기 [12, Kim 2020], 각주 번호, URL, 저자 줄, CCS·키워드 같은 앞쪽 메타, 참고문헌·부록·감사의 글 이후.
 
-엔진: Mac 내장 목소리(`say`, 무료·오프라인). Gemini TTS는 다음 단계. 섹션마다 합성 결과를 논문 작업
+엔진: Mac 내장 목소리(`say`, 무료·오프라인)와 Gemini TTS(유료, 사용자 키 — 문단마다 한 번 부르고 쉼으로
+문장을 가른다). 섹션마다 합성 결과를 논문 작업
 폴더의 `audio/`에 캐시한다 — 다시 번역해 몇 섹션만 바뀌면 그 섹션만 다시 만든다. 캐시는 64kbps AAC로
 두고(작게), 합칠 때 한 번 풀어 32kbps 모노 m4a로 다시 묶는다(시간당 약 15MB).
 """
@@ -337,6 +338,157 @@ def mac_voices(lang: str) -> list[str]:
     return sorted(names, key=rank)
 
 
+# ---- Gemini TTS (유료 — 사용자 키) ----
+GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/interactions"
+# 100만 오디오 토큰당 달러 — (2026년까지, 2027-01-01부터). 오디오는 초당 25토큰 (ai.google.dev 가격표, 2026-10 확인)
+GEMINI_MODELS = {"gemini-3.8-flash-lite-tts": (6.0, 12.0), "gemini-3.8-flash-tts": (9.0, 18.0)}
+GEMINI_VOICES = ("Kore", "Charon", "Aoede", "Leda", "Orus", "Puck", "Zephyr", "Fenrir", "Callirrhoe", "Autonoe",
+                 "Enceladus", "Iapetus", "Umbriel", "Algieba", "Despina", "Erinome", "Algenib", "Rasalgethi",
+                 "Laomedeia", "Achernar", "Alnilam", "Schedar", "Gacrux", "Pulcherrima", "Achird", "Zubenelgenubi",
+                 "Vindemiatrix", "Sadachbia", "Sadaltager", "Sulafat")
+GEMINI_STYLE = "calm, clear narration of a research paper at a steady pace"
+_TOKENS_PER_SEC = 25
+_BLOCK_MAX = 1500            # 한 번에 보내는 글자 수 — 긴 문단은 문장 단위로 나눠 보낸다
+
+
+def gemini_cost(model: str, seconds: float, today: str | None = None) -> float:
+    """만들 음성 길이(초) → 대략 비용(달러). 글 입력 비용은 오디오의 몇 % 안 돼 뺀다."""
+    import datetime
+
+    now, later = GEMINI_MODELS.get(model, (9.0, 18.0))
+    day = today or datetime.date.today().isoformat()
+    per_m = now if day < "2027-01-01" else later
+    return seconds * _TOKENS_PER_SEC * per_m / 1e6
+
+
+def _split_by_pauses(pcm: bytes, rate: int, weights: list[int]) -> list[bytes]:
+    """문단 하나의 음성 → 문장 수만큼의 조각. 글자 수 비율로 짐작한 경계에서 가장 가까운 쉼(무음 구간)으로 자른다.
+
+    시간표가 문장 단위라 폰이 지금 문장을 칠할 수 있다. 쉼을 못 찾으면 짐작한 자리에서 자른다(조금 어긋나도
+    다음 문장에서 바로잡힌다).
+    """
+    import array
+
+    n = len(weights)
+    if n <= 1:
+        return [pcm]
+    a = array.array("h")
+    a.frombytes(pcm[: len(pcm) // 2 * 2])
+    win = max(1, rate // 100)                                   # 10ms
+    rms = [(sum(x * x for x in a[i:i + win]) / win) ** 0.5 for i in range(0, len(a), win)]
+    loud = sorted(rms)[int(len(rms) * 0.9)] if rms else 0
+    thr = max(150.0, loud * 0.08)
+    runs, start = [], None                                       # (가운데 창 번호, 길이)
+    for i, v in enumerate(rms + [thr + 1]):
+        if v < thr and start is None:
+            start = i
+        elif v >= thr and start is not None:
+            if i - start >= 12:                                  # 120ms 넘는 쉼
+                runs.append(((start + i) // 2, i - start))
+            start = None
+    speech = [i for i, v in enumerate(rms) if v >= thr]
+    lo, hi = (speech[0], speech[-1]) if speech else (0, len(rms))
+    total = sum(weights) or 1
+    cuts, acc, prev = [], 0, lo
+    for w in weights[:-1]:
+        acc += w
+        want = lo + (hi - lo) * acc / total
+        near = [r for r in runs if r[0] > prev]
+        best = min(near, key=lambda r: abs(r[0] - want)) if near else None
+        span = (hi - lo) / n
+        c = best[0] if best and abs(best[0] - want) < span * 0.6 else int(want)
+        c = max(c, prev + 1)
+        cuts.append(c)
+        prev = c
+    edges = [0] + [c * win for c in cuts] + [len(a)]
+    return [a[edges[i]:edges[i + 1]].tobytes() for i in range(n)]
+
+
+class GeminiVoice:
+    """Gemini TTS — 문단마다 한 번 불러(요청 수를 줄인다) 쉼으로 문장을 가른다. 24kHz 모노 16비트."""
+
+    kind = "gemini"
+    sample_rate = 24000
+    gaps = {"sent": 0.0, "para": 0.5, "head": 0.7}               # 문장 사이 쉼은 목소리에 이미 있다
+
+    def __init__(self, voice: str = "Kore", model: str = "gemini-3.8-flash-lite-tts", key: str | None = None,
+                 http=None, workers: int = 3) -> None:  # noqa: ANN001
+        self.voice, self.model, self.key, self.http, self.workers = voice, model, key, http, workers
+
+    @property
+    def id(self) -> str:
+        return f"gemini:{self.model}:{self.voice}"
+
+    def _key(self) -> str:
+        if self.key:
+            return self.key
+        from narani import config
+
+        k = config.resolve_key("gemini")
+        if not k:
+            raise RuntimeError("Gemini API 키가 없습니다 — 설정 → AI에서 넣어 주세요")
+        return k
+
+    def _call(self, text: str) -> bytes:
+        import base64
+        import io
+        import time as _time
+
+        import httpx
+
+        body = {"model": self.model,
+                "input": [{"type": "user_input", "content": [{"type": "text", "text": text, "annotations": [
+                    {"type": "speech_metadata", "style": GEMINI_STYLE}]}]}],
+                "response_format": {"type": "audio"},
+                "generation_config": {"speech_config": [{"voice": self.voice}]}}
+        http = self.http or httpx.Client(timeout=120)
+        for attempt in range(5):
+            r = http.post(GEMINI_URL, json=body, headers={"x-goog-api-key": self._key()})
+            if r.status_code in (429, 500, 502, 503, 504) and attempt < 4:
+                _time.sleep(min(30, 2 ** attempt * 2))
+                continue
+            if r.status_code >= 400:
+                raise RuntimeError(f"Gemini TTS 실패 ({r.status_code}): {r.text[:200]}")
+            data = None
+            for step in r.json().get("steps", []):
+                if step.get("type") == "model_output":
+                    for c in step.get("content", []):
+                        if c.get("type") == "audio" and c.get("data"):
+                            data = c["data"]
+            if not data:
+                raise RuntimeError("Gemini TTS 응답에 음성이 없습니다")
+            raw = base64.b64decode(data)
+            if raw[:4] == b"RIFF":
+                with wave.open(io.BytesIO(raw)) as w:
+                    if w.getframerate() != self.sample_rate or w.getnchannels() != 1:
+                        raise RuntimeError(f"예상과 다른 음성 형식: {w.getframerate()}Hz {w.getnchannels()}ch")
+                    return w.readframes(w.getnframes())
+            return raw                                            # 머리 없는 L16 (24kHz)
+        raise RuntimeError("Gemini TTS: 다시 시도해도 실패했습니다")  # pragma: no cover
+
+    def synth_units(self, units: list[Unit], tick: Callable[[], None] | None = None) -> list[bytes]:
+        groups: list[list[int]] = []                              # 한 번에 보낼 문장 묶음 (문단 · 제목 따로)
+        for i, u in enumerate(units):
+            g = groups[-1] if groups else None
+            same = (g is not None and not u.head and not units[g[-1]].head and not units[g[-1]].end_of_block
+                    and sum(len(units[j].text) for j in g) + len(u.text) <= _BLOCK_MAX)
+            if same:
+                g.append(i)
+            else:
+                groups.append([i])
+        out: list[bytes] = [b""] * len(units)
+
+        def run(g: list[int]) -> None:
+            pcm = self._call(" ".join(units[j].text for j in g))
+            for j, piece in zip(g, _split_by_pauses(pcm, self.sample_rate, [len(units[j].text) for j in g])):
+                out[j] = piece
+                if tick:
+                    tick()
+        with ThreadPoolExecutor(self.workers) as ex:
+            list(ex.map(run, groups))
+        return out
+
+
 # ---- 합치기 ----
 def _afconvert(*args: str) -> None:
     subprocess.run(["afconvert", *args], check=True, capture_output=True)
@@ -349,38 +501,43 @@ def _pcm_of(m4a: Path, tmp: Path) -> bytes:
         return w.readframes(w.getnframes())
 
 
-def _write_wav(path: Path, pcm: bytes) -> None:
+def _write_wav(path: Path, pcm: bytes, rate: int = RATE) -> None:
     with wave.open(str(path), "wb") as w:
         w.setnchannels(1)
         w.setsampwidth(2)
-        w.setframerate(RATE)
+        w.setframerate(rate)
         w.writeframes(pcm)
 
 
-def section_key(engine: MacVoice, sec: Section) -> str:
-    raw = json.dumps([FORMAT, engine.id, RATE, GAP, [(u.text, u.head, u.end_of_block) for u in sec.units]],
+def section_key(engine, sec: Section) -> str:  # noqa: ANN001
+    raw = json.dumps([FORMAT, engine.id, RATE, getattr(engine, "gaps", GAP), [(u.text, u.head, u.end_of_block) for u in sec.units]],
                      ensure_ascii=False)
     return hashlib.sha256(raw.encode()).hexdigest()[:24]
 
 
-def _make_section(engine: MacVoice, sec: Section, cache: Path, key: str, tmp: Path,
+def _make_section(engine, sec: Section, cache: Path, key: str, tmp: Path,  # noqa: ANN001 — MacVoice·GeminiVoice
                   tick: Callable[[], None]) -> None:
-    pcms = engine.synth([u.text for u in sec.units], tick)
+    rate = getattr(engine, "sample_rate", RATE)
+    gaps = getattr(engine, "gaps", GAP)
+    if hasattr(engine, "synth_units"):
+        pcms = engine.synth_units(sec.units, tick)
+    else:
+        pcms = engine.synth([u.text for u in sec.units], tick)
     pcm, t, marks = bytearray(), 0.0, []
     for u, frames in zip(sec.units, pcms):
-        dur = len(frames) / 2 / RATE
+        dur = len(frames) / 2 / rate
         marks.append(round(t, 3))
         pcm += frames
-        gap = GAP["head"] if u.head else (GAP["para"] if u.end_of_block else GAP["sent"])
-        pcm += b"\0\0" * int(gap * RATE)
+        gap = gaps["head"] if u.head else (gaps["para"] if u.end_of_block else gaps["sent"])
+        pcm += b"\0\0" * int(gap * rate)
         t += dur + gap
     wav = tmp / f"{key}.wav"
-    _write_wav(wav, bytes(pcm))
+    _write_wav(wav, bytes(pcm), rate)
     _afconvert("-f", "m4af", "-d", "aac", "-b", str(CACHE_BITRATE), str(wav), str(cache / f"{key}.m4a"))
     (cache / f"{key}.json").write_text(json.dumps({"marks": marks}), encoding="utf-8")
 
 
-def build(bundle: dict, engine: MacVoice, cache: Path, include: list[int] | None = None,
+def build(bundle: dict, engine, cache: Path, include: list[int] | None = None,
           on_progress: Callable[[int, int, str], None] | None = None) -> tuple[bytes, dict]:
     """번들 → (m4a 바이트, 시간표). include는 넣을 섹션의 행 번호들(없으면 전부).
 

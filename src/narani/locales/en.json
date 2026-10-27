@@ -1148,5 +1148,16 @@
  "모바일에서 들을 음성 {m}분": "{m} min of audio for mobile",
  "모바일 음성 만들기": "Make mobile audio",
  "번역 본문을 Mac 목소리로 읽은 음성을 만들어 모바일에서 듣습니다 — 화면을 꺼도, CarPlay에서도": "Makes audio of the translation read by a Mac voice to listen to on mobile — even with the screen off or in CarPlay",
- "모바일 음성 지우기": "Delete mobile audio"
+ "모바일 음성 지우기": "Delete mobile audio",
+ "들어 보기 실패: {e}": "Preview failed: {e}",
+ "번역 본문을 읽은 음성을 만들어 Drive의 Narani 폴더에 올립니다(시간당 약 15MB). 그림·표·수식·인용 표기·참고문헌은 건너뛰고, 섹션 제목은 알립니다.": "Makes audio of the translation read aloud and uploads it to the Narani folder in your Drive (about 15 MB per hour). Figures, tables, equations, citation marks and references are skipped; section titles are announced.",
+ "무료 — Mac 목소리": "Free — Mac voice",
+ "Gemini — 더 자연스러움 (유료)": "Gemini — more natural (paid)",
+ "설정 → AI에서 Gemini 키를 넣으면 더 자연스러운 Gemini 목소리도 고를 수 있습니다.": "Add a Gemini key in Settings → AI to choose the more natural Gemini voices too.",
+ "flash-lite — 더 쌈": "flash-lite — cheaper",
+ "flash — 더 자연스러움": "flash — more natural",
+ "약 {m}분": "about {m} min",
+ " · 예상 비용 약 ${c} (내 Gemini 키의 계정에 청구)": " · estimated cost about ${c} (billed to your Gemini key's account)",
+ " · 무료": " · free",
+ "넣을 섹션": "Sections to include"
 }
