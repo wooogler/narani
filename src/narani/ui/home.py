@@ -261,6 +261,8 @@ html.md4-filedrag .md4-dropov { display: flex; }
 /* 일괄 동작 — 번역은 주 단추, 나머지는 묶음 제목 아래 두 칸씩 옅은 단추, 빼기·지우기는 작은 글자 링크 */
 .md4-pv-bulk .q-btn { width: 100%; }
 .md4-pv-bulk .q-btn__content { justify-content: flex-start; flex-wrap: nowrap; }
+.md4-act-main.q-btn { width: 100%; margin-bottom: 4px; }
+.md4-pv-bulk > .md4-act.q-btn { width: 100%; }
 .md4-act-h { font-size: 11px; font-weight: 700; letter-spacing: .05em; color: #9a968e; margin: 10px 0 2px; }
 .md4-act-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; }
 .md4-act.q-btn { background: rgba(55,53,47,.05); color: #37352f !important; border-radius: 8px; min-height: 34px;
@@ -2470,34 +2472,53 @@ def build_home(state: dict) -> None:
                     ui.label("· " + x["title"]).classes("md4-pv-sel truncate w-full").tooltip(x["title"])
                 if len(rows) > 8:
                     ui.label(t("외 {v}편", v=len(rows) - 8)).classes("md4-pv-sel")
+            # 무엇을 보이고 무엇을 앞세울지는 '어디서(범위)·무엇을(고른 논문의 상태)'에 따라 —
+            # 모바일 보기에선 모바일 동작이 먼저, 번역이 다 된 논문엔 번역을 앞세우지 않는다.
+            scope = view["scope"]
             paths = [Path(p) for p in selected]
             on_mobile = [p for p in paths if p.stem in data["mobile"]]
             with_audio = [p for p in on_mobile if (data["mobile"].get(p.stem) or {}).get("audio")]
+            untranslated = [x for x in rows if not x["has_ko"]]
+            in_collection = scope not in (projects.ALL, projects.NONE, MOBILE)
 
-            def act(label: str, icon: str, fn, tip: str | None = None):  # noqa: ANN001, ANN202
-                b = ui.button(label, icon=icon, on_click=fn, color=None).props("flat dense no-caps").classes("md4-act")
+            def act(label: str, icon: str, fn, tip: str | None = None, main: bool = False):  # noqa: ANN001, ANN202
+                if main:
+                    b = ui.button(label, icon=icon, on_click=fn).props("unelevated no-caps color=primary") \
+                        .classes("md4-act-main")
+                else:
+                    b = ui.button(label, icon=icon, on_click=fn, color=None).props("flat dense no-caps").classes("md4-act")
                 return b.tooltip(tip) if tip else b
 
-            with ui.column().classes("md4-pv-bulk gap-0 w-full q-mt-sm"):
-                ui.button(t("번역 ({n}편)", n=n), icon="translate", on_click=translate_selection) \
-                    .props("unelevated no-caps color=primary") \
-                    .tooltip(t("번역이 없거나 낡은 논문을 번역합니다 — 띄우기 전에 편수·대략 비용을 확인합니다"))
+            def translate_part(main: bool) -> None:
+                if untranslated:
+                    act(t("번역 ({n}편)", n=len(untranslated)), "translate", translate_selection,
+                        t("번역이 없거나 낡은 논문을 번역합니다 — 띄우기 전에 편수·대략 비용을 확인합니다"), main=main)
+                else:
+                    act(t("다시 번역…"), "translate", translate_selection,
+                        t("낡은 번역이 있으면 다시 번역합니다 — 띄우기 전에 편수·대략 비용을 확인합니다"))
 
-                ui.label(t("내보내기")).classes("md4-act-h")
-                with ui.element("div").classes("md4-act-grid"):
-                    act(t("영어 zip"), "download", lambda: download_bulk("en"))
-                    act(t("번역 zip"), "download", lambda: download_bulk("ko"))
-                    if settings_dialog.any_library_dirs():
-                        act(t("폴더로 저장"), "drive_file_move", lambda: save_to_library(paths), t("저장 위치로 내보내기"))
-
+            def mobile_part(first: bool) -> None:
                 ui.label(t("모바일")).classes("md4-act-h")
+                send_tip = t("Google Drive를 거쳐 모바일 리더({site})에서 읽습니다 — 모바일에서 단 하이라이트·메모도 이때 합칩니다",
+                             site=pages.DOMAIN)
+                audio_tip = t("번역 본문을 읽은 음성을 만들어 모바일에서 듣습니다 — 화면을 꺼도, CarPlay에서도")
+                all_there = bool(paths) and len(on_mobile) == len(paths)
+                if first:   # 모바일 보기 — 음성이 주 동작
+                    remake = bool(with_audio) and len(with_audio) == len(paths)
+                    act(t("음성 다시 만들기") if remake else t("음성 만들기"), "headphones",
+                        lambda: make_mobile_audio(paths), audio_tip, main=True)
                 with ui.element("div").classes("md4-act-grid"):
-                    act(t("보내기"), "smartphone", lambda: send_to_mobile(paths),
-                        t("Google Drive를 거쳐 모바일 리더({site})에서 읽습니다 — 모바일에서 단 하이라이트·메모도 이때 합칩니다",
-                          site=pages.DOMAIN))
-                    act(t("음성 만들기"), "headphones", lambda: make_mobile_audio(paths),
-                        t("번역 본문을 읽은 음성을 만들어 모바일에서 듣습니다 — 화면을 꺼도, CarPlay에서도"))
-                if on_mobile:
+                    if not first:
+                        act(t("음성 만들기"), "headphones", lambda: make_mobile_audio(paths), audio_tip)
+                    act(t("맞추기") if all_there else t("보내기"), "sync" if all_there else "smartphone",
+                        lambda: send_to_mobile(paths), send_tip)
+                    if first:
+                        if with_audio:
+                            act(t("음성 지우기"), "headset_off", lambda: remove_mobile_audio(with_audio),
+                                t("모바일 음성만 지웁니다 — 논문은 모바일에 그대로"))
+                        act(t("모바일에서 빼기"), "phonelink_erase", lambda: remove_from_mobile(on_mobile),
+                            t("모바일 목록에서 뺍니다 — 모바일에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 논문 파일은 그대로"))
+                if not first and on_mobile:
                     with ui.element("div").classes("md4-act-links"):
                         ui.button(t("모바일에서 빼기"), on_click=lambda: remove_from_mobile(on_mobile), color=None) \
                             .props("flat dense no-caps") \
@@ -2506,15 +2527,41 @@ def build_home(state: dict) -> None:
                             ui.button(t("음성 지우기"), on_click=lambda: remove_mobile_audio(with_audio), color=None) \
                                 .props("flat dense no-caps").tooltip(t("모바일 음성만 지웁니다 — 논문은 모바일에 그대로"))
 
+            def export_part() -> None:
+                ui.label(t("내보내기")).classes("md4-act-h")
+                with ui.element("div").classes("md4-act-grid"):
+                    act(t("영어 zip"), "download", lambda: download_bulk("en"))
+                    if len(untranslated) < len(rows):
+                        act(t("번역 zip"), "download", lambda: download_bulk("ko"))
+                    if settings_dialog.any_library_dirs():
+                        act(t("폴더로 저장"), "drive_file_move", lambda: save_to_library(paths), t("저장 위치로 내보내기"))
+
+            def collection_part() -> None:
                 # 추가 = 다른 소속은 그대로 두고 더하기, 빼기 = 그 소속만 떼기(그 폴더의 사본도 정리)
                 ui.label(t("컬렉션")).classes("md4-act-h")
                 member_of = {p for root in selected for p in (data["by_root"].get(root) or {}).get("pids", [])}
                 with ui.element("div").classes("md4-act-grid"):
                     with act(t("추가 ▾"), "playlist_add", None):
                         project_pick_menu(lambda v: bulk_member(v, True), with_new=True)
-                    if member_of:
+                    if in_collection and scope in member_of:   # 이 컬렉션을 보는 중 — 여기서 빼기가 바로
+                        act(t("이 컬렉션에서 빼기"), "playlist_remove", lambda: bulk_member(scope, False))
+                    elif member_of:
                         with act(t("빼기 ▾"), "playlist_remove", None):
                             project_pick_menu(lambda v: bulk_member(v, False), only=member_of)
+
+            with ui.column().classes("md4-pv-bulk gap-0 w-full q-mt-sm"):
+                if scope == MOBILE:
+                    mobile_part(first=True)
+                    if untranslated:
+                        ui.label(t("번역")).classes("md4-act-h")
+                        translate_part(main=False)
+                    export_part()
+                    collection_part()
+                else:
+                    translate_part(main=bool(untranslated))
+                    export_part()
+                    mobile_part(first=False)
+                    collection_part()
 
     def draw_summary() -> None:
         """아무것도 고르지 않았을 때 — 이 범위 요약 + 미리보기 안내."""
