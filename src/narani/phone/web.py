@@ -117,10 +117,12 @@ mark.anno.note-end::after { content: "✎"; font-size: .75em; margin-left: 2px; 
   border-radius: 8px; font-size: .9em; white-space: pre-wrap; }
 .anno-ta { width: 100%; font: inherit; font-size: 16px; color: var(--fg); background: var(--card);
   border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; resize: vertical; }
-/* 떠 있는 단추의 창 — '메모'(이 논문의 내 하이라이트·메모) · '질문하기'(에이전트) 두 탭 */
-.ag-tabs { flex: 1; display: flex; gap: 4px; min-width: 0; }
-.dh .ag-tabs button { font-size: .92em; font-weight: 600; color: var(--muted); padding: 5px 12px; border-radius: 8px; }
-.dh .ag-tabs button.on { color: var(--fg); background: var(--card); box-shadow: inset 0 0 0 1px var(--line); }
+/* 떠 있는 💬 단추의 창 — '메모'(이 논문의 내 하이라이트·메모) · '질문하기'(에이전트) 중 하나를 고르는 두 칸 스위치 */
+.ag-tabs { flex: 1; display: flex; min-width: 0; max-width: 300px; padding: 3px; border-radius: 11px; background: var(--line); }
+.dh .ag-tabs button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 0;
+  font-size: .9em; font-weight: 600; color: var(--muted); padding: 6px 8px; border-radius: 8px; white-space: nowrap; }
+.dh .ag-tabs button svg { flex: none; }
+.dh .ag-tabs button.on { color: var(--fg); background: var(--sheet); box-shadow: 0 1px 3px rgba(0,0,0,.14); }
 #agent.notes #ag-clear, #agent.notes #ag-set { display: none; }
 #fab-n { position: absolute; top: -3px; right: -3px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
   background: var(--fg); color: var(--bg); font-size: 12px; font-weight: 700; line-height: 20px; display: none; }
@@ -136,7 +138,7 @@ ol.nl .aq { border-radius: 3px; padding: 1px 4px; color: #24211c; font-size: .92
   -webkit-box-decoration-break: clone; }
 ol.nl .an { display: block; margin: 5px 0 0 4px; white-space: pre-wrap; }
 ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3px; }
-/* 듣기 — 🎧는 ✦ 위에, 재생 막대는 맨 아래(✦·🎧는 그 위로 올라간다). 지금 문장은 ::highlight(tts) */
+/* 듣기 — 🎧는 💬 위에, 재생 막대는 맨 아래(💬·🎧는 그 위로 올라간다). 지금 문장은 ::highlight(tts) */
 #lis { position: fixed; right: 20px; bottom: calc(82px + env(safe-area-inset-bottom)); z-index: 8; width: 44px; height: 44px;
   border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: var(--accent); display: none;
   box-shadow: 0 4px 14px rgba(0,0,0,.14); }
@@ -237,7 +239,7 @@ _APP_JS = r"""
     setText('fs-dn', md4T('가') + '−'); setText('fs-up', md4T('가') + '+'); setText('fs-btn', md4T('가'));
     doc.getElementById('fs-btn').setAttribute('aria-label', md4T('글자 크기'));
     doc.getElementById('top-title').setAttribute('aria-label', md4T('목차'));
-    doc.getElementById('fab').setAttribute('aria-label', md4T('이 논문에 대해 묻기'));
+    doc.getElementById('fab').setAttribute('aria-label', md4T('메모') + ' · ' + md4T('질문하기'));
     setText('lnk-about', md4T('Narani 소개')); setText('lnk-privacy', md4T('개인정보처리방침'));
     doc.getElementById('fs-dn').setAttribute('aria-label', md4T('글자 작게'));
     doc.getElementById('fs-up').setAttribute('aria-label', md4T('글자 크게'));
@@ -1139,12 +1141,20 @@ _READER_JS = r"""
     if (m.role === 'user' || m.err) d.textContent = (m.voice && m.role === 'user' ? '🎙 ' : '') + m.content; else d.innerHTML = md(m.content);
     return d;
   }
+  var TAB_ICON = {   // 두 칸 스위치의 그림 — 연필(메모) · 말풍선(질문하기)
+    'tab-notes': '<path fill="currentColor" d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75zM20.7 7.04a1 1 0 0 0 0-1.41l-2.33-2.33a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75z"/>',
+    'tab-chat': '<path fill="currentColor" d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm-7 13h-2v-2h2zm1.7-5.6-.8.8c-.7.6-.9 1.1-.9 1.8h-2v-.5c0-1 .4-1.7 1.1-2.4l1.1-1.1a1.3 1.3 0 0 0-1-2.2c-.8 0-1.4.6-1.4 1.4H8.8a3.2 3.2 0 0 1 6.4 0c0 .8-.2 1.5-.5 2.2z"/>'
+  };
+  function setTab(id, label, on){
+    var b = doc.getElementById(id);
+    b.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">' + TAB_ICON[id] + '</svg>';
+    b.appendChild(doc.createTextNode(label));
+    b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false');
+  }
   function setTabs(){
     var n = NOTE.key ? items().length : 0, notes = AG.mode === 'notes';
-    setText('tab-notes', md4T('메모') + (n ? ' ' + n : ''));
-    setText('tab-chat', md4T('질문하기'));
-    doc.getElementById('tab-notes').classList.toggle('on', notes);
-    doc.getElementById('tab-chat').classList.toggle('on', !notes);
+    setTab('tab-notes', md4T('메모') + (n ? ' ' + n : ''), notes);
+    setTab('tab-chat', md4T('질문하기'), !notes);
     agent.classList.toggle('notes', notes);
   }
   doc.getElementById('tab-notes').onclick = function(){ lsSet('narani:agtab', 'notes'); showNotes(); };
@@ -1549,6 +1559,9 @@ _AUDIO_JS = r"""
     });
   }
   var SPEEDS = [1, 1.25, 1.5, 1.75, 2, 0.8];
+  function setAudioSession(type){   // iOS 17+ Safari — 듣기는 'playback'(무음 스위치·화면 꺼짐에도), 말로 묻기는 'play-and-record'
+    if ('audioSession' in navigator) try { navigator.audioSession.type = type; } catch (x) {}
+  }
   function setSpd(v){ au.playbackRate = au.defaultPlaybackRate = v; lsSet('narani:aspd', v); setText('pl-spd', v + '×'); }
   setSpd(lsGet('narani:aspd', 1));
   doc.getElementById('pl-spd').onclick = function(){ var v = au.playbackRate, i = SPEEDS.indexOf(v); setSpd(SPEEDS[(i + 1) % SPEEDS.length]); };
@@ -1573,7 +1586,7 @@ _AUDIO_JS = r"""
     };
     Object.keys(MH).forEach(function(k){ try { navigator.mediaSession.setActionHandler(k, MH[k]); } catch (x) {} });
   }
-  if ('audioSession' in navigator) try { navigator.audioSession.type = 'playback'; } catch (x) {}
+  setAudioSession('playback');
   ['play', 'pause'].forEach(function(ev){
     au.addEventListener(ev, function(){
       setText('pl-pp', ev === 'play' ? '⏸' : '▶');
@@ -1788,6 +1801,9 @@ _TALK_JS = r"""
     TK = {model: c.model, cost: 0, started: Date.now(), last: Date.now(), wasPlaying: wasPlaying, active: false};
     body.classList.add('talking'); tkState('', md4T('연결 중…'));
     try {
+      // iOS: 듣기에 맞춘 'playback' 세션으로는 마이크를 못 연다("AudioSession category is not compatible with
+      // audio capture") — 대화 동안만 'play-and-record'로, 끝나면 talkEnd에서 되돌린다
+      setAudioSession('play-and-record');
       TK.mic = await navigator.mediaDevices.getUserMedia({audio: {echoCancellation: true, noiseSuppression: true, autoGainControl: true}});
       var tok = await fetch('https://api.openai.com/v1/realtime/client_secrets', {method: 'POST',
         headers: {'Authorization': 'Bearer ' + c.key, 'Content-Type': 'application/json'},
@@ -1825,6 +1841,7 @@ _TALK_JS = r"""
     try { t.pc && t.pc.close(); } catch (x) {}
     try { t.mic && t.mic.getTracks().forEach(function(tr){ tr.stop(); }); } catch (x) {}
     doc.getElementById('tk-au').srcObject = null;
+    setAudioSession('playback');
     body.classList.remove('talking');
     var secs = Math.round((Date.now() - t.started) / 1000);
     tkBar.className = 'on'; setText('tk-st', md4T('대화 끝 · {t} · 약 ${c}', {t: fmtT(secs), c: t.cost.toFixed(3)})); setText('tk-meta', '');
@@ -1963,10 +1980,10 @@ def _index_html(cfg: dict) -> str:
         "<button id=\"pl-next\">⏭</button><button id=\"pl-spd\">1×</button><button id=\"pl-x\">×</button></div>"
         "<audio id=\"pl-au\" preload=\"none\"></audio></div>"
         "<button id=\"fab\" class=\"rd\"><span id=\"fab-n\"></span><svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" aria-hidden=\"true\">"
-        "<path fill=\"currentColor\" d=\"M12 2l1.9 5.6L19.5 9.5l-5.6 1.9L12 17l-1.9-5.6L4.5 9.5l5.6-1.9zM19 14l.9 2.6"
-        " 2.6.9-2.6.9L19 21l-.9-2.6L15.5 17.5l2.6-.9z\"/></svg></button>"
-        "<section id=\"agent\" role=\"dialog\"><div class=\"dh\"><div class=\"ag-tabs\">"
-        "<button id=\"tab-notes\"></button><button id=\"tab-chat\"></button></div>"
+        "<path fill=\"currentColor\" d=\"M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM18 14H6v-2h12zm0-3H6V9h12zm0-3H6V6h12z\"/>"
+        "</svg></button>"
+        "<section id=\"agent\" role=\"dialog\"><div class=\"dh\"><div class=\"ag-tabs\" role=\"tablist\">"
+        "<button id=\"tab-notes\" role=\"tab\"></button><button id=\"tab-chat\" role=\"tab\"></button></div>"
         "<button id=\"ag-clear\"></button><button id=\"ag-set\">⚙</button><button id=\"ag-x\">×</button></div>"
         "<div id=\"ag-body\"></div><form id=\"ag-form\"><textarea id=\"ag-in\" rows=\"1\"></textarea>"
         "<button id=\"ag-mic\" type=\"button\">🎙</button><button id=\"ag-send\" type=\"submit\">↑</button></form></section>"
