@@ -637,15 +637,28 @@
       var off = have[e.file] === e.hash; if (off) n++;
       var li = el('li', OFFLINE && !have[e.file] ? 'na' : ''), a = el('a');
       a.href = '#!' + fileId(e); a.setAttribute('data-open', fileId(e));
-      var title = el('span', 'li-title', e.title_ko || e.title);
-      if (off) title.appendChild(el('span', 'dl', '⤓'));
-      a.appendChild(title);
+      // 카드 — 제목 / 원제 / 저자·연도·학회 한 줄(넘치면 …) / 작은 꼬리표 줄(번역·음성 길이·받아 둠)
+      a.appendChild(el('span', 'li-title', e.title_ko || e.title));
       if (e.title_ko) a.appendChild(el('span', 'li-en', e.title));
-      var meta = el('span', 'li-meta', [e.authors, e.year, e.venue].filter(function(x){ return x; }).join(' · '));
-      meta.appendChild(el('span', 'badge', e.has_ko ? md4T('번역') : md4T('원문만')));
-      if (li.className === 'na') meta.appendChild(el('span', 'na-t', md4T('받아 두지 않음')));
-      if (audioOf(e)) meta.appendChild(el('span', 'au', '🎧 ' + fmtT(e.audio.duration)));
-      a.appendChild(meta); li.appendChild(a); libList.appendChild(li);
+      var when = [e.year, e.venue].filter(function(x){ return x; }).join(' · ');   // 저자만 줄이고 연도·학회는 늘 보이게
+      if (e.authors || when){
+        var by = el('span', 'li-by');
+        if (e.authors) by.appendChild(el('span', 'who', e.authors));
+        if (e.authors && when) by.appendChild(el('span', 'sep', '·'));
+        if (when) by.appendChild(el('span', 'when', when));
+        a.appendChild(by);
+      }
+      var tags = el('span', 'li-tags');
+      tags.appendChild(el('span', 'tag', e.has_ko ? md4T('번역') : md4T('원문만')));
+      if (audioOf(e)){
+        var au = el('span', 'tag au');
+        au.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 0 0-9 9v6a3 3 0 0 0 3 3h1a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H5v-1a7 7 0 0 1 14 0v1h-2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1a3 3 0 0 0 3-3v-6a9 9 0 0 0-9-9z"/></svg>';
+        au.appendChild(doc.createTextNode(fmtT(e.audio.duration)));
+        tags.appendChild(au);
+      }
+      if (off) tags.appendChild(el('span', 'tag dl', '⤓'));   // 이 기기에 받아 둔 논문
+      if (li.className === 'na') tags.appendChild(el('span', 'tag na-t', md4T('받아 두지 않음')));
+      a.appendChild(tags); li.appendChild(a); libList.appendChild(li);
     });
     if (INDEX && !INDEX.papers.length) libList.appendChild(el('li', 'empty', md4T('올린 논문이 없어요. 데스크톱 앱에서 모바일로 보내 주세요.')));
     libBar.innerHTML = '';
