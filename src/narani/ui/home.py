@@ -451,6 +451,27 @@ _AI_PHASES = ("cite", "glossary", "meta")
 _AUDIO_GATE = jobs.Gate(1)  # 모바일 음성 만들기 — 서버 수명 동안 하나, 한 번에 한 편씩
 
 
+_CONVERT_STEPS = ("extracting", "cite", "glossary", "meta", "bib")   # 변환 큐 ①~⑤ (AI 키가 없으면 ①·⑤만)
+
+
+def _convert_fraction(status: str, elapsed: float, pages: int) -> float:
+    """변환 진행 막대 — 추출기는 쪽별 진행을 알려 주지 않으니 단계(①~⑤)마다 1/5씩, 단계 안에서는 걸린 시간으로
+    천천히 차오르게 어림한다(끝나기 전엔 그 단계의 90%를 넘지 않는다). 추출은 쪽 수만큼 길게 잡는다."""
+    import math
+
+    i = _CONVERT_STEPS.index(status)
+    tau = max(15.0, pages * 2.5) if status == "extracting" else 20.0
+    return (i + 0.9 * (1 - math.exp(-elapsed / tau))) / len(_CONVERT_STEPS)
+
+
+def _bar(value: float) -> None:
+    """작업 카드의 얇은 진행 막대."""
+    from nicegui import ui
+
+    ui.linear_progress(value=max(0.0, min(1.0, value)), show_value=False) \
+        .props("rounded size=4px instant-feedback").classes("w-full q-mt-xs")
+
+
 def _mmss(sec: float) -> str:
     """작업 카드의 시간 — 1:05 · 12:30 · 1:02:03."""
     sec = max(0, int(sec))
@@ -1810,6 +1831,8 @@ def build_home(state: dict) -> None:
                             ui.label(sub).classes("text-xs text-gray-400")
                             if timing:
                                 ui.label(timing).classes("text-xs text-gray-400")
+                            if not queued:   # 번역(섹션)·음성(문장) — 작업이 알려 주는 진행 그대로
+                                _bar(j.fraction)
                         if j.kind == "mobile_audio":   # 멈추기 — 다음 문장에서 멈춘다(만든 섹션은 캐시에 남는다)
                             if j.stop:
                                 ui.label(t("멈추는 중…")).classes("text-xs text-gray-400 shrink-0")
@@ -1865,6 +1888,8 @@ def build_home(state: dict) -> None:
                     with ui.column().classes("gap-0 flex-grow min-w-0"):
                         ui.label(it["name"]).classes("text-sm truncate w-full")  # w-full 없으면 긴 파일명이 카드 밖으로
                         ui.label(sub).classes("text-xs " + ("text-red-500" if st == "failed" else "text-gray-400"))
+                        if st in _CONVERT_STEPS:
+                            _bar(_convert_fraction(st, el, it.get("pages") or 0))
                     if it.get("garbled"):
                         ui.icon("warning", size="18px").classes("text-orange-500 shrink-0") \
                             .tooltip(t("깨진 문자 {garbled}개 — 다른 변환 방식을 시도해 보세요", garbled=it['garbled']))

@@ -61,3 +61,12 @@ def test_eta_from_progress():
     j.progress(25, 100)
     el, left = j.eta()
     assert 59 <= el <= 61 and 175 <= left <= 185         # 1분에 1/4 → 3분 남음
+
+
+def test_convert_bar_moves_forward_by_step_and_time():
+    # 변환 막대 — 단계마다 1/5, 단계 안에서는 시간으로 차오르되 다음 단계를 넘지 않는다
+    from narani.ui.home import _convert_fraction
+
+    xs = [_convert_fraction("extracting", t, 10) for t in (0, 5, 30, 600)]
+    assert xs == sorted(xs) and xs[0] == 0 and xs[-1] < 0.2
+    assert _convert_fraction("cite", 0, 10) == 0.2 and _convert_fraction("bib", 10_000, 0) < 1.0
