@@ -1633,10 +1633,16 @@ _AUDIO_JS = r"""
     }
     return started ? (r.setEnd(cell, cell.childNodes.length), r) : null;
   }
-  var nowRow = null;
+  var nowRow = null, hlCell = null;
   function unmarkNow(){
     if (HL) try { CSS.highlights.delete('tts'); } catch (x) {}
     if (nowRow){ nowRow.classList.remove('tts-row'); nowRow = null; }
+    // iOS Safari는 지운 강조의 배경을 글자 둘레만 다시 그려 줄 아래에 노란 띠가 남는다 — 그 셀을 통째로 다시 그리게 한다
+    if (hlCell){
+      var c = hlCell; hlCell = null;
+      c.style.opacity = '.999';
+      requestAnimationFrame(function(){ requestAnimationFrame(function(){ c.style.opacity = ''; }); });
+    }
   }
   // 음성에 없는 행(그림·표·캡션·참고문헌·뺀 섹션…) — 듣는 동안 흐리게 두고 눌러도 아무 일 없게
   function markSpoken(clear){
@@ -1654,7 +1660,7 @@ _AUDIO_JS = r"""
     var cell = row.querySelector('.cell.' + AU.tl.side) || row.querySelector('.cell.same'), rect = null;
     if (HL && cell && cell.offsetParent){
       var r = cellRange(cell, s[2], s[3]);
-      if (r){ CSS.highlights.set('tts', new Highlight(r)); rect = r.getBoundingClientRect(); }
+      if (r){ CSS.highlights.set('tts', new Highlight(r)); rect = r.getBoundingClientRect(); hlCell = cell; }
     }
     if (!rect){ nowRow = row; row.classList.add('tts-row'); rect = row.getBoundingClientRect(); }
     // 화면을 보고 있으면 따라 내려간다 — 손으로 스크롤한 뒤 몇 초는 두고, 이미 보이면 움직이지 않는다
