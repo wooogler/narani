@@ -635,6 +635,13 @@ QWEN_DEFAULT_SPEAKER = {"ko": "Sohee", "ja": "Ono_Anna", "zh": "Vivian", "zh-Han
 # 실시간 대비 대략 속도 — M5·16GB 실측: 문장마다 1.26배, 문단째 1.53배(데운 뒤). 메모리가 모자라면 0.5배까지 떨어진다.
 # 문장마다 보내는 쪽을 고른다 — 20%쯤 느려도 문장 시각이 정확해 폰의 문장 하이라이트가 어긋나지 않는다.
 QWEN_SPEED = 1.2
+# 말투 지시(instruct) — 없으면 차분하다 못해 졸린 기본 말투. 영어 지시가 가장 잘 들었다(같은 문장 17.2초 → 13.8초, 밝은 톤).
+# 음성 만들기 창에서 고치고, 비우면 지시 없이. 섹션 캐시 열쇠(engine.id)에 들어가 바꾸면 새로 만든다.
+QWEN_STYLE = "Speak in a bright, energetic and clear tone, like an engaging podcast host, at a slightly brisk pace."
+
+
+def qwen_style_tag(style: str | None) -> str:
+    return hashlib.sha256(style.encode()).hexdigest()[:8] if style else ""
 _QWEN_WORKER = r'''
 import json, sys
 import numpy as np, soundfile as sf
@@ -647,7 +654,7 @@ for line in sys.stdin:
     job = json.loads(line)
     try:
         parts = [np.array(r.audio) for r in model.generate_custom_voice(
-            text=job["text"], speaker=job["speaker"], language=job["language"])]
+            text=job["text"], speaker=job["speaker"], language=job["language"], instruct=job.get("instruct") or None)]
         a = np.concatenate(parts) if parts else np.zeros(1, dtype=np.float32)
         sf.write(job["out"], a, int(model.sample_rate), subtype="PCM_16")
         print(json.dumps({"ok": True}), flush=True)
@@ -714,15 +721,17 @@ class QwenVoice:
     kind = "qwen"
     sample_rate = 24000
 
-    def __init__(self, speaker: str = "Sohee", lang: str = "ko", size: str = "0.6b") -> None:
+    def __init__(self, speaker: str = "Sohee", lang: str = "ko", size: str = "0.6b", style: str | None = None) -> None:
         self.speaker, self.size = speaker, size if size in QWEN_MODELS else "0.6b"
+        self.style = (style or "").strip() or None
         self.language = QWEN_LANG.get(lang) or QWEN_LANG.get(lang.split("-")[0], "English")
         self._proc = None
         self._tmp = None
 
     @property
     def id(self) -> str:
-        return f"qwen:{self.size}:{self.speaker}"
+        tag = qwen_style_tag(self.style)   # 말투 지시가 있으면 그 지문 — 지시 없는 옛 음성은 열쇠가 그대로
+        return f"qwen:{self.size}:{self.speaker}" + (f":{tag}" if tag else "")
 
     @staticmethod
     def available() -> bool:
@@ -765,7 +774,7 @@ class QwenVoice:
         for i, u in enumerate(units):
             path = Path(self._tmp) / f"{i:05d}.wav"
             self._proc.stdin.write(json.dumps({"text": u.text, "speaker": self.speaker, "language": self.language,
-                                               "out": str(path)}, ensure_ascii=False) + "\n")
+                                               "instruct": self.style, "out": str(path)}, ensure_ascii=False) + "\n")
             self._proc.stdin.flush()
             msg = self._read()
             if msg.get("error"):

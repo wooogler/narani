@@ -566,7 +566,8 @@ CORE_JS = r"""
         go.textContent = md4T('논문 링크 열기'); acts.push(go);
       }
       acts.push(button(m[2] === 'ref' ? md4T('참고문헌 목록에서 보기') : md4T('각주로 이동'), function(){
-        closeSheet(); var t = visibleTarget(id); if (t) t.scrollIntoView({block: 'start'});
+        closeSheet(); var t = visibleTarget(id);
+        if (t){ if (typeof beforeJump === 'function') beforeJump(); t.scrollIntoView({block: 'start'}); }
       }));
       openSheet((m[2] === 'ref' ? md4T('참고문헌 {n}', {n: m[3]}) : md4T('각주 {n}', {n: m[3]})), [para(text || md4T('(서지 정보를 찾지 못했어요)'))], acts);
       return;
@@ -575,7 +576,11 @@ CORE_JS = r"""
     var pm = /^(p\d+)$/.exec(id);
     if (pm){ openPaper(pm[1], true); return; }
     var t = visibleTarget(id);
-    if (t) t.scrollIntoView({block: 'start'});
+    if (t){
+      if (typeof beforeJump === 'function') beforeJump();   // 쓰는 쪽이 떠나기 전 자리를 집는다(폰: '읽던 자리로')
+      t.scrollIntoView({block: 'start'});
+      if (t.classList.contains('row')){ t.classList.remove('flash'); void t.offsetWidth; t.classList.add('flash'); }
+    }
   }
 
   doc.addEventListener('click', function(e){

@@ -1149,7 +1149,8 @@ def build_home(state: dict) -> None:
             n = ui.notification(t("목소리를 준비하는 중…"), spinner=True, timeout=None) if eng.value == "qwen" else None
             try:
                 if eng.value == "qwen":
-                    wav = await run.io_bound(phone_service.voice_preview, "qwen", qvoice.value, langs[0], spoken)
+                    wav = await run.io_bound(phone_service.voice_preview, "qwen", qvoice.value, langs[0], spoken,
+                                             None, qstyle.value or "")
                 else:
                     wav = await run.io_bound(phone_service.gemini_preview, gvoice.value, gmodel.value, spoken)
             except Exception as e:  # noqa: BLE001
@@ -1208,6 +1209,10 @@ def build_home(state: dict) -> None:
                 with ui.row().classes("items-center gap-2 w-full no-wrap") as qwen_row:
                     qvoice = ui.select(list(tts.QWEN_SPEAKERS), value=phone_service.qwen_choice(langs[0]), label=t("목소리")) \
                         .props("dense outlined").classes("grow")
+                # 말투 지시 — 없으면 졸린 기본 말투라 '팟캐스트 진행자처럼'이 기본. 영어로 쓰는 게 가장 잘 듣는다
+                qstyle = ui.input(t("말투 지시 (영어가 잘 들어요 · 비우면 기본 말투)"), value=phone_service.qwen_style()) \
+                    .props("dense outlined clearable").classes("w-full text-xs")
+                qstyle.bind_visibility_from(qwen_row, "visible")
             with ui.row().classes("items-center gap-2 w-full no-wrap") as gem_row:
                 gmodel = ui.select({m: (t("flash-lite — 더 쌈") if "lite" in m else t("flash — 더 자연스러움"))
                                     for m in tts.GEMINI_MODELS}, value=gc["model"], label=t("모델")) \
@@ -1372,14 +1377,16 @@ def build_home(state: dict) -> None:
             return
         opts_ = {"voice": gvoice.value if engine == "gemini" else (qvoice.value if engine == "qwen"
                                                                    else (voice.value if names else None)),
-                 "model": gmodel.value if engine == "gemini" else None}
+                 "model": gmodel.value if engine == "gemini" else None,
+                 "style": (qstyle.value or "").strip() if engine == "qwen" else None}
         started = 0
         for root in roots:
             def work(job, root=root):  # noqa: ANN001, ANN202 — 워커 스레드 (화면 없이 끝까지)
                 def prog(i: int, n: int, done: int, tot: int, title: str) -> None:  # noqa: ARG001
                     job.progress(done, tot)
                     job.detail["section"] = title
-                s = phone_service.make_audio([root], opts_["voice"], include, prog, engine=engine, model=opts_["model"])
+                s = phone_service.make_audio([root], opts_["voice"], include, prog, engine=engine, model=opts_["model"],
+                                             style=opts_["style"])
                 job.message = t("음성 {m}분 · {mb:.0f}MB를 올렸습니다", m=round(s["seconds"] / 60), mb=s["bytes"] / 1e6)
                 return s
             row = data["by_root"].get(str(root)) or {}

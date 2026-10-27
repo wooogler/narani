@@ -1315,5 +1315,7 @@
  "비워 두면 목소리가 알아서 읽습니다. 고치면 그 말이 나오는 섹션만 다시 만듭니다.": "Leave blank to let the voice decide. Changing a reading remakes only the sections that use it.",
  "AI로 채우기": "Fill with AI",
  "{n}번 나옴": "appears {n} times",
- "논문마다 저장해 둔 발음 용어집으로 읽습니다.": "Each paper is read with its saved pronunciation glossary."
+ "논문마다 저장해 둔 발음 용어집으로 읽습니다.": "Each paper is read with its saved pronunciation glossary.",
+ "말투 지시 (영어가 잘 들어요 · 비우면 기본 말투)": "Style instruction (English works best · empty = default delivery)",
+ "그림·표가 없는 논문이에요.": "This paper has no figures or tables."
 }
