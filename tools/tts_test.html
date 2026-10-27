@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="듣기 시험">
+<link rel="manifest" href="tts-test.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Narani 듣기 시험</title>
+<style>
+:root { --bg: #fbfaf7; --fg: #24211c; --muted: #6b6862; --line: #e4e0d8; --card: #fff; --accent: #2f6fd6; --hl: #ffe08a; --bad: #b3261e; --ok: #1e7a3c; }
+@media (prefers-color-scheme: dark) { :root { --bg: #161615; --fg: #ecebe8; --muted: #a09d97; --line: #34322e; --card: #1f1e1c; --accent: #6aa0ff; --hl: #6b5a12; --bad: #ff8a80; --ok: #7ed39a; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", sans-serif;
+  padding: env(safe-area-inset-top) 16px calc(150px + env(safe-area-inset-bottom)); }
+h1 { font-size: 1.15em; margin: 16px 0 4px; }
+.sub { color: var(--muted); font-size: .85em; margin: 0 0 12px; }
+details { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; margin: 10px 0; }
+summary { font-weight: 600; cursor: pointer; }
+.env { font-size: .8em; color: var(--muted); word-break: break-all; }
+ol.check { padding-left: 1.3em; margin: 8px 0; font-size: .92em; }
+ol.check li { margin: 6px 0; }
+ol.check .st { display: inline-flex; gap: 4px; margin-left: 4px; vertical-align: middle; }
+ol.check .st button { font: inherit; font-size: .8em; padding: 2px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
+ol.check .st button.on.y { background: var(--ok); border-color: var(--ok); color: #fff; }
+ol.check .st button.on.n { background: var(--bad); border-color: var(--bad); color: #fff; }
+textarea.memo { width: 100%; font: inherit; font-size: 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); color: var(--fg); padding: 6px 8px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 8px 0; }
+button.b { font: inherit; font-size: .9em; padding: 7px 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--card); color: var(--fg); }
+button.b.pri { background: var(--accent); border-color: var(--accent); color: #fff; }
+.secs label { display: block; font-size: .92em; margin: 4px 0; }
+#log { font: 12px/1.45 ui-monospace, Menlo, monospace; white-space: pre-wrap; max-height: 40vh; overflow-y: auto; margin: 8px 0 0; }
+#text h3 { font-size: 1em; margin: 22px 0 6px; }
+#text p { margin: 0 0 12px; }
+#text span.s { border-radius: 3px; cursor: pointer; }
+#text span.s.now { background: var(--hl); }
+#text span.s.out { opacity: .4; }
+#text mark { background: var(--accent); color: #fff; border-radius: 2px; }
+#bar { position: fixed; left: 0; right: 0; bottom: 0; background: var(--card); border-top: 1px solid var(--line);
+  padding: 8px 12px calc(10px + env(safe-area-inset-bottom)); box-shadow: 0 -6px 20px rgba(0,0,0,.08); }
+#bar .now { font-size: .82em; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#bar .ctl { display: flex; justify-content: space-between; align-items: center; gap: 4px; margin-top: 4px; }
+#bar .ctl button { font: inherit; border: 0; background: none; color: var(--fg); padding: 6px 8px; font-size: 1.05em; min-width: 40px; }
+#bar #pp { width: 52px; height: 52px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 1.3em; }
+#bar input[type=range] { width: 100%; margin: 4px 0 0; }
+#bar .t { display: flex; justify-content: space-between; font-size: .75em; color: var(--muted); }
+</style></head><body>
+<h1>Narani 듣기 시험</h1>
+<p class="sub" id="sub"></p>
+
+<details open><summary>시험 순서</summary>
+<p style="font-size:.9em;margin:6px 0">Safari 탭에서 한 번, <b>공유 → 홈 화면에 추가</b>로 만든 앱에서 한 번 해 보세요(둘은 결과가 다를 수 있어요). 해 본 항목에 ✓/✗를 누르고, 끝나면 <b>결과 복사</b>로 붙여 넣어 주세요. 아래 기록은 화면이 꺼진 동안 일어난 일도 남깁니다.</p>
+<ol class="check" id="check"></ol>
+<textarea class="memo" id="memo" rows="2" placeholder="메모 (차종·iOS 버전·느낀 점)"></textarea>
+<div class="row"><button class="b pri" id="copy">결과 복사</button><button class="b" id="reset">결과·기록 지우기</button></div>
+<div class="env" id="env"></div>
+</details>
+
+<details><summary>듣기 범위</summary>
+<div class="row" style="font-size:.92em"><label><input type="radio" name="rng" value="all" checked> 전체</label>
+<label><input type="radio" name="rng" value="pick"> 고른 섹션만 (안 고른 섹션은 건너뛰고, 마지막 고른 섹션 뒤에 멈춤)</label></div>
+<div class="secs" id="secs"></div>
+</details>
+
+<details><summary>폰 내장 음성 (speechSynthesis) 비교</summary>
+<p style="font-size:.9em;margin:6px 0">음성 파일 대신 폰의 목소리로 지금 문장부터 읽어요. 단어 하이라이트가 따라가는지, 화면을 잠가도 계속 읽는지 봐 주세요.</p>
+<div class="row"><select id="vsel" class="b"></select><button class="b pri" id="sp-go">내장 음성으로 읽기</button><button class="b" id="sp-stop">멈춤</button></div>
+</details>
+
+<details><summary>기록</summary><div id="log"></div></details>
+
+<div id="text"></div>
+
+<audio id="au" preload="metadata"></audio>
+<div id="bar">
+  <div class="now" id="now"></div>
+  <input type="range" id="seek" min="0" step="1" value="0">
+  <div class="t"><span id="cur">0:00</span><span id="spd"></span><span id="dur">0:00</span></div>
+  <div class="ctl">
+    <button id="prev" aria-label="이전 섹션">⏮</button><button id="back" aria-label="15초 뒤로">−15</button>
+    <button id="pp" aria-label="재생">▶</button>
+    <button id="fwd" aria-label="15초 앞으로">+15</button><button id="next" aria-label="다음 섹션">⏭</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var TL = /*TIMELINE*/null;
+  var doc = document, a = doc.getElementById('au'), S = TL.sents, SEC = TL.sections;
+  var standalone = !!(navigator.standalone || (window.matchMedia && matchMedia('(display-mode: standalone)').matches));
+  var CTX = standalone ? 'app' : 'tab';
+  function ls(k, d){ try { var v = JSON.parse(localStorage.getItem('ttstest:' + k) || 'null'); return v == null ? d : v; } catch (e) { return d; } }
+  function lss(k, v){ try { localStorage.setItem('ttstest:' + k, JSON.stringify(v)); } catch (e) {} }
+  function fmt(s){ s = Math.max(0, Math.floor(s || 0)); return Math.floor(s / 60) + ':' + ('0' + s % 60).slice(-2); }
+  function $(id){ return doc.getElementById(id); }
+
+  // ---- 기록 — 화면이 꺼진 사이 일도 남게 localStorage에 ----
+  var LOG = ls('log', []);
+  function log(msg){
+    var d = new Date(), line = ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2) + ':' + ('0' + d.getSeconds()).slice(-2)
+      + ' [' + CTX + '] ' + msg;
+    LOG.push(line); if (LOG.length > 400) LOG = LOG.slice(-400); lss('log', LOG);
+    var el = $('log'); el.textContent = LOG.slice().reverse().join('\n');
+  }
+  $('log').textContent = LOG.slice().reverse().join('\n');
+
+  // ---- 환경 ----
+  var hasMS = 'mediaSession' in navigator, hasAS = 'audioSession' in navigator;
+  if (hasAS){ try { navigator.audioSession.type = 'playback'; } catch (e) {} }
+  $('sub').textContent = TL.title + ' · ' + fmt(TL.duration) + ' · 섹션 ' + SEC.length + '개 · ' + (TL.bytes / 1e6).toFixed(1) + 'MB · 목소리 ' + TL.voice;
+  var ENV = '실행: ' + (standalone ? '홈 화면 앱' : '브라우저 탭') + ' · Media Session ' + (hasMS ? '있음' : '없음')
+    + ' · audioSession ' + (hasAS ? navigator.audioSession.type : '없음') + ' · speechSynthesis ' + ('speechSynthesis' in window ? '있음' : '없음')
+    + '\n' + navigator.userAgent;
+  $('env').textContent = ENV;
+  log('페이지 열림 (' + (standalone ? '홈 화면 앱' : '브라우저 탭') + ')');
+
+  // ---- 시험 항목 ----
+  var ITEMS = [
+    '화면을 잠가도 계속 들린다 (몇 분 이상)',
+    '잠금 화면에 제목·지금 섹션과 재생 단추가 보인다',
+    'CarPlay 화면에 \'지금 재생 중\'으로 보인다',
+    '핸들·CarPlay의 다음/이전 단추로 섹션이 넘어간다',
+    '1분 넘게 멈췄다가 잠금 화면·CarPlay에서 다시 재생된다',
+    '앱(탭)을 완전히 닫았다 다시 열고 재생하면 소리가 나고, 듣던 자리부터 이어진다',
+    '\'고른 섹션만\'일 때 화면이 꺼져 있어도 안 고른 섹션을 건너뛴다',
+    '화면을 켜면 지금 문장 하이라이트가 소리와 맞는다',
+    '속도를 바꿔도 목소리가 자연스럽다 (1.5×)',
+    '내장 음성: 화면을 잠가도 계속 읽는다',
+    '내장 음성: 단어 하이라이트가 소리를 따라간다'
+  ];
+  var CK = ls('check:' + CTX, {});
+  ITEMS.forEach(function(txt, i){
+    var li = doc.createElement('li'); li.appendChild(doc.createTextNode(txt));
+    var st = doc.createElement('span'); st.className = 'st';
+    [['y', '✓ 됨'], ['n', '✗ 안 됨']].forEach(function(p){
+      var b = doc.createElement('button'); b.className = p[0] + (CK[i] === p[0] ? ' on' : ''); b.textContent = p[1];
+      b.onclick = function(){
+        CK[i] = CK[i] === p[0] ? null : p[0]; lss('check:' + CTX, CK);
+        [].forEach.call(st.children, function(x){ x.classList.toggle('on', CK[i] === x.className.charAt(0)); });
+      };
+      st.appendChild(b);
+    });
+    li.appendChild(st); $('check').appendChild(li);
+  });
+  $('memo').value = ls('memo:' + CTX, '');
+  $('memo').oninput = function(){ lss('memo:' + CTX, $('memo').value); };
+  $('copy').onclick = function(){
+    var lines = ['# Narani 듣기 시험 결과', ENV, ''];
+    ITEMS.forEach(function(t, i){ lines.push((i + 1) + '. ' + (CK[i] === 'y' ? '✓' : CK[i] === 'n' ? '✗' : '–') + ' ' + t); });
+    if ($('memo').value.trim()) lines.push('', '메모: ' + $('memo').value.trim());
+    lines.push('', '## 기록 (최근 120줄)'); lines = lines.concat(LOG.slice(-120));
+    var text = lines.join('\n');
+    function done(){ $('copy').textContent = '복사했어요'; setTimeout(function(){ $('copy').textContent = '결과 복사'; }, 1500); }
+    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, fallback); else fallback();
+    function fallback(){ var t = doc.createElement('textarea'); t.value = text; doc.body.appendChild(t); t.select(); try { doc.execCommand('copy'); done(); } catch (e) {} t.remove(); }
+  };
+  $('reset').onclick = function(){
+    if (!confirm('이 화면(' + (standalone ? '홈 화면 앱' : '브라우저 탭') + ')의 결과와 기록을 지울까요?')) return;
+    LOG = []; lss('log', LOG); CK = {}; lss('check:' + CTX, CK); lss('memo:' + CTX, ''); location.reload();
+  };
+
+  // ---- 본문 (문장마다 span) ----
+  var spans = [], text = $('text'), blockEl = {};
+  S.forEach(function(s, i){
+    var host = blockEl[s.b];
+    if (!host){ host = blockEl[s.b] = doc.createElement(s.head ? 'h3' : 'p'); text.appendChild(host); }
+    else host.appendChild(doc.createTextNode(' '));
+    var sp = doc.createElement('span'); sp.className = 's'; sp.textContent = s.text; sp.setAttribute('data-i', i);
+    host.appendChild(sp); spans.push(sp);
+  });
+  text.addEventListener('click', function(e){
+    var sp = e.target.closest && e.target.closest('span.s'); if (!sp) return;
+    var i = +sp.getAttribute('data-i');
+    if (speaking){ speakFrom(i); return; }
+    seekTo(S[i].t, '문장 누름'); if (a.paused) play();
+  });
+
+  // ---- 듣기 범위 ----
+  var PICK = ls('pick', null) || SEC.map(function(){ return true; }), MODE = ls('mode', 'all');
+  SEC.forEach(function(s, i){
+    var l = doc.createElement('label'), c = doc.createElement('input'); c.type = 'checkbox'; c.checked = !!PICK[i];
+    c.onchange = function(){ PICK[i] = c.checked; lss('pick', PICK); paintRange(); };
+    l.appendChild(c); l.appendChild(doc.createTextNode(' ' + s.title + ' (' + fmt(s.end - s.start) + ')')); $('secs').appendChild(l);
+  });
+  [].forEach.call(doc.querySelectorAll('input[name=rng]'), function(r){
+    r.checked = r.value === MODE;
+    r.onchange = function(){ MODE = r.value; lss('mode', MODE); paintRange(); log('범위: ' + (MODE === 'all' ? '전체' : '고른 섹션만')); };
+  });
+  function allowed(sec){ return MODE === 'all' || !!PICK[sec]; }
+  function paintRange(){ spans.forEach(function(sp, i){ sp.classList.toggle('out', !allowed(S[i].sec)); }); }
+  paintRange();
+
+  // ---- 재생 ----
+  var cur = -1, curSec = -1, userScroll = 0, lastTU = 0, lastPos = 0, lastSave = 0, lastPS = 0, fresh = false;
+  a.src = TL.audio;
+  function secAt(t){ var k = 0; for (var i = 0; i < SEC.length; i++) if (SEC[i].start <= t + 0.05) k = i; return k; }
+  function sentAt(t){ var lo = 0, hi = S.length - 1; while (lo < hi){ var m = (lo + hi + 1) >> 1; if (S[m].t <= t + 0.05) lo = m; else hi = m - 1; } return lo; }
+  function seekTo(t, why){ a.currentTime = Math.max(0, Math.min(TL.duration - 0.2, t)); log('이동 → ' + fmt(t) + (why ? ' (' + why + ')' : '')); }
+  function play(){
+    stopSpeak();
+    if (!fresh){   // iOS 26: 홈 화면 앱을 다시 열면 <audio>가 소리 없이 재생되는 버그(WebKit 295518) — 첫 재생 직전에 src를 다시 넣는다
+      fresh = true;
+      var t = a.currentTime || ls('pos', 0);
+      a.src = TL.audio; a.load();
+      a.addEventListener('loadedmetadata', function f(){ a.removeEventListener('loadedmetadata', f); if (t) a.currentTime = t; });
+    }
+    var p = a.play();
+    if (p && p.then) p.then(function(){}, function(e){ log('재생 실패: ' + (e && e.name) + ' ' + (e && e.message || '')); });
+  }
+  function nextSec(dir, why){
+    var t = a.currentTime, k = secAt(t), target = null, i;
+    if (dir > 0){ for (i = k + 1; i < SEC.length; i++) if (allowed(i)){ target = i; break; } }
+    else {
+      if (t - SEC[k].start > 3 && allowed(k)) target = k;
+      else for (i = k - 1; i >= 0; i--) if (allowed(i)){ target = i; break; }
+      if (target == null) target = k;
+    }
+    if (target == null){ log('다음 섹션 없음 (' + why + ')'); return; }
+    seekTo(SEC[target].start, why + ': ' + (dir > 0 ? '다음' : '이전') + ' 섹션');
+  }
+  $('pp').onclick = function(){ if (a.paused) play(); else a.pause(); };
+  $('back').onclick = function(){ seekTo(a.currentTime - 15, '단추'); };
+  $('fwd').onclick = function(){ seekTo(a.currentTime + 15, '단추'); };
+  $('prev').onclick = function(){ nextSec(-1, '단추'); };
+  $('next').onclick = function(){ nextSec(1, '단추'); };
+  var SPEEDS = [1, 1.25, 1.5, 1.75, 2], spd = ls('spd', 1);
+  function setSpd(v){ spd = v; a.playbackRate = v; a.defaultPlaybackRate = v; lss('spd', v); $('spd').textContent = v + '× (눌러 바꾸기)'; }
+  $('spd').onclick = function(){ setSpd(SPEEDS[(SPEEDS.indexOf(spd) + 1) % SPEEDS.length]); log('속도 ' + spd + '×'); };
+  setSpd(spd);
+  var seek = $('seek'); seek.max = Math.floor(TL.duration); $('dur').textContent = fmt(TL.duration);
+  seek.oninput = function(){ $('cur').textContent = fmt(+seek.value); };
+  seek.onchange = function(){ seekTo(+seek.value, '막대'); };
+
+  function meta(k){
+    if (!hasMS) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({title: TL.title, artist: SEC[k] ? SEC[k].title : '', album: 'Narani 듣기 시험',
+        artwork: [{src: 'icon-512.png', sizes: '512x512', type: 'image/png'}, {src: 'icon-192.png', sizes: '192x192', type: 'image/png'}]});
+    } catch (e) {}
+  }
+  if (hasMS){
+    var H = {
+      play: function(){ log('잠금 화면/차: 재생'); play(); },
+      pause: function(){ log('잠금 화면/차: 일시정지'); a.pause(); },
+      stop: function(){ log('잠금 화면/차: 정지'); a.pause(); },
+      seekbackward: function(d){ seekTo(a.currentTime - ((d && d.seekOffset) || 15), '잠금 화면/차 뒤로'); },
+      seekforward: function(d){ seekTo(a.currentTime + ((d && d.seekOffset) || 15), '잠금 화면/차 앞으로'); },
+      previoustrack: function(){ nextSec(-1, '잠금 화면/차'); },
+      nexttrack: function(){ nextSec(1, '잠금 화면/차'); },
+      seekto: function(d){ if (d && d.seekTime != null) seekTo(d.seekTime, '잠금 화면/차 막대'); }
+    };
+    Object.keys(H).forEach(function(k){ try { navigator.mediaSession.setActionHandler(k, H[k]); } catch (e) { log('Media Session ' + k + ' 지원 안 함'); } });
+    meta(0);
+  }
+
+  a.addEventListener('loadedmetadata', function(){
+    if (!fresh){ var p = ls('pos', 0); if (p > 1 && p < TL.duration - 2){ a.currentTime = p; log('이어 듣기 위치 ' + fmt(p)); } }
+  });
+  ['play', 'pause', 'ended', 'waiting', 'stalled', 'emptied', 'error'].forEach(function(ev){
+    a.addEventListener(ev, function(){
+      if (ev === 'play' || ev === 'pause') $('pp').textContent = ev === 'play' ? '⏸' : '▶';
+      if (hasMS && (ev === 'play' || ev === 'pause')) try { navigator.mediaSession.playbackState = ev === 'play' ? 'playing' : 'paused'; } catch (e) {}
+      log('오디오: ' + ev + (ev === 'error' && a.error ? ' code ' + a.error.code : '') + ' @' + fmt(a.currentTime) + ' · 화면 ' + doc.visibilityState);
+      if (ev === 'pause' || ev === 'ended') lss('pos', a.currentTime);
+    });
+  });
+  a.addEventListener('timeupdate', function(){
+    var t = a.currentTime, now = Date.now();
+    // 시간 갱신이 오래 끊겼다 이어졌으면: 그동안 화면이 꺼져(또는 앱이 뒤로 가) JS가 멈췄다는 뜻. 위치가 그만큼 나아갔으면 소리는 계속 났다.
+    if (lastTU && !a.paused && now - lastTU > 4000)
+      log('시간 갱신 ' + Math.round((now - lastTU) / 1000) + '초 끊김 — 그사이 재생 위치 ' + Math.round(t - lastPos) + '초 진행 · 화면 ' + doc.visibilityState);
+    lastTU = now; lastPos = t;
+    var k = secAt(t);
+    if (!allowed(k) && !a.paused){   // 고른 섹션만 — 다음 고른 섹션으로, 없으면 멈춤
+      var nx = null; for (var i = k + 1; i < SEC.length; i++) if (allowed(i)){ nx = i; break; }
+      if (nx == null){ a.pause(); log('범위 끝 — 멈춤 @' + fmt(t) + ' · 화면 ' + doc.visibilityState); }
+      else { a.currentTime = SEC[nx].start; log('안 고른 섹션 건너뜀 → ' + SEC[nx].title + ' · 화면 ' + doc.visibilityState); }
+      return;
+    }
+    if (k !== curSec){ curSec = k; meta(k); $('now').textContent = SEC[k].title; }
+    var si = sentAt(t);
+    if (si !== cur){
+      if (cur >= 0) spans[cur].classList.remove('now');
+      cur = si; spans[si].classList.add('now');
+      if (doc.visibilityState === 'visible' && now - userScroll > 4000) spans[si].scrollIntoView({block: 'center', behavior: 'smooth'});
+    }
+    if (doc.activeElement !== seek){ seek.value = Math.floor(t); $('cur').textContent = fmt(t); }
+    if (now - lastSave > 5000){ lastSave = now; lss('pos', t); }
+    if (hasMS && navigator.mediaSession.setPositionState && now - lastPS > 1000){
+      lastPS = now; try { navigator.mediaSession.setPositionState({duration: TL.duration, playbackRate: a.playbackRate, position: Math.min(t, TL.duration)}); } catch (e) {}
+    }
+  });
+  ['touchmove', 'wheel'].forEach(function(ev){ window.addEventListener(ev, function(){ userScroll = Date.now(); }, {passive: true}); });
+  doc.addEventListener('visibilitychange', function(){ log('화면 ' + doc.visibilityState + (a.paused ? '' : ' · 재생 중 @' + fmt(a.currentTime))); });
+  window.addEventListener('pagehide', function(){ lss('pos', a.currentTime); log('pagehide'); });
+  window.addEventListener('pageshow', function(e){ if (e.persisted){ fresh = false; log('pageshow (되살아남)'); } });
+
+  // ---- 폰 내장 음성 (speechSynthesis) — 단어 하이라이트(boundary) ----
+  var speaking = false, spIdx = 0, synth = window.speechSynthesis, voices = [];
+  function loadVoices(){
+    if (!synth) return;
+    voices = synth.getVoices().filter(function(v){ return /^ko/i.test(v.lang); });
+    var sel = $('vsel'), keep = ls('voice', '');
+    sel.innerHTML = '';
+    voices.forEach(function(v){ var o = doc.createElement('option'); o.value = v.name; o.textContent = v.name + (v.localService ? '' : ' (온라인)'); if (v.name === keep) o.selected = true; sel.appendChild(o); });
+    if (!voices.length){ var o = doc.createElement('option'); o.textContent = '한국어 목소리 없음'; sel.appendChild(o); }
+  }
+  if (synth){ loadVoices(); synth.onvoiceschanged = loadVoices; }
+  $('vsel').onchange = function(){ lss('voice', $('vsel').value); };
+  function unmark(i){ if (i >= 0 && spans[i]) spans[i].textContent = S[i].text; }
+  function speakFrom(i){
+    if (!synth){ log('speechSynthesis 없음'); return; }
+    a.pause(); synth.cancel(); unmark(spIdx);
+    speaking = true; spIdx = i; sayOne();
+  }
+  function sayOne(){
+    if (!speaking) return;
+    while (spIdx < S.length && !allowed(S[spIdx].sec)) spIdx++;
+    if (spIdx >= S.length){ speaking = false; log('내장 음성: 끝'); return; }
+    var i = spIdx, s = S[i], u = new SpeechSynthesisUtterance(s.text), v = null, sawB = false;
+    voices.forEach(function(x){ if (x.name === $('vsel').value) v = x; });
+    u.lang = 'ko-KR'; if (v) u.voice = v; u.rate = Math.min(2, spd);
+    if (cur >= 0) spans[cur].classList.remove('now');
+    cur = i; spans[i].classList.add('now');
+    if (doc.visibilityState === 'visible' && Date.now() - userScroll > 4000) spans[i].scrollIntoView({block: 'center', behavior: 'smooth'});
+    u.onboundary = function(e){
+      if (!sawB){ sawB = true; if (i === spIdx && !ls('sawB', false)){ lss('sawB', true); log('내장 음성: 단어 경계(boundary) 이벤트 옴'); } }
+      var st = e.charIndex || 0, len = e.charLength;
+      if (!len){ var m = /\S+/.exec(s.text.slice(st)); len = m ? m.index + m[0].length : 1; }
+      var sp = spans[i]; sp.textContent = '';
+      sp.appendChild(doc.createTextNode(s.text.slice(0, st)));
+      var mk = doc.createElement('mark'); mk.textContent = s.text.slice(st, st + len); sp.appendChild(mk);
+      sp.appendChild(doc.createTextNode(s.text.slice(st + len)));
+    };
+    u.onend = function(){
+      unmark(i);
+      if (doc.visibilityState !== 'visible') log('내장 음성: 화면 ' + doc.visibilityState + '에서 문장 ' + (i + 1) + ' 끝냄');
+      if (speaking && i === spIdx){ spIdx++; sayOne(); }
+    };
+    u.onerror = function(e){ log('내장 음성 오류: ' + (e.error || '?') + ' · 화면 ' + doc.visibilityState); };
+    synth.speak(u);
+  }
+  function stopSpeak(){ if (speaking){ speaking = false; if (synth) synth.cancel(); unmark(spIdx); log('내장 음성: 멈춤'); } }
+  $('sp-go').onclick = function(){ log('내장 음성: 시작 (문장 ' + (Math.max(0, cur) + 1) + ')'); speakFrom(Math.max(0, cur)); };
+  $('sp-stop').onclick = stopSpeak;
+})();
+</script>
+</body></html>
