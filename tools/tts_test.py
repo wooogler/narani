@@ -74,9 +74,19 @@ def pick_text(bundle: dict, minutes: float, per_section: int) -> list[dict]:
             blocks = [(tag, t) for tag, t in blocks if t != head]
         if not started or in_sec >= per_section or not blocks:
             continue
+        front = False
         for tag, t in blocks:
-            if len(t) < 2 or _FRONT.match(t):
+            if tag != "p":                 # 'CCS 개념'·'키워드' 같은 머리 아래 목록은 통째로 건너뛴다
+                front = bool(_FRONT.match(t))
+            if front or len(t) < 2 or _FRONT.match(t):
                 continue
+            if tag == "p":                 # 문단 끝에 'CCS 개념'이 붙어 온 경우 — 거기서 자르고 뒤 목록은 건너뛴다
+                sents = _SENT.split(t)
+                cut = next((i for i, x in enumerate(sents) if _FRONT.match(x)), None)
+                if cut is not None:
+                    front, t = True, " ".join(sents[:cut])
+                    if not t:
+                        continue
             out.append({"kind": "head" if tag != "p" else "para", "row": row, "text": t})
             used += len(t)
         in_sec += 1
