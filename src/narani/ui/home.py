@@ -258,8 +258,19 @@ html.md4-filedrag .md4-dropov { display: flex; }
 .md4-pv-selnote { font-size: 12px; color: #2383e2; background: rgba(35,131,226,.08); border-radius: 6px;
   padding: 5px 9px; cursor: pointer; }
 .md4-pv-selnote:hover { background: rgba(35,131,226,.14); }
+/* 일괄 동작 — 번역은 주 단추, 나머지는 묶음 제목 아래 두 칸씩 옅은 단추, 빼기·지우기는 작은 글자 링크 */
 .md4-pv-bulk .q-btn { width: 100%; }
-.md4-pv-bulk .q-btn__content { justify-content: flex-start; }
+.md4-pv-bulk .q-btn__content { justify-content: flex-start; flex-wrap: nowrap; }
+.md4-act-h { font-size: 11px; font-weight: 700; letter-spacing: .05em; color: #9a968e; margin: 10px 0 2px; }
+.md4-act-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; width: 100%; }
+.md4-act.q-btn { background: rgba(55,53,47,.05); color: #37352f !important; border-radius: 8px; min-height: 34px;
+  font-size: 13px; padding: 4px 10px; }
+.md4-act.q-btn:hover { background: rgba(55,53,47,.09); }
+.md4-act .q-icon { font-size: 18px; color: #787774; margin-right: 6px; }
+.md4-act .q-btn__content > span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.md4-act-links { display: flex; flex-wrap: wrap; gap: 2px 12px; margin-top: 2px; }
+.md4-act-links .q-btn { width: auto; font-size: 12px; color: #9a968e !important; padding: 0 2px; min-height: 22px; }
+.md4-act-links .q-btn:hover { color: #c4554d !important; }
 .md4-pv-sel { font-size: 12.5px; color: #6b6862; line-height: 1.4; }
 .md4-pv-empty { align-items: center; text-align: center; color: #9a968e; margin-top: 36px; }
 .md4-pv-stat { font-size: 13px; color: #6b6862; }
@@ -267,6 +278,9 @@ html.md4-filedrag .md4-dropov { display: flex; }
 /* 다크 모드 — 뷰어처럼 사이드바(레일)만 어둡게. 본문 열은 Quasar가 밝은 테마 그대로라(입력칸·카드 글자가
    밝은 바탕 기준) 목록까지 어둡게 칠하면 글자가 묻힌다. */
 @media (prefers-color-scheme: dark) {
+  .md4-act.q-btn { background: rgba(255,255,255,.06); color: #e6e4df !important; }
+  .md4-act.q-btn:hover { background: rgba(255,255,255,.1); }
+  .md4-act .q-icon { color: #a8a6a1; }
   .md4-hside { background: #1b1b1b; border-right-color: #333; }
   .md4-hfoot { border-top-color: #333; }
   .md4-hfoot .q-btn, .md4-hnew { color: #a8a8a8; }
@@ -2444,43 +2458,51 @@ def build_home(state: dict) -> None:
                     ui.label("· " + x["title"]).classes("md4-pv-sel truncate w-full").tooltip(x["title"])
                 if len(rows) > 8:
                     ui.label(t("외 {v}편", v=len(rows) - 8)).classes("md4-pv-sel")
-            ui.label(t("일괄 동작")).classes("md4-panel-title q-mt-sm")
-            with ui.column().classes("md4-pv-bulk gap-1 w-full"):
+            paths = [Path(p) for p in selected]
+            on_mobile = [p for p in paths if p.stem in data["mobile"]]
+            with_audio = [p for p in on_mobile if (data["mobile"].get(p.stem) or {}).get("audio")]
+
+            def act(label: str, icon: str, fn, tip: str | None = None):  # noqa: ANN001, ANN202
+                b = ui.button(label, icon=icon, on_click=fn, color=None).props("flat dense no-caps").classes("md4-act")
+                return b.tooltip(tip) if tip else b
+
+            with ui.column().classes("md4-pv-bulk gap-0 w-full q-mt-sm"):
                 ui.button(t("번역 ({n}편)", n=n), icon="translate", on_click=translate_selection) \
-                    .props("outline dense no-caps color=secondary") \
+                    .props("unelevated no-caps color=primary") \
                     .tooltip(t("번역이 없거나 낡은 논문을 번역합니다 — 띄우기 전에 편수·대략 비용을 확인합니다"))
-                ui.button(t("영어 zip"), icon="download", on_click=lambda: download_bulk("en")) \
-                    .props("outline dense no-caps")
-                ui.button(t("번역 zip"), icon="download", on_click=lambda: download_bulk("ko")) \
-                    .props("outline dense no-caps")
-                ui.button(t("모바일로 보내기"), icon="smartphone",
-                          on_click=lambda: send_to_mobile([Path(p) for p in selected])) \
-                    .props("outline dense no-caps") \
-                    .tooltip(t("Google Drive를 거쳐 모바일 리더({site})에서 읽습니다 — 모바일에서 단 하이라이트·메모도 이때 합칩니다",
-                               site=pages.DOMAIN))
-                ui.button(t("모바일 음성 만들기"), icon="headphones",
-                          on_click=lambda: make_mobile_audio([Path(p) for p in selected])) \
-                    .props("outline dense no-caps") \
-                    .tooltip(t("번역 본문을 Mac 목소리로 읽은 음성을 만들어 모바일에서 듣습니다 — 화면을 꺼도, CarPlay에서도"))
-                if any((data["mobile"].get(Path(p).stem) or {}).get("audio") for p in selected):
-                    ui.button(t("모바일 음성 지우기"), icon="headset_off",
-                              on_click=lambda: remove_mobile_audio([Path(p) for p in selected])) \
-                        .props("outline dense no-caps")
-                if any(Path(p).stem in data["mobile"] for p in selected):
-                    ui.button(t("모바일에서 빼기"), icon="phonelink_erase",
-                              on_click=lambda: remove_from_mobile([Path(p) for p in selected])) \
-                        .props("outline dense no-caps") \
-                        .tooltip(t("모바일 목록에서 뺍니다 — 모바일에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 논문 파일은 그대로"))
+
+                ui.label(t("내보내기")).classes("md4-act-h")
+                with ui.element("div").classes("md4-act-grid"):
+                    act(t("영어 zip"), "download", lambda: download_bulk("en"))
+                    act(t("번역 zip"), "download", lambda: download_bulk("ko"))
+                    if settings_dialog.any_library_dirs():
+                        act(t("폴더로 저장"), "drive_file_move", lambda: save_to_library(paths), t("저장 위치로 내보내기"))
+
+                ui.label(t("모바일")).classes("md4-act-h")
+                with ui.element("div").classes("md4-act-grid"):
+                    act(t("보내기"), "smartphone", lambda: send_to_mobile(paths),
+                        t("Google Drive를 거쳐 모바일 리더({site})에서 읽습니다 — 모바일에서 단 하이라이트·메모도 이때 합칩니다",
+                          site=pages.DOMAIN))
+                    act(t("음성 만들기"), "headphones", lambda: make_mobile_audio(paths),
+                        t("번역 본문을 읽은 음성을 만들어 모바일에서 듣습니다 — 화면을 꺼도, CarPlay에서도"))
+                if on_mobile:
+                    with ui.element("div").classes("md4-act-links"):
+                        ui.button(t("모바일에서 빼기"), on_click=lambda: remove_from_mobile(on_mobile), color=None) \
+                            .props("flat dense no-caps") \
+                            .tooltip(t("모바일 목록에서 뺍니다 — 모바일에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 논문 파일은 그대로"))
+                        if with_audio:
+                            ui.button(t("음성 지우기"), on_click=lambda: remove_mobile_audio(with_audio), color=None) \
+                                .props("flat dense no-caps").tooltip(t("모바일 음성만 지웁니다 — 논문은 모바일에 그대로"))
+
                 # 추가 = 다른 소속은 그대로 두고 더하기, 빼기 = 그 소속만 떼기(그 폴더의 사본도 정리)
-                with ui.button(t("컬렉션에 추가 ▾"), icon="playlist_add").props("outline dense no-caps"):
-                    project_pick_menu(lambda v: bulk_member(v, True), with_new=True)
+                ui.label(t("컬렉션")).classes("md4-act-h")
                 member_of = {p for root in selected for p in (data["by_root"].get(root) or {}).get("pids", [])}
-                with ui.button(t("컬렉션에서 빼기 ▾"), icon="playlist_remove").props("outline dense no-caps"):
-                    project_pick_menu(lambda v: bulk_member(v, False), only=member_of)
-                if settings_dialog.any_library_dirs():
-                    ui.button(t("폴더로 저장"), icon="drive_file_move",
-                              on_click=lambda: save_to_library([Path(p) for p in selected])) \
-                        .props("outline dense no-caps").tooltip(t("저장 위치로 내보내기"))
+                with ui.element("div").classes("md4-act-grid"):
+                    with act(t("추가 ▾"), "playlist_add", None):
+                        project_pick_menu(lambda v: bulk_member(v, True), with_new=True)
+                    if member_of:
+                        with act(t("빼기 ▾"), "playlist_remove", None):
+                            project_pick_menu(lambda v: bulk_member(v, False), only=member_of)
 
     def draw_summary() -> None:
         """아무것도 고르지 않았을 때 — 이 범위 요약 + 미리보기 안내."""

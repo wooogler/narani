@@ -1159,5 +1159,13 @@
  "약 {m}분": "unos {m} min",
  " · 예상 비용 약 ${c} (내 Gemini 키의 계정에 청구)": " · costo estimado unos ${c} (se cobra a la cuenta de tu clave de Gemini)",
  " · 무료": " · gratis",
- "넣을 섹션": "Secciones a incluir"
+ "넣을 섹션": "Secciones a incluir",
+ "새 판이 준비됐어요": "Hay una nueva versión lista",
+ "보내기": "Enviar",
+ "음성 만들기": "Crear audio",
+ "번역 본문을 읽은 음성을 만들어 모바일에서 듣습니다 — 화면을 꺼도, CarPlay에서도": "Crea audio de la traducción para escucharla en el móvil — incluso con la pantalla apagada o en CarPlay",
+ "음성 지우기": "Eliminar audio",
+ "모바일 음성만 지웁니다 — 논문은 모바일에 그대로": "Elimina solo el audio móvil — los artículos siguen en el móvil",
+ "추가 ▾": "Añadir ▾",
+ "빼기 ▾": "Quitar ▾"
 }

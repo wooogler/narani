@@ -235,3 +235,12 @@ def test_reader_sheet_click_and_note_draft_guards():
     js = web.site_files()["app.js"][0].decode()
     assert "function beforeSheetClose" in js and "var noteDraft" in js  # 닫히면 쓰던 메모를 저장
     assert "visualViewport" in js  # 키보드 위로 시트를 올린다
+
+
+def test_new_version_reaches_home_screen_app():
+    # 홈 화면 앱이 새 판을 못 받던 문제 — 껍데기는 HTTP 캐시를 거치지 않고 새로, 다시 보일 때 확인, 자리 잡으면 적용
+    files = web.site_files(local=True)
+    sw, js, html = (files[k][0].decode() for k in ("sw.js", "app.js", "index.html"))
+    assert "cache: 'reload'" in sw and "cache: 'no-cache'" in sw
+    assert "updateViaCache: 'none'" in js and "controllerchange" in js and "swReg.update()" in js
+    assert 'id="upd"' in html
