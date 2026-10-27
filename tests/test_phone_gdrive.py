@@ -20,6 +20,7 @@ class FakeDrive:
         self.n = 0
         self.expire_next = False  # 다음 요청 하나를 401로
         self.calls: list[str] = []
+        self.sessions: dict[str, dict] = {}  # 재개형 올리기 세션 → {meta} 또는 {fid}
 
     def _new(self, **f: object) -> str:
         self.n += 1
@@ -53,6 +54,23 @@ class FakeDrive:
         if path == "/drive/v3/files" and req.method == "POST":
             meta = json.loads(req.content)
             return httpx.Response(200, json={"id": self._new(**meta)})
+        if path.startswith("/upload/session/") and req.method == "PUT":
+            sess = self.sessions.pop(path.rsplit("/", 1)[1])
+            if "fid" in sess:
+                self.files[sess["fid"]]["data"] = req.content
+                return httpx.Response(200, json={"id": sess["fid"]})
+            return httpx.Response(200, json={"id": self._new(**sess["meta"], data=req.content)})
+        if url.params.get("uploadType") == "resumable":
+            sid = f"s{len(self.sessions) + self.n}"
+            m = re.fullmatch(r"/upload/drive/v3/files(?:/([^/]+))?", path)
+            if m.group(1):
+                if m.group(1) not in self.files:
+                    return httpx.Response(404, json={"error": "notFound"})
+                self.sessions[sid] = {"fid": m.group(1)}
+            else:
+                self.sessions[sid] = {"meta": json.loads(req.content)}
+            assert int(req.headers["X-Upload-Content-Length"]) > gdrive.BIG
+            return httpx.Response(200, headers={"Location": f"https://www.googleapis.com/upload/session/{sid}"})
         if path == "/upload/drive/v3/files" and req.method == "POST":
             boundary = req.headers["Content-Type"].split("boundary=")[1]
             parts = req.content.split(f"--{boundary}".encode())
@@ -151,3 +169,15 @@ def test_client_ids_config_beats_built_in_defaults(tmp_path, monkeypatch):
     assert gdrive.client_ids() == {**fake, "google_web_client_id": "mine.apps"}  # 설정이 이긴다
     monkeypatch.setattr(gdrive, "_DEFAULTS", "not base64 json")
     assert gdrive.client_ids()["google_desktop_client_id"] == ""  # 망가진 기본값은 없는 셈
+
+
+def test_big_files_use_resumable_upload(drive):
+    fake, store = drive
+    big = b"\x01" * (gdrive.BIG + 10)
+    store.write("audio/x.m4a", big, "audio/mp4")
+    f = next(f for f in fake.files.values() if f.get("name") == "audio/x.m4a")
+    assert f["data"] == big and f["mimeType"] == "audio/mp4"
+    store.write("audio/x.m4a", big[::-1] + b"!", "audio/mp4")      # 덮어쓰기도 재개형으로
+    assert store.read("audio/x.m4a") == big[::-1] + b"!"
+    assert any("PUT /upload/session/" in c for c in fake.calls)
+    assert not any(c.startswith("POST /upload/drive/v3/files") and "multipart" in c for c in fake.calls)
