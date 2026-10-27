@@ -48,7 +48,7 @@ def load_cache() -> dict:
 def _remember(index: dict | None = None, **kw: object) -> dict:
     data = load_cache()
     if index is not None:
-        data["papers"] = {e["key"]: {k: e.get(k) for k in ("title", "title_ko", "hash", "size", "notes_hash")}
+        data["papers"] = {e["key"]: {k: e.get(k) for k in ("title", "title_ko", "hash", "size", "notes_hash", "audio")}
                           for e in index.get("papers", []) if isinstance(e, dict) and e.get("key")}
         data["synced"] = time.time()
     data.update(kw)
@@ -69,9 +69,11 @@ def info() -> dict:
     """사이드바 '모바일' 머리에 보일 것 — 연결 여부·계정·편수·용량·마지막 동기화 시각."""
     c = load_cache()
     papers = c["papers"] if connected() else {}
+    audio = [e["audio"] for e in papers.values() if e.get("audio")]
     return {"configured": configured(), "connected": connected(), "account": c.get("account", ""),
-            "count": len(papers), "bytes": sum(int(e.get("size") or 0) for e in papers.values()),
-            "synced": float(c.get("synced") or 0)}
+            "count": len(papers), "bytes": sum(int(e.get("size") or 0) for e in papers.values())
+            + sum(int(a.get("bytes") or 0) for a in audio),
+            "audio": len(audio), "synced": float(c.get("synced") or 0)}
 
 
 # ---- 동작 ----
@@ -120,6 +122,93 @@ def remove(roots: list[Path]) -> dict:
     return out
 
 
+# ---- 듣기 음성 (§phone.tts) ----
+def audio_available() -> bool:
+    from narani.phone import tts
+
+    return tts.MacVoice.available()
+
+
+def voices(lang: str) -> list[str]:
+    """그 언어의 Mac 목소리 — 지난번에 고른 것을 맨 앞에."""
+    from narani.phone import tts
+
+    names = tts.mac_voices(lang)
+    last = (load_cache().get("voices") or {}).get(lang)
+    if last in names:
+        names.remove(last)
+        names.insert(0, last)
+    return names
+
+
+def paper_lang(root: Path) -> str:
+    """읽을 언어 — 번역이 있으면 번역 언어, 없으면 en."""
+    from narani.workdir import WorkDir
+
+    wd = WorkDir(Path(root))
+    return wd.lang if wd.ko_md.exists() else "en"
+
+
+def sections(root: Path) -> list[dict]:
+    """논문 하나의 읽을 섹션 — 음성 만들기 창의 고르기 목록. [{row, title, minutes}]"""
+    from narani.phone import bundle as bmod
+    from narani.phone import tts
+
+    _side, secs = tts.plan(bmod.build_paper(Path(root)))
+    return [{"row": s.row, "title": s.title, "minutes": tts.minutes([s])} for s in secs]
+
+
+def make_audio(roots: list[Path], voice: str | None = None, include: list[int] | None = None,
+               on_progress=None) -> dict:  # noqa: ANN001
+    """논문들의 듣기 음성을 만들어 올린다 — 먼저 번들·메모를 맞추고(send), 음성은 바뀐 섹션만 새로 만든다.
+
+    voice가 없으면 논문 언어마다 지난번 목소리(없으면 좋은 기본값). include는 논문 하나일 때 넣을 섹션 행들.
+    """
+    from narani.phone import tts
+
+    store = gdrive.open_store()
+    sync.push(roots, store, prune=False, extra=_extra(_rows()))
+    jobs = []
+    chosen: dict[str, str] = {}
+    for root in roots:
+        lang = paper_lang(root)
+        name = voice or (voices(lang) or [""])[0]
+        if not name:
+            raise RuntimeError(f"이 컴퓨터에 '{lang}' 목소리가 없습니다")
+        chosen[lang] = name
+        jobs.append((Path(root), tts.MacVoice(name), include if len(roots) == 1 else None))
+    out = sync.push_audio(store, jobs, on_progress)
+    c = load_cache()
+    _remember(sync.read_index(store), voices={**(c.get("voices") or {}), **chosen})
+    return out
+
+
+def remove_audio(roots: list[Path]) -> int:
+    store = gdrive.open_store()
+    n = sync.remove_audio(store, [Path(r).stem for r in roots])
+    _remember(sync.read_index(store))
+    return n
+
+
+def _remake_stale_audio(store) -> int:  # noqa: ANN001
+    """본문이 바뀌어 옛 판이 된 무료(Mac) 음성을 다시 만든다 — 섹션 캐시로 바뀐 섹션만. 유료 음성은 건드리지 않는다."""
+    from narani.phone import tts
+
+    if not tts.MacVoice.available():
+        return 0
+    rows = {r["name"]: r["root"] for r in _rows()}
+    jobs = []
+    for e in sync.read_index(store)["papers"]:
+        a = e.get("audio") if isinstance(e, dict) else None
+        if not a or a.get("src") == e.get("hash") or not str(a.get("voice", "")).startswith("mac:"):
+            continue
+        if e["key"] in rows:
+            v = a["voice"][4:]
+            name, _, rate = v.partition("@")
+            jobs.append((rows[e["key"]], tts.MacVoice(name, int(rate) if rate else None), a.get("include")))
+    return sync.push_audio(store, jobs)["made"] if jobs else 0
+
+
 def refresh() -> dict:
     """모바일에 있는 논문을 맞춘다 — 데스크톱에서 바뀐 논문은 다시 올리고, 폰 메모는 합치고 데스크톱 메모는
     올린다(sync.push가 지문으로 바뀐 것만 다시 굽는다). 데스크톱에서 지운 논문은 목록에 그대로 둔다."""
@@ -129,6 +218,11 @@ def refresh() -> dict:
     roots = [r["root"] for r in rows if r["name"] in keys]
     out = sync.push(roots, store, prune=False, extra=_extra(rows)) if roots else {
         "uploaded": 0, "skipped": 0, "removed": 0, "bytes": 0, "papers": len(keys), "merged": 0, "notes": 0}
+    try:
+        out["audio"] = _remake_stale_audio(store)
+    except Exception as e:  # noqa: BLE001 — 음성을 못 만들어도 본문·메모 동기화는 끝났다
+        log.info("옛 음성을 다시 만들지 못함: %s", e)
+        out["audio"] = 0
     _remember(sync.read_index(store))
     return out
 

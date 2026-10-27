@@ -136,6 +136,29 @@ ol.nl .aq { border-radius: 3px; padding: 1px 4px; color: #24211c; font-size: .92
   -webkit-box-decoration-break: clone; }
 ol.nl .an { display: block; margin: 5px 0 0 4px; white-space: pre-wrap; }
 ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3px; }
+/* 듣기 — 🎧는 ✦ 위에, 재생 막대는 맨 아래(✦·🎧는 그 위로 올라간다). 지금 문장은 ::highlight(tts) */
+#lis { position: fixed; right: 20px; bottom: calc(82px + env(safe-area-inset-bottom)); z-index: 8; width: 44px; height: 44px;
+  border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: var(--accent); display: none;
+  box-shadow: 0 4px 14px rgba(0,0,0,.14); }
+.js.reading.has-audio:not(.listening) #lis { display: grid; place-items: center; }
+#player { position: fixed; left: 0; right: 0; bottom: 0; z-index: 9; display: none; background: var(--card);
+  border-top: 1px solid var(--line); box-shadow: 0 -6px 20px rgba(0,0,0,.1); padding: 6px 12px calc(6px + env(safe-area-inset-bottom)); }
+.js.reading.listening #player { display: block; }
+.js.reading.listening #fab.rd { bottom: calc(118px + env(safe-area-inset-bottom)); }
+.js.reading.listening main { padding-bottom: 130px; }
+.pl-top { display: flex; gap: 8px; font-size: .8em; color: var(--muted); }
+#pl-sec { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pl-t { white-space: nowrap; font-variant-numeric: tabular-nums; }
+#pl-seek { width: 100%; margin: 4px 0 2px; }
+.pl-ctl { display: flex; justify-content: space-between; align-items: center; }
+.pl-ctl button { border: 0; background: none; color: var(--fg); font: inherit; font-size: 1em; min-width: 36px; padding: 6px 4px; }
+#pl-pp { width: 46px; height: 46px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 1.15em; }
+#pl-range, #pl-spd { font-size: .8em; color: var(--muted); }
+::highlight(tts) { background-color: rgba(255, 196, 0, .45); }
+.row.tts-row { background: var(--hl2); border-radius: 6px; }
+.rng label { display: block; margin: 6px 0; }
+.rng-secs { margin: 4px 0 0 22px; max-height: 32vh; overflow-y: auto; font-size: .9em; }
+.li-meta .au { margin-left: 6px; }
 /* 오프라인 — 받아 두지 않은 논문은 흐리게 */
 #lib-list li.na a { opacity: .45; }
 .li-meta .na-t { margin-left: 6px; }
@@ -193,6 +216,7 @@ _APP_JS = r"""
     doc.getElementById('fs-dn').setAttribute('aria-label', md4T('글자 작게'));
     doc.getElementById('fs-up').setAttribute('aria-label', md4T('글자 크게'));
     doc.getElementById('back').setAttribute('aria-label', md4T('논문 목록'));
+    audioLabels();
   }
   function setUiLang(l){
     var cats = CFG.catalogs || {};
@@ -203,7 +227,9 @@ _APP_JS = r"""
 
   // ---- 저장소 ----
   function localSource(){
-    return {get: function(name){
+    return {raw: function(name){
+      return fetch('data/' + name, {cache: 'no-store'}).then(function(r){ if (!r.ok) throw new Error('HTTP ' + r.status); return r; });
+    }, get: function(name){
       return fetch('data/' + name, {cache: 'no-store'}).then(function(r){
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
@@ -290,6 +316,13 @@ _APP_JS = r"""
     }
     return {
       drive: true,
+      raw: function(name){
+        var p = ids && ids[name] ? Promise.resolve(ids) : loadIds();
+        return p.then(function(m){
+          if (!m[name]) throw fail('missing');
+          return api(GAPI + '/files/' + m[name] + '?alt=media');
+        });
+      },
       get: function(name){
         // 목록을 받을 때마다 이름표를 새로 받는다 — 데스크톱이 그사이 새 번들을 올렸을 수 있다
         var p = (name === 'index.json' || !ids) ? loadIds() : Promise.resolve(ids);
@@ -352,7 +385,16 @@ _APP_JS = r"""
   function pruneCache(ix){
     // 목록에서 빠진 논문의 캐시는 지운다 (폰 저장 공간)
     var keep = {}, keys = {}, m = haveMap(), k;
-    ix.papers.forEach(function(e){ keep[e.file] = 1; keep['notes/' + fileId(e) + '.json'] = 1; keys[e.key] = 1; });
+    var keepA = {};
+    ix.papers.forEach(function(e){
+      keep[e.file] = 1; keep['notes/' + fileId(e) + '.json'] = 1; keys[e.key] = 1;
+      if (audioOf(e)){ keep[e.audio.tl] = 1; keepA[audioKey(e.audio)] = 1; }
+    });
+    if (window.caches) caches.open(AC).then(function(c){
+      return c.keys().then(function(reqs){
+        reqs.forEach(function(q){ var u = new URL(q.url), k = decodeURIComponent(u.pathname + u.search).replace(/^.*?__audio\//, '__audio/'); if (!keepA[k]) c.delete(q); });
+      });
+    }).catch(function(){});
     for (k in m) if (!keep[k]) setHave(k, null);
     // 데스크톱이 모바일에서 뺀 논문 — 그 논문의 폰 기록도 지운다(다시 올리면 Drive에 주인 없는 파일이 남는다).
     // 데스크톱은 빼기 전에 올라와 있던 폰 기록을 합쳐 두었다.
@@ -421,6 +463,7 @@ _APP_JS = r"""
       var meta = el('span', 'li-meta', [e.authors, e.year, e.venue].filter(function(x){ return x; }).join(' · '));
       meta.appendChild(el('span', 'badge', e.has_ko ? md4T('번역') : md4T('원문만')));
       if (li.className === 'na') meta.appendChild(el('span', 'na-t', md4T('받아 두지 않음')));
+      if (audioOf(e)) meta.appendChild(el('span', 'au', '🎧 ' + fmtT(e.audio.duration)));
       a.appendChild(meta); li.appendChild(a); libList.appendChild(li);
     });
     if (INDEX && !INDEX.papers.length) libList.appendChild(el('li', 'empty', md4T('올린 논문이 없어요. 데스크톱 앱에서 모바일로 보내 주세요.')));
@@ -443,12 +486,26 @@ _APP_JS = r"""
       cb.type = 'checkbox'; cb.checked = autoSave();
       cb.onchange = function(){
         try { localStorage.setItem('narani:auto', cb.checked ? '1' : '0'); } catch (e) {}
+        renderLib();   // '음성도 받아 두기'가 바로 보이게
         if (cb.checked) saveOffline();
       };
       lab.appendChild(cb); lab.appendChild(doc.createTextNode(md4T('오프라인 모드 — 모두 받아 두기')));
       libBar.appendChild(lab);
+      var withAudio = INDEX.papers.filter(function(e){ return audioOf(e); });
+      if (withAudio.length && cb.checked){   // 음성은 편당 십수 MB라 따로 고른다
+        var mb = withAudio.reduce(function(n, e){ return n + (e.audio.bytes || 0); }, 0) / 1e6;
+        var la = el('label', 'auto'), ca = el('input');
+        ca.type = 'checkbox'; ca.checked = autoAudio();
+        ca.onchange = function(){
+          try { localStorage.setItem('narani:autoaudio', ca.checked ? '1' : '0'); } catch (e) {}
+          if (ca.checked) saveOffline();
+        };
+        la.appendChild(ca); la.appendChild(doc.createTextNode(md4T('음성도 받아 두기 ({n}편 · {mb}MB — 와이파이에서)', {n: withAudio.length, mb: Math.round(mb)})));
+        libBar.appendChild(la);
+      }
     }
   }
+  function autoAudio(){ try { return localStorage.getItem('narani:autoaudio') === '1'; } catch (e) { return false; } }
   function autoSave(){ try { return localStorage.getItem('narani:auto') === '1'; } catch (e) { return false; } }
   var SAVING = null, OFFLINE = false;
   function saveOffline(){
@@ -461,7 +518,9 @@ _APP_JS = r"""
     (function next(){
       if (!todo.length){   // 논문을 다 받았으면 하이라이트·메모 파일 — 바뀐 것만 받는다
         Promise.all(all.map(function(e){ return getNotes(e).catch(function(){}); })).then(function(){
-          var had = SAVING.total; SAVING = null;
+          return autoAudio() ? saveAudio(all) : 0;
+        }).then(function(n){
+          var had = SAVING.total || n; SAVING = null;
           if (had) renderLib(failed ? md4T('{n}편은 받지 못했어요', {n: failed}) : '');
         });
         return;
@@ -470,6 +529,18 @@ _APP_JS = r"""
       getPaper(e).catch(function(){ failed++; }).then(function(){
         SAVING.done++; if (lib && !lib.classList.contains('off')) renderLib(); next();
       });
+    })();
+  }
+  function saveAudio(list){   // 받아 두지 않은 음성과 시간표 — 한 편씩
+    var todo = list.filter(function(e){ return audioOf(e); }), got = 0;
+    return (function next(){
+      if (!todo.length) return Promise.resolve(got);
+      var e = todo.shift(), a = audioOf(e);
+      return audioCached(a).then(function(yes){
+        if (yes) return;
+        SAVING.total++; if (lib && !lib.classList.contains('off')) renderLib();
+        return audioTl(a).then(function(){ return audioBlob(a); }).then(function(){ got++; }, function(){});
+      }).then(function(){ SAVING.done++; return next(); });
     })();
   }
   function addAct(pr){
@@ -535,6 +606,7 @@ _APP_JS = r"""
       if (seq !== loadSeq) return;
       loading.style.display = 'none'; mount(b, target);
       notesOpen(e, b);
+      audioOpened(e);
       if (INDEX) renderLib();
     }, function(err){
       if (seq !== loadSeq) return;
@@ -832,6 +904,16 @@ _NOTES_JS = r"""
     return null;
   }
   function sentenceActs(rowEl, pi, pr, side){
+    var acts = notesActs(rowEl, pi, pr, side), a = audioOf(AU.e);
+    if (!a) return acts;
+    var sp = spanOf(pr[side], pr.pairs[pi][side === 'en' ? 0 : 1]), row = +rowEl.id.replace(/^p\d+-r/, '');
+    var aside = AU.tl ? AU.tl.side : (AU.e.has_ko ? 'ko' : 'en');   // 음성이 읽는 쪽 — 다른 쪽을 눌렀으면 그 행 처음부터
+    var off = sp && side === aside ? sp[0] : null;
+    acts = acts || {nodes: [], buttons: []};
+    acts.buttons = [button(md4T('여기부터 듣기'), function(){ clearSent(); listenFrom(row, off); })].concat(acts.buttons);
+    return acts;
+  }
+  function notesActs(rowEl, pi, pr, side){
     if (!source || !source.put || !NOTE.key) return null;
     var row = +rowEl.id.replace(/^p\d+-r/, '');
     var spans = {en: spanOf(pr.en, pr.pairs[pi][0]), ko: spanOf(pr.ko, pr.pairs[pi][1])};
@@ -907,7 +989,7 @@ _READER_JS = r"""
   doc.getElementById('ag-x').onclick = closeDrawers;
   [tocd, agent].forEach(function(d){ d.addEventListener('click', function(e){ e.stopPropagation(); }); });
   function readerOpened(b){ body.classList.add('reading'); AG.key = b.key; AG.lang = b.lang || 'ko'; AG.title = b.title_ko || b.title; AG.msgs = null; }
-  function readerClosed(){ body.classList.remove('reading'); closeDrawers(); }
+  function readerClosed(){ body.classList.remove('reading'); closeDrawers(); stopAudio(); }
   function flashRow(row){
     if (!row) return;
     row.scrollIntoView({block: 'start'});
@@ -1187,6 +1269,315 @@ _READER_JS = r"""
   agIn.addEventListener('keydown', function(e){ if (e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); send(); } });
 """
 
+# 듣기 — 데스크톱이 만든 음성(§phone.tts)을 읽기 화면 아래 막대로 재생한다.
+_AUDIO_JS = r"""
+  // ---- 듣기 (§phone.tts) — 데스크톱이 만든 음성 파일 하나 + 문장 시간표 [t, 행, s, e] ----
+  // 화면이 꺼져도·잠금 화면·CarPlay 단추로 듣는다(실기기 시험 tts-test.html로 확인한 방식: <audio> 하나 +
+  // Media Session, 섹션 이동은 파일 안에서 seek). 파일은 처음 들을 때 받아 Cache Storage에 두고 blob URL로 꽂는다.
+  var AC = 'narani-audio', au = doc.getElementById('pl-au'), player = doc.getElementById('player');
+  var AU = {e: null, key: null, tl: null, url: null, ready: false, cur: -1, sec: -1, lastSave: 0, lastPS: 0,
+            lastTU: 0, userScroll: 0, want: null, busy: false};
+  var HL = !!(window.CSS && CSS.highlights && window.Highlight);
+  function audioOf(e){ return e && e.audio && e.audio.file ? e.audio : null; }
+  function fmtT(s){ s = Math.max(0, Math.floor(s || 0)); var h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
+    return (h ? h + ':' + ('0' + m).slice(-2) : m) + ':' + ('0' + s % 60).slice(-2); }
+  function audioKey(a){ return '__audio/' + a.file + '?h=' + a.hash; }
+  function audioCached(a){
+    if (!a || !window.caches) return Promise.resolve(false);
+    return caches.open(AC).then(function(c){ return c.match(audioKey(a)); }).then(function(r){ return !!r; }, function(){ return false; });
+  }
+  function readAll(r, total, onp){
+    if (!r.body || !r.body.getReader) return r.blob();
+    var rd = r.body.getReader(), parts = [], got = 0;
+    return (function pump(){
+      return rd.read().then(function(x){
+        if (x.done) return new Blob(parts, {type: 'audio/mp4'});
+        parts.push(x.value); got += x.value.length; if (onp && total) onp(Math.min(1, got / total));
+        return pump();
+      });
+    })();
+  }
+  function audioBlob(a, onp){
+    function fetchIt(){
+      if (!source || !source.raw) return Promise.reject(new Error('no source'));
+      return source.raw(a.file).then(function(r){ return readAll(r, a.bytes, onp); });
+    }
+    if (!window.caches) return fetchIt();
+    return caches.open(AC).then(function(c){
+      return c.match(audioKey(a)).then(function(hit){
+        if (hit) return hit.blob().then(function(b){ return b.type ? b : new Blob([b], {type: 'audio/mp4'}); });
+        return fetchIt().then(function(b){
+          return c.put(audioKey(a), new Response(b, {headers: {'Content-Type': 'audio/mp4'}})).then(function(){ return b; }, function(){ return b; });
+        });
+      });
+    });
+  }
+  function audioTl(a){
+    return cacheGet(a.tl).then(function(c){
+      if (c && c.__h === a.hash) return c;
+      if (!source) { if (c) return c; throw new Error('no source'); }
+      return source.get(a.tl).then(function(t){ t.__h = a.hash; cachePut(a.tl, t); return t; }, function(err){ if (c) return c; throw err; });
+    });
+  }
+
+  // ---- 열고 닫기 ----
+  function audioOpened(e){
+    stopAudio();
+    AU.e = e; AU.key = e.key; AU.tl = null; AU.ready = false;
+    var a = audioOf(e);
+    body.classList.toggle('has-audio', !!a);
+    if (!a) return;
+    audioCached(a).then(function(yes){ if (yes && AU.e === e) prime(false); });   // 받아 둔 음성 — 바로 들을 수 있게 꽂아 둔다
+  }
+  function stopAudio(){
+    if (!AU.e) return;
+    try { au.pause(); } catch (x) {}
+    savePos();
+    body.classList.remove('listening', 'has-audio');
+    unmarkNow();
+    if (AU.url){ try { URL.revokeObjectURL(AU.url); } catch (x) {} AU.url = null; }
+    au.removeAttribute('src'); try { au.load(); } catch (x) {}
+    AU.e = null; AU.tl = null; AU.ready = false; AU.cur = AU.sec = -1;
+    if ('mediaSession' in navigator) try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } catch (x) {}
+  }
+  // 시간표와 파일을 준비해 <audio>에 꽂는다. 처음 받는 것이면 받는 동안 막대에 진행을 보인다.
+  function prime(show){
+    var e = AU.e, a = audioOf(e);
+    if (!a) return Promise.reject(new Error('no audio'));
+    if (AU.ready) return Promise.resolve();
+    if (AU.busy) return AU.busy;
+    if (show) setText('pl-sec', md4T('음성 받는 중…'));
+    AU.busy = audioTl(a).then(function(tl){
+      if (AU.e !== e) throw new Error('stale');
+      AU.tl = tl;
+      return audioBlob(a, function(f){ if (show && AU.e === e) setText('pl-sec', md4T('음성 받는 중… {p}%', {p: Math.round(f * 100)})); });
+    }).then(function(blob){
+      if (AU.e !== e) throw new Error('stale');
+      if (AU.url) try { URL.revokeObjectURL(AU.url); } catch (x) {}
+      AU.url = URL.createObjectURL(blob);
+      au.src = AU.url;   // iOS 26: 다시 연 홈 화면 앱의 <audio>가 소리 없이 재생되는 버그 — 재생 직전에 새로 꽂는 것으로 피한다
+      AU.ready = true;
+      doc.getElementById('pl-seek').max = Math.floor(AU.tl.duration);
+      setText('pl-dur', fmtT(AU.tl.duration));
+      var stale = a.src && AU.e.hash && a.src !== AU.e.hash;
+      setText('pl-sec', stale ? md4T('본문이 바뀐 뒤의 옛 음성이에요 — 하이라이트가 어긋날 수 있어요') : (AU.tl.sections[0] || {}).title || '');
+    });
+    AU.busy.then(function(){ AU.busy = false; }, function(err){
+      AU.busy = false;
+      if (AU.e === e && show) setText('pl-sec', (err && err.kind === 'auth') ? md4T('Google Drive 연결이 만료됐어요.') : md4T('음성을 받지 못했어요. 인터넷에 연결된 뒤 다시 눌러 보세요.'));
+    });
+    return AU.busy;
+  }
+
+  // ---- 시간표 ----
+  function SEC(){ return (AU.tl && AU.tl.sections) || []; }
+  function secAt(t){ var S = SEC(), k = 0; for (var i = 0; i < S.length; i++) if (S[i].start <= t + 0.05) k = i; return k; }
+  function sentAtT(t){
+    var S = AU.tl.sents, lo = 0, hi = S.length - 1;
+    while (lo < hi){ var m = (lo + hi + 1) >> 1; if (S[m][0] <= t + 0.05) lo = m; else hi = m - 1; }
+    return lo;
+  }
+  function timeAtRow(row, off){   // 그 행(과 셀 안 위치)에서 가장 가까운, 그 뒤의 첫 문장
+    var S = AU.tl.sents;
+    for (var i = 0; i < S.length; i++){
+      if (S[i][1] > row) return S[i][0];
+      if (S[i][1] === row && (off == null || S[i][3] > off)) return S[i][0];
+    }
+    return 0;
+  }
+
+  // ---- 듣기 범위 ----
+  function RANGE(){ return lsGet('narani:arange:' + AU.key, {mode: 'all'}); }
+  function allowed(i){
+    var R = RANGE(), s = SEC()[i];
+    if (!s) return false;
+    if (R.mode === 'sec') return s.row === R.row;
+    if (R.mode === 'here') return s.start >= (R.from || 0) - 0.05 || s.row === R.row;
+    if (R.mode === 'pick') return (R.rows || []).indexOf(s.row) >= 0;
+    return true;
+  }
+  function rangeSheet(){
+    var R = RANGE(), k = Math.max(0, secAt(au.currentTime || 0)), S = SEC(), here = S[k] || {};
+    var box = el('div', 'rng'), picks = (R.rows || S.map(function(s){ return s.row; })).slice(), list = el('div', 'rng-secs');
+    function radio(v, label){
+      var l = el('label'), r = el('input'); r.type = 'radio'; r.name = 'rng'; r.value = v; r.checked = (R.mode || 'all') === v;
+      r.onchange = function(){ list.style.display = v === 'pick' ? '' : 'none'; };
+      l.appendChild(r); l.appendChild(doc.createTextNode(' ' + label)); box.appendChild(l);
+    }
+    radio('all', md4T('처음부터 끝까지'));
+    radio('sec', md4T('이 섹션만 — {s}', {s: here.title || ''}));
+    radio('here', md4T('여기부터 끝까지'));
+    radio('pick', md4T('섹션 골라 듣기'));
+    S.forEach(function(s){
+      var l = el('label'), c = el('input'); c.type = 'checkbox'; c.checked = picks.indexOf(s.row) >= 0;
+      c.onchange = function(){ var i = picks.indexOf(s.row); if (c.checked && i < 0) picks.push(s.row); if (!c.checked && i >= 0) picks.splice(i, 1); };
+      l.appendChild(c); l.appendChild(doc.createTextNode(' ' + s.title + ' · ' + fmtT(s.end - s.start))); list.appendChild(l);
+    });
+    list.style.display = R.mode === 'pick' ? '' : 'none';
+    box.appendChild(list);
+    var ok = button(md4T('적용'), function(){
+      var v = (box.querySelector('input[name=rng]:checked') || {}).value || 'all', t = au.currentTime || 0;
+      var N = {mode: v, row: here.row, from: v === 'here' ? t : here.start, rows: picks};
+      lsSet('narani:arange:' + AU.key, N);
+      closeSheet();
+      if (!allowed(secAt(t))) jumpSec(1, md4T('범위'));
+    });
+    openSheet(md4T('듣기 범위'), [box], [ok]);
+  }
+
+  // ---- 재생 ----
+  function startAt(t){
+    if (t != null){ try { au.currentTime = Math.max(0, Math.min(AU.tl.duration - 0.3, t)); } catch (x) {} }
+    var k = secAt(au.currentTime || 0), S = SEC(), i, to = null;
+    if (!allowed(k)){   // 범위 밖에서 재생 — 그 뒤의 첫 고른 섹션, 없으면 범위 처음부터
+      for (i = k + 1; i < S.length && to == null; i++) if (allowed(i)) to = i;
+      for (i = 0; i < S.length && to == null; i++) if (allowed(i)) to = i;
+      if (to != null) au.currentTime = S[to].start;
+    }
+    var p = au.play();
+    if (p && p.then) p.then(null, function(){ setText('pl-sec', md4T('▶을 눌러 들으세요')); });
+  }
+  function listenFrom(row, off){   // 🎧·'여기부터 듣기' — 화면을 보고 있던 자리에서
+    if (!audioOf(AU.e)) return;
+    body.classList.add('listening'); closeSheet(); closeDrawers();
+    var go = function(){
+      var t = row != null ? timeAtRow(row, off) : null;
+      // 콕 집어 '여기부터' 들으면 그게 먼저다 — 고른 범위 밖이면 범위를 '처음부터 끝까지'로 되돌린다
+      if (t != null && !allowed(secAt(t))) lsSet('narani:arange:' + AU.key, {mode: 'all'});
+      startAt(t);
+    };
+    if (AU.ready) go(); else prime(true).then(go, function(){});
+  }
+  function jumpSec(dir, why){
+    if (!AU.tl) return;
+    var t = au.currentTime, k = secAt(t), S = SEC(), target = null, i;
+    if (dir > 0){ for (i = k + 1; i < S.length; i++) if (allowed(i)){ target = i; break; } }
+    else {
+      if (t - S[k].start > 3 && allowed(k)) target = k;
+      else for (i = k - 1; i >= 0; i--) if (allowed(i)){ target = i; break; }
+      if (target == null) target = k;
+    }
+    if (target == null){ au.pause(); return; }
+    au.currentTime = S[target].start;
+  }
+  function savePos(){
+    if (!AU.tl || !AU.key || !au.currentTime) return;
+    var s = AU.tl.sents[sentAtT(au.currentTime)];
+    if (s) store('pos:' + AU.key, 'r' + s[1] + ':0');   // 다음에 열면 리더가 들은 자리로 — 🎧도 거기서
+  }
+  doc.getElementById('lis').onclick = function(e){
+    e.stopPropagation();
+    var r = topRow(); listenFrom(r ? +r.id.replace(/^p\d+-r/, '') : null, null);
+  };
+  doc.getElementById('pl-pp').onclick = function(){
+    if (!AU.ready){ prime(true).then(function(){ startAt(null); }, function(){}); return; }
+    if (au.paused) startAt(null); else au.pause();
+  };
+  doc.getElementById('pl-back').onclick = function(){ au.currentTime = Math.max(0, au.currentTime - 15); };
+  doc.getElementById('pl-fwd').onclick = function(){ au.currentTime = Math.min(au.duration || 1e9, au.currentTime + 15); };
+  doc.getElementById('pl-prev').onclick = function(){ jumpSec(-1); };
+  doc.getElementById('pl-next').onclick = function(){ jumpSec(1); };
+  doc.getElementById('pl-range').onclick = function(){ if (AU.tl) rangeSheet(); };
+  doc.getElementById('pl-x').onclick = function(){ au.pause(); savePos(); body.classList.remove('listening'); unmarkNow(); };
+  function audioLabels(){
+    setText('pl-range', md4T('범위'));
+    [['lis', md4T('여기부터 듣기')], ['pl-range', md4T('듣기 범위')], ['pl-prev', md4T('이전 섹션')], ['pl-back', md4T('15초 뒤로')],
+     ['pl-pp', md4T('재생')], ['pl-fwd', md4T('15초 앞으로')], ['pl-next', md4T('다음 섹션')], ['pl-spd', md4T('속도')],
+     ['pl-x', md4T('듣기 닫기')], ['pl-seek', md4T('재생 위치')]].forEach(function(x){
+      var n = doc.getElementById(x[0]); if (n) n.setAttribute('aria-label', x[1]);
+    });
+  }
+  var SPEEDS = [1, 1.25, 1.5, 1.75, 2, 0.8];
+  function setSpd(v){ au.playbackRate = au.defaultPlaybackRate = v; lsSet('narani:aspd', v); setText('pl-spd', v + '×'); }
+  setSpd(lsGet('narani:aspd', 1));
+  doc.getElementById('pl-spd').onclick = function(){ var v = au.playbackRate, i = SPEEDS.indexOf(v); setSpd(SPEEDS[(i + 1) % SPEEDS.length]); };
+  var seekEl = doc.getElementById('pl-seek');
+  seekEl.oninput = function(){ setText('pl-cur', fmtT(+seekEl.value)); };
+  seekEl.onchange = function(){ au.currentTime = +seekEl.value; };
+
+  function meta(k){
+    if (!('mediaSession' in navigator) || !AU.tl) return;
+    try {
+      navigator.mediaSession.metadata = new MediaMetadata({title: (DATA[PID] || {}).title || APP, artist: (SEC()[k] || {}).title || '',
+        album: APP, artwork: [{src: 'icon-512.png', sizes: '512x512', type: 'image/png'}, {src: 'icon-192.png', sizes: '192x192', type: 'image/png'}]});
+    } catch (x) {}
+  }
+  if ('mediaSession' in navigator){
+    var MH = {
+      play: function(){ startAt(null); }, pause: function(){ au.pause(); }, stop: function(){ au.pause(); },
+      seekbackward: function(d){ au.currentTime = Math.max(0, au.currentTime - ((d && d.seekOffset) || 15)); },
+      seekforward: function(d){ au.currentTime = au.currentTime + ((d && d.seekOffset) || 15); },
+      previoustrack: function(){ jumpSec(-1); }, nexttrack: function(){ jumpSec(1); },
+      seekto: function(d){ if (d && d.seekTime != null) au.currentTime = d.seekTime; }
+    };
+    Object.keys(MH).forEach(function(k){ try { navigator.mediaSession.setActionHandler(k, MH[k]); } catch (x) {} });
+  }
+  if ('audioSession' in navigator) try { navigator.audioSession.type = 'playback'; } catch (x) {}
+  ['play', 'pause'].forEach(function(ev){
+    au.addEventListener(ev, function(){
+      setText('pl-pp', ev === 'play' ? '⏸' : '▶');
+      doc.getElementById('pl-pp').setAttribute('aria-label', ev === 'play' ? md4T('일시정지') : md4T('재생'));
+      if ('mediaSession' in navigator) try { navigator.mediaSession.playbackState = ev === 'play' ? 'playing' : 'paused'; } catch (x) {}
+      if (ev === 'pause') savePos();
+    });
+  });
+  au.addEventListener('ended', function(){ savePos(); });
+
+  // ---- 지금 문장 칠하기 (CSS Custom Highlight — DOM을 바꾸지 않는다; 없으면 행째로) ----
+  function cellRange(cell, s, e){
+    var w = doc.createTreeWalker(cell, NodeFilter.SHOW_TEXT), n, pos = 0, r = doc.createRange(), started = false;
+    while ((n = w.nextNode())){
+      var len = n.data.length;
+      if (!started && s < pos + len){ r.setStart(n, s - pos); started = true; }
+      if (started && e <= pos + len){ r.setEnd(n, e - pos); return r; }
+      pos += len;
+    }
+    return started ? (r.setEnd(cell, cell.childNodes.length), r) : null;
+  }
+  var nowRow = null;
+  function unmarkNow(){
+    if (HL) try { CSS.highlights.delete('tts'); } catch (x) {}
+    if (nowRow){ nowRow.classList.remove('tts-row'); nowRow = null; }
+  }
+  function markNow(i){
+    var s = AU.tl.sents[i], row = doc.getElementById(PID + '-r' + s[1]);
+    unmarkNow();
+    if (!row) return;
+    var cell = row.querySelector('.cell.' + AU.tl.side) || row.querySelector('.cell.same'), rect = null;
+    if (HL && cell && cell.offsetParent){
+      var r = cellRange(cell, s[2], s[3]);
+      if (r){ CSS.highlights.set('tts', new Highlight(r)); rect = r.getBoundingClientRect(); }
+    }
+    if (!rect){ nowRow = row; row.classList.add('tts-row'); rect = row.getBoundingClientRect(); }
+    // 화면을 보고 있으면 따라 내려간다 — 손으로 스크롤한 뒤 몇 초는 두고, 이미 보이면 움직이지 않는다
+    var bottom = window.innerHeight - player.offsetHeight - 16;
+    if (doc.visibilityState === 'visible' && Date.now() - AU.userScroll > 4000 && (rect.top < 70 || rect.bottom > bottom))
+      window.scrollBy({top: rect.top - window.innerHeight * 0.3, behavior: 'smooth'});
+  }
+  ['touchmove', 'wheel'].forEach(function(ev){ window.addEventListener(ev, function(){ AU.userScroll = Date.now(); }, {passive: true}); });
+  au.addEventListener('timeupdate', function(){
+    if (!AU.tl) return;
+    var t = au.currentTime, now = Date.now(), k = secAt(t), S = SEC();
+    if (!allowed(k)){   // 고른 범위 밖 — 다음 고른 섹션으로, 없으면 멈춤
+      if (au.paused) return;
+      var nx = null; for (var i = k + 1; i < S.length; i++) if (allowed(i)){ nx = i; break; }
+      if (nx == null){ au.pause(); setText('pl-sec', md4T('고른 범위를 다 들었어요')); }
+      else au.currentTime = S[nx].start;
+      return;
+    }
+    if (k !== AU.sec){ AU.sec = k; meta(k); setText('pl-sec', (S[k] || {}).title || ''); }
+    var si = sentAtT(t);
+    if (si !== AU.cur && body.classList.contains('listening')){ AU.cur = si; markNow(si); }
+    if (doc.activeElement !== seekEl){ seekEl.value = Math.floor(t); setText('pl-cur', fmtT(t)); }
+    if (now - AU.lastSave > 5000){ AU.lastSave = now; savePos(); }
+    if ('mediaSession' in navigator && navigator.mediaSession.setPositionState && now - AU.lastPS > 1000){
+      AU.lastPS = now;
+      try { navigator.mediaSession.setPositionState({duration: AU.tl.duration, playbackRate: au.playbackRate || 1, position: Math.min(t, AU.tl.duration)}); } catch (x) {}
+    }
+  });
+  doc.addEventListener('visibilitychange', function(){ if (doc.visibilityState === 'visible' && AU.tl && AU.cur >= 0 && body.classList.contains('listening')) markNow(AU.cur); });
+"""
+
 _SW_JS = r"""
 // 앱 껍데기 캐시 — 먼저 캐시로 띄우고 뒤에서 새로 받아 둔다. 데이터(data/·__data/)는 앱이 직접 캐시한다.
 var V = '%(version)s', SHELL = 'narani-shell-' + V;
@@ -1229,7 +1620,7 @@ def _js_strings(*codes: str) -> set[str]:
 
 def _catalogs() -> dict[str, dict[str, str]]:
     """화면 언어별 카탈로그 — 리더 JS가 쓰는 문구만 (전부 실으면 index.html이 커진다)."""
-    used = _js_strings(mobile.CORE_JS, _APP_JS, _NOTES_JS, _READER_JS)
+    used = _js_strings(mobile.CORE_JS, _APP_JS, _NOTES_JS, _READER_JS, _AUDIO_JS)
     out: dict[str, dict[str, str]] = {}
     for lang in i18n.available():
         if lang == i18n.SOURCE:
@@ -1288,6 +1679,17 @@ def _index_html(cfg: dict) -> str:
         "<div id=\"scrim\"></div>"
         "<nav id=\"tocd\"><div class=\"dh\"><span id=\"tocd-title\"></span><button id=\"tocd-x\">×</button></div>"
         "<ol id=\"tocd-list\"></ol></nav>"
+        # 듣기 — 🎧(음성이 있는 논문) · 아래 재생 막대
+        "<button id=\"lis\" class=\"rd\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" aria-hidden=\"true\">"
+        "<path fill=\"currentColor\" d=\"M12 3a9 9 0 0 0-9 9v6a3 3 0 0 0 3 3h1a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H5v-1a7 7 0 0 1"
+        " 14 0v1h-2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1a3 3 0 0 0 3-3v-6a9 9 0 0 0-9-9z\"/></svg></button>"
+        "<div id=\"player\" role=\"region\"><div class=\"pl-top\"><span id=\"pl-sec\"></span>"
+        "<span class=\"pl-t\"><span id=\"pl-cur\">0:00</span> / <span id=\"pl-dur\">0:00</span></span></div>"
+        "<input type=\"range\" id=\"pl-seek\" min=\"0\" step=\"1\" value=\"0\">"
+        "<div class=\"pl-ctl\"><button id=\"pl-range\"></button><button id=\"pl-prev\">⏮</button>"
+        "<button id=\"pl-back\">−15</button><button id=\"pl-pp\">▶</button><button id=\"pl-fwd\">+15</button>"
+        "<button id=\"pl-next\">⏭</button><button id=\"pl-spd\">1×</button><button id=\"pl-x\">×</button></div>"
+        "<audio id=\"pl-au\" preload=\"none\"></audio></div>"
         "<button id=\"fab\" class=\"rd\"><span id=\"fab-n\"></span><svg viewBox=\"0 0 24 24\" width=\"24\" height=\"24\" aria-hidden=\"true\">"
         "<path fill=\"currentColor\" d=\"M12 2l1.9 5.6L19.5 9.5l-5.6 1.9L12 17l-1.9-5.6L4.5 9.5l5.6-1.9zM19 14l.9 2.6"
         " 2.6.9-2.6.9L19 21l-.9-2.6L15.5 17.5l2.6-.9z\"/></svg></button>"
@@ -1308,7 +1710,7 @@ def site_files(*, local: bool = False, google_client_id: str = "") -> dict[str, 
            "ai_models": {p: list(m) for p, m in config.MODEL_TIERS.items()},  # 모바일 에이전트의 모델 고르기
            "google_client_id": google_client_id, "catalogs": _catalogs()}
     app_js = (_PRELUDE_JS + "(function(){\n" + sentpair.JS + mobile.CORE_JS + _APP_JS + _NOTES_JS + _READER_JS
-              + "})();\n")
+              + _AUDIO_JS              + "})();\n")
     manifest = {
         "name": APP_NAME, "short_name": APP_NAME, "start_url": "./", "scope": "./", "display": "standalone",
         "background_color": "#fbfaf7", "theme_color": "#fbfaf7",

@@ -37,6 +37,7 @@ TOKEN_URL = "https://oauth2.googleapis.com/token"
 REVOKE_URL = "https://oauth2.googleapis.com/revoke"
 API = "https://www.googleapis.com/drive/v3"
 UPLOAD = "https://www.googleapis.com/upload/drive/v3"
+BIG = 4 * 1024 * 1024  # 이보다 크면 재개형 올리기 (단순·multipart는 5MB까지)
 FOLDER_NAME = "Narani"
 FOLDER_MIME = "application/vnd.google-apps.folder"
 APP_PROP = {"narani": "store"}  # 앱 폴더 표시 — 사용자가 이름을 바꿔도 찾는다
@@ -282,8 +283,30 @@ class DriveStore:
             return None
         return self._check(r, "읽기").content
 
+    def _resumable(self, method: str, url: str, meta: dict, data: bytes, mime: str) -> httpx.Response:
+        """큰 파일(음성 등) — 단순·multipart 올리기는 5MB까지라 재개형 세션을 열어 한 번에 보낸다."""
+        r = self._req(method, url, params={"uploadType": "resumable", "fields": "id"}, json=meta,
+                      headers={"X-Upload-Content-Type": mime, "X-Upload-Content-Length": str(len(data))})
+        if r.status_code == 404:
+            return r
+        loc = self._check(r, "올리기 시작").headers["Location"]
+        return self._req("PUT", loc, content=data, headers={"Content-Type": mime})
+
     def write(self, name: str, data: bytes, mime: str = "application/json") -> None:
         fid = self._id(name)
+        if len(data) > BIG:
+            if fid is not None:
+                r = self._resumable("PATCH", f"{UPLOAD}/files/{fid}", {}, data, mime)
+                if r.status_code != 404:
+                    self._check(r, "쓰기")
+                    return
+                self._ids = None
+            r = self._resumable("POST", f"{UPLOAD}/files", {"name": name, "parents": [self.folder_id()],
+                                                            "mimeType": mime}, data, mime)
+            new_id = self._check(r, "만들기").json()["id"]
+            if self._ids is not None:
+                self._ids[name] = new_id
+            return
         if fid is not None:
             r = self._req("PATCH", f"{UPLOAD}/files/{fid}", params={"uploadType": "media", "fields": "id"},
                           content=data, headers={"Content-Type": mime})

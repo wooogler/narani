@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import re
 import time
 from pathlib import Path
 
@@ -1010,8 +1011,10 @@ def build_home(state: dict) -> None:
         mobile_changed()
         return True
 
-    async def mobile_call(fn, roots: list[Path], busy: str):  # noqa: ANN001, ANN202 — service 함수 하나
-        """연결을 확인하고(없으면 연결부터) fn(roots)를 돌린다. 승인이 만료됐으면 한 번 다시 연결한다."""
+    async def mobile_call(fn, roots: list[Path], busy: str, progress: dict | None = None):  # noqa: ANN001, ANN202
+        """연결을 확인하고(없으면 연결부터) fn(roots)를 돌린다. 승인이 만료됐으면 한 번 다시 연결한다.
+
+        progress가 있으면 fn이 그 안의 'msg'를 고쳐 쓰는 동안 알림 문구를 따라 바꾼다(음성 만들기처럼 긴 일)."""
         if not phone_service.configured():
             ui.notify(t("모바일용 Google 클라이언트 설정이 없습니다 — README의 '모바일에서 읽기'를 보세요."),
                       type="warning")
@@ -1020,6 +1023,7 @@ def build_home(state: dict) -> None:
             return None
         for attempt in (0, 1):
             n = ui.notification(busy, spinner=True, timeout=None)
+            tick = ui.timer(0.5, lambda n=n: setattr(n, "message", progress.get("msg") or busy)) if progress else None
             try:
                 return await run.io_bound(fn, roots)
             except gdrive.NotConnected:
@@ -1030,8 +1034,100 @@ def build_home(state: dict) -> None:
                 ui.notify(t("모바일과 주고받지 못했습니다: {e}", e=e), type="negative")
                 return None
             finally:
+                if tick:
+                    tick.cancel()
                 n.dismiss()
         return None
+
+    async def make_mobile_audio(roots: list[Path]) -> None:
+        """모바일에서 들을 음성 — Mac 목소리로 만들어 Drive에 올린다. 논문 하나면 넣을 섹션을 고른다."""
+        roots = [Path(r) for r in roots]
+        if not roots:
+            ui.notify(t("음성을 만들 논문이 없습니다."), type="warning")
+            return
+        if not phone_service.audio_available():
+            ui.notify(t("음성 만들기는 지금 macOS에서만 됩니다 (Mac 내장 목소리)."), type="warning")
+            return
+        langs = sorted({await run.io_bound(phone_service.paper_lang, r) for r in roots})
+        names = await run.io_bound(phone_service.voices, langs[0]) if len(langs) == 1 else []
+        if len(langs) == 1 and not names:
+            ui.notify(t("이 Mac에 '{lang}' 목소리가 없습니다 — 시스템 설정 → 손쉬운 사용 → 읽기 및 말하기에서 받으세요.",
+                        lang=langs[0]), type="warning")
+            return
+        secs = await run.io_bound(phone_service.sections, roots[0]) if len(roots) == 1 else []
+        picked = {"go": False}
+
+        def go() -> None:
+            picked["go"] = True
+            dlg.close()
+
+        def preview() -> None:
+            import subprocess
+
+            subprocess.Popen(["say", "-v", voice.value, "--", secs[0]["title"] if secs else "Narani"])
+
+        with host, ui.dialog() as dlg, ui.card().classes("gap-2").style("width:460px"):
+            ui.label(t("모바일에서 들을 음성 만들기")).classes("font-bold")
+            ui.label(t("Mac 내장 목소리로 만듭니다 — 무료이고 이 컴퓨터에서 만듭니다. 그림·표·수식·인용 표기·참고문헌은 "
+                       "건너뛰고, 섹션 제목은 알립니다. 만든 음성은 Drive의 Narani 폴더에 올라갑니다(시간당 약 15MB).")) \
+                .classes("text-xs text-gray-500")
+            with ui.row().classes("items-center gap-2 w-full no-wrap"):
+                # 'Yuna (Korean (South Korea))' → 'Yuna' 로 보이게 (값은 say에 줄 전체 이름)
+                shown = {n: re.sub(r"\s+\([^()]*\([^()]*\)\)$", "", n) for n in names}
+                voice = ui.select(shown, value=names[0] if names else None, label=t("목소리")) \
+                    .props("dense outlined").classes("grow")
+                if not names:
+                    voice.set_visibility(False)
+                    ui.label(t("논문 언어마다 지난번 목소리(처음이면 기본 목소리)로 만듭니다.")).classes("text-xs")
+                else:
+                    ui.button(t("들어 보기"), icon="volume_up", on_click=preview).props("flat dense no-caps")
+            checks: list = []
+            if secs:
+                est = ui.label().classes("text-xs text-gray-600")
+
+                def total() -> None:
+                    m = sum(sec["minutes"] for c, sec in zip(checks, secs) if c.value)
+                    est.set_text(t("넣을 섹션 — 약 {m}분", m=round(m)))
+                with ui.scroll_area().style("height:260px").classes("w-full border rounded"):
+                    for sec in secs:
+                        checks.append(ui.checkbox(f"{sec['title']} · {sec['minutes']:.0f}′", value=True,
+                                                  on_change=lambda _: total()).props("dense"))
+                total()
+            else:
+                ui.label(t("{n}편 — 본문 전체로 만듭니다.", n=len(roots))).classes("text-xs")
+            with ui.row().classes("justify-end w-full gap-2"):
+                ui.button(t("취소"), on_click=dlg.close).props("flat")
+                ui.button(t("만들기"), icon="headphones", on_click=go).props("unelevated no-caps color=primary")
+        dlg.open()
+        await dlg
+        if not picked["go"]:
+            return
+        include = [sec["row"] for c, sec in zip(checks, secs) if c.value] if secs else None
+        if secs and not include:
+            ui.notify(t("넣을 섹션을 하나 이상 고르세요."), type="warning")
+            return
+        if include is not None and len(include) == len(secs):
+            include = None
+        progress: dict = {}
+        busy = t("음성 만드는 중… ({n}편)", n=len(roots))
+
+        def prog(i: int, n: int, done: int, tot: int, title: str) -> None:
+            pct = round(100 * done / tot) if tot else 100
+            progress["msg"] = t("음성 만드는 중… {i}/{n}편 · {p}% · {title}", i=i + 1, n=n, p=pct, title=title[:40])
+        s = await mobile_call(lambda rs: phone_service.make_audio(rs, voice.value if names else None, include, prog),
+                              roots, busy, progress)
+        if s is None:
+            return
+        ui.notify(t("음성을 만들어 올렸습니다 — {n}편 · {m}분 · {mb:.0f}MB", n=s["made"], m=round(s["seconds"] / 60),
+                    mb=s["bytes"] / 1e6), type="positive")
+        mobile_changed()
+
+    async def remove_mobile_audio(roots: list[Path]) -> None:
+        n = await mobile_call(phone_service.remove_audio, [Path(r) for r in roots], t("음성을 지우는 중…"))
+        if n is None:
+            return
+        ui.notify(t("모바일 음성 {n}편을 지웠습니다 — 논문은 모바일에 그대로", n=n), type="positive")
+        mobile_changed()
 
     async def send_to_mobile(roots: list[Path]) -> None:
         """논문들을 모바일로 — Drive의 Narani 폴더에 올린다. 하이라이트·메모도 이때 오간다."""
@@ -1298,6 +1394,8 @@ def build_home(state: dict) -> None:
             if i["connected"]:
                 bits = [t("Google Drive: {who}", who=i["account"] or "?"),
                         t("{n}편 · {mb:.1f}MB", n=i["count"], mb=i["bytes"] / 1e6)]
+                if i.get("audio"):
+                    bits.append(t("음성 {n}편", n=i["audio"]))
                 if i["synced"]:
                     bits.append(t("{when} 맞춤", when=_relative_time(i["synced"])))
                 ui.label(" · ".join(bits)).classes("truncate")
@@ -1676,6 +1774,10 @@ def build_home(state: dict) -> None:
                         if r["name"] in data["mobile"]:
                             ui.icon("smartphone", size="14px").classes("text-grey-6") \
                                 .tooltip(t("모바일에 있음 — 바뀌면 앱을 켤 때 다시 올립니다"))
+                            a = (data["mobile"][r["name"]] or {}).get("audio")
+                            if a:
+                                ui.icon("headphones", size="14px").classes("text-grey-6") \
+                                    .tooltip(t("모바일에서 들을 음성 {m}분", m=round(float(a.get("duration") or 0) / 60)))
                         # 소속 프로젝트 = 이 논문의 저장 폴더까지 정하는 값이라 카드에서 바로 바꾼다.
                         tags_box = ui.element("div").classes("md4-ptags")
                         paint_tags(tags_box, r)
@@ -2305,6 +2407,14 @@ def build_home(state: dict) -> None:
                     .props("outline dense no-caps") \
                     .tooltip(t("Google Drive를 거쳐 모바일 리더({site})에서 읽습니다 — 모바일에서 단 하이라이트·메모도 이때 합칩니다",
                                site=pages.DOMAIN))
+                ui.button(t("모바일 음성 만들기"), icon="headphones",
+                          on_click=lambda: make_mobile_audio([Path(p) for p in selected])) \
+                    .props("outline dense no-caps") \
+                    .tooltip(t("번역 본문을 Mac 목소리로 읽은 음성을 만들어 모바일에서 듣습니다 — 화면을 꺼도, CarPlay에서도"))
+                if any((data["mobile"].get(Path(p).stem) or {}).get("audio") for p in selected):
+                    ui.button(t("모바일 음성 지우기"), icon="headset_off",
+                              on_click=lambda: remove_mobile_audio([Path(p) for p in selected])) \
+                        .props("outline dense no-caps")
                 if any(Path(p).stem in data["mobile"] for p in selected):
                     ui.button(t("모바일에서 빼기"), icon="phonelink_erase",
                               on_click=lambda: remove_from_mobile([Path(p) for p in selected])) \
