@@ -201,10 +201,12 @@ mark.anno.note-end::after { content: "✎"; font-size: .75em; margin-left: 2px; 
 .anno-ta { width: 100%; font: inherit; font-size: 16px; color: var(--fg); background: var(--card);
   border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; resize: vertical; }
 /* 떠 있는 💬 단추의 창 — '메모'(이 논문의 내 하이라이트·메모) · '질문하기'(에이전트) 중 하나를 고르는 두 칸 스위치 */
-.ag-tabs { flex: 1; display: flex; min-width: 0; max-width: 300px; padding: 3px; border-radius: 11px; background: var(--line); }
+.ag-tabs { flex: 1; display: flex; min-width: 0; max-width: 300px; margin-right: auto; padding: 3px; border-radius: 11px; background: var(--line); }
 .dh .ag-tabs button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 0;
   font-size: .9em; font-weight: 600; color: var(--muted); padding: 6px 8px; border-radius: 8px; white-space: nowrap; }
 .dh .ag-tabs button svg { flex: none; }
+.dh .ag-tabs .cnt { flex: none; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: #fff;
+  font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
 .dh .ag-tabs button.on { color: var(--fg); background: var(--sheet); box-shadow: 0 1px 3px rgba(0,0,0,.14); }
 #agent.notes #ag-clear, #agent.notes #ag-set { display: none; }
 #fab-n { position: absolute; top: -3px; right: -3px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;

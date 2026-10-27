@@ -1284,15 +1284,16 @@
     'tab-notes': '<path fill="currentColor" d="M3 17.25V21h3.75L17.8 9.94l-3.75-3.75zM20.7 7.04a1 1 0 0 0 0-1.41l-2.33-2.33a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75z"/>',
     'tab-chat': '<path fill="currentColor" d="M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zm-7 13h-2v-2h2zm1.7-5.6-.8.8c-.7.6-.9 1.1-.9 1.8h-2v-.5c0-1 .4-1.7 1.1-2.4l1.1-1.1a1.3 1.3 0 0 0-1-2.2c-.8 0-1.4.6-1.4 1.4H8.8a3.2 3.2 0 0 1 6.4 0c0 .8-.2 1.5-.5 2.2z"/>'
   };
-  function setTab(id, label, on){
+  function setTab(id, label, on, n){   // n — 메모 개수는 글자 뒤 작은 동그라미로
     var b = doc.getElementById(id);
     b.innerHTML = '<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true">' + TAB_ICON[id] + '</svg>';
     b.appendChild(doc.createTextNode(label));
+    if (n) b.appendChild(el('span', 'cnt', String(n)));
     b.classList.toggle('on', on); b.setAttribute('aria-selected', on ? 'true' : 'false');
   }
   function setTabs(){
     var n = NOTE.key ? items().length : 0, notes = AG.mode === 'notes';
-    setTab('tab-notes', md4T('메모') + (n ? ' ' + n : ''), notes);
+    setTab('tab-notes', md4T('메모'), notes, n);
     setTab('tab-chat', md4T('질문하기'), !notes);
     agent.classList.toggle('notes', notes);
   }
