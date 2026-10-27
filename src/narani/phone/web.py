@@ -1354,8 +1354,10 @@ _AUDIO_JS = r"""
     }).then(function(blob){
       if (AU.e !== e) throw new Error('stale');
       if (AU.url) try { URL.revokeObjectURL(AU.url); } catch (x) {}
+      var keep = au.currentTime || 0;   // 다시 꽂을 때(앱을 다시 열었을 때) 듣던 자리를 잃지 않게
       AU.url = URL.createObjectURL(blob);
-      au.src = AU.url;   // iOS 26: 다시 연 홈 화면 앱의 <audio>가 소리 없이 재생되는 버그 — 재생 직전에 새로 꽂는 것으로 피한다
+      au.src = AU.url;
+      if (keep) au.addEventListener('loadedmetadata', function f(){ au.removeEventListener('loadedmetadata', f); au.currentTime = keep; });   // iOS 26: 다시 연 홈 화면 앱의 <audio>가 소리 없이 재생되는 버그 — 재생 직전에 새로 꽂는 것으로 피한다
       AU.ready = true;
       doc.getElementById('pl-seek').max = Math.floor(AU.tl.duration);
       setText('pl-dur', fmtT(AU.tl.duration));
@@ -1575,7 +1577,13 @@ _AUDIO_JS = r"""
       try { navigator.mediaSession.setPositionState({duration: AU.tl.duration, playbackRate: au.playbackRate || 1, position: Math.min(t, AU.tl.duration)}); } catch (x) {}
     }
   });
-  doc.addEventListener('visibilitychange', function(){ if (doc.visibilityState === 'visible' && AU.tl && AU.cur >= 0 && body.classList.contains('listening')) markNow(AU.cur); });
+  doc.addEventListener('visibilitychange', function(){
+    if (doc.visibilityState !== 'visible' || !AU.e) return;
+    // 멈춘 채 다시 보이면 다음 ▶ 때 캐시에서 새로 꽂는다 — 실기기 시험에서 통과한 방식(재생 직전에 src)과 같게
+    if (au.paused) AU.ready = false;
+    if (AU.tl && AU.cur >= 0 && body.classList.contains('listening')) markNow(AU.cur);
+  });
+  window.addEventListener('pageshow', function(e){ if (e.persisted && au.paused) AU.ready = false; });
 """
 
 _SW_JS = r"""
