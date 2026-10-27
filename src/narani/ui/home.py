@@ -45,7 +45,7 @@ from narani.phone import pages
 from narani.phone import service as phone_service
 from narani.ui import (
     agent_panel, batch_translate_dialog, collection_glossary_dialog, desktop, find_bar, jobs, jump_back,
-    scroll_memory, settings_dialog, spa, split_view, tabstore, translate_job, update_banner,
+    scroll_memory, settings_dialog, setup_wizard, spa, split_view, tabstore, translate_job, update_banner,
 )
 from narani.workdir import WorkDir
 
@@ -572,6 +572,7 @@ def build_home(state: dict) -> None:
     spa.add_css(_CHROME_CSS)  # 헤더 탭 줄 + .md4-body 틀 + 사이드바 색 토큰
     spa.add_css(HOME_CSS)
     spa.add_css(settings_dialog.CSS)
+    spa.add_css(setup_wizard.CSS)
     spa.add_body_html(_EXTLINK_HTML)  # 바깥 링크는 새 창(앱 창이면 시스템 브라우저)으로
     spa.add_body_html(_DRAG_HTML)
     spa.add_body_html(_COLGRIP_HTML)
@@ -705,8 +706,19 @@ def build_home(state: dict) -> None:
         if settings_open["fn"] is None:
             with host:
                 settings_open["fn"] = settings_dialog.build_settings(
-                    state, on_change=lambda: (refresh_views(rescan=True), ws_label.refresh()))
+                    state, on_change=lambda: (refresh_views(rescan=True), ws_label.refresh()),
+                    on_wizard=open_wizard)
         settings_open["fn"](tab)
+
+    # 처음 설정 마법사 — 첫 실행에 저절로, 설정 머리의 '처음 설정 다시 하기'로 언제든 (§ui/setup_wizard.py).
+    # 사용자 언어는 셸이 그리기 전에 미리 골라 둔다(app.shell → setup_wizard.preselect_language)
+    wizard_open: dict = {"fn": None}
+
+    def open_wizard(first: bool = False) -> None:
+        if wizard_open["fn"] is None:
+            with host:
+                wizard_open["fn"] = setup_wizard.build_wizard(state, on_upload=handle, on_done=refresh_views)
+        wizard_open["fn"](first=first)
 
     # ===== 프로젝트 고르기·만들기·고치기 =====
     def pick_scope(value: str) -> None:
@@ -2653,3 +2665,5 @@ def build_home(state: dict) -> None:
         sync_preview()
 
     ui.timer(0.6, poll)
+    if setup_wizard.needs_setup():
+        open_wizard(first=True)

@@ -23,6 +23,21 @@ CORPUS = Path(__file__).parent / "corpus"
 pytest.importorskip("nicegui", reason="웹 UI 의존성(ui extra) 미설치")
 
 
+@pytest.fixture(autouse=True)
+def _existing_user(request):
+    """이미 쓰던 사용자로 띄운다 — 빈 설정이면 처음 설정 마법사가 뜨고 화면 언어를 OS 언어로 미리 고른다
+    (§ui/setup_wizard.py). 그 경우는 test_first_run_opens_setup_wizard만 본다."""
+    from narani import config
+
+    if config.CONFIG_PATH.exists():
+        config.CONFIG_PATH.unlink()
+    if request.node.name != "test_first_run_opens_setup_wizard":
+        config.set_section_value("setup", "done", True)
+    yield
+    if config.CONFIG_PATH.exists():
+        config.CONFIG_PATH.unlink()
+
+
 def _free_port() -> int:
     with socket.socket() as s:
         s.bind(("127.0.0.1", 0))
@@ -179,3 +194,9 @@ def test_home_naming_hint_ignores_uniquified_folder():
     assert _same_base("2017_Attention_Vaswani (2)", "2017_Attention_Vaswani")
     assert not _same_base("2017_Attention_Vaswani (x)", "2017_Attention_Vaswani")
     assert not _same_base("paper", "2017_Attention_Vaswani")
+
+
+def test_first_run_opens_setup_wizard(tmp_path):
+    """빈 설정으로 처음 켜면 마법사가 뜬다 — 다시 켜면(끝낸 표시가 있으면) 위 테스트들처럼 뜨지 않는다."""
+    body = _serve_and_get(["--upload-dir", str(tmp_path)], _free_port())
+    assert "md4-wiz" in body and "md4-hside" in body  # 홈 위에 마법사 대화상자
