@@ -1260,5 +1260,8 @@
  "시작 실패": "failed to start",
  "대화 끝 · {t} · 약 ${c}": "Chat ended · {t} · about ${c}",
  "30분이 지나 끝냈어요": "ended after 30 minutes",
- "조용해서 끝냈어요": "ended after silence"
+ "조용해서 끝냈어요": "ended after silence",
+ "Gemini 요청 한도에 걸렸습니다{wait} — 무료 등급 키는 TTS가 하루 몇 번뿐이라 논문 한 편을 만들기 어렵습니다. Google AI Studio에서 결제를 켠 키를 쓰거나 Mac 목소리로 만드세요. 다 만든 섹션은 남아 있어 다시 하면 이어서 만듭니다.": "Hit the Gemini request limit{wait} — free-tier keys allow only a few TTS requests a day, not enough for a whole paper. Use a key with billing enabled in Google AI Studio, or the Mac voice. Finished sections are kept, so running it again continues where it stopped.",
+ " (약 {h}시간 뒤에 풀림)": " (resets in about {h} h)",
+ " · 요청 약 {n}번 — 무료 등급 키는 TTS가 하루 10번쯤이라 모자랄 수 있어요": " · about {n} requests — free-tier keys allow about 10 TTS requests a day, which may not be enough"
 }

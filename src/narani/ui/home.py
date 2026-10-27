@@ -1167,16 +1167,17 @@ def build_home(state: dict) -> None:
             checks: list = []
 
             def total() -> None:
-                if secs:
-                    m = sum(sec["minutes"] for c, sec in zip(checks, secs) if c.value)
-                else:
-                    m = sum(sec["minutes"] for p in per for sec in p)
+                chosen = ([sec for c, sec in zip(checks, secs) if c.value] if secs
+                          else [sec for p in per for sec in p])
+                m = sum(sec["minutes"] for sec in chosen)
                 mac_row.set_visibility(eng.value == "mac")
                 gem_row.set_visibility(eng.value == "gemini")
                 txt = t("약 {m}분", m=round(m))
                 if eng.value == "gemini":
+                    req = tts.gemini_requests([round(sec["minutes"] * 60 * tts.CPS) for sec in chosen])
                     txt += t(" · 예상 비용 약 ${c} (내 Gemini 키의 계정에 청구)",
                              c=f"{tts.gemini_cost(gmodel.value, m * 60):.2f}")
+                    txt += t(" · 요청 약 {n}번 — 무료 등급 키는 TTS가 하루 10번쯤이라 모자랄 수 있어요", n=req)
                 else:
                     txt += t(" · 무료")
                 est.set_text(txt)

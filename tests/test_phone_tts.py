@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import shutil
 from html.parser import HTMLParser
 
@@ -289,9 +290,9 @@ def test_gemini_voice_request_retry_and_sentence_pieces(monkeypatch):
         body = json.loads(req.content)
         seen.append(body)
         assert req.headers["x-goog-api-key"] == "k" and str(req.url) == tts.GEMINI_URL
-        if len(seen) == 1:
-            return httpx.Response(429, json={"error": "slow down"})
-        n = max(1, body["input"][0]["content"][0]["text"].count("."))
+        if len(seen) == 1:   # 분당 한도 — 잠깐 기다렸다 다시
+            return httpx.Response(429, json={"error": {"message": "Rate limit exceeded. Please retry in 2s."}})
+        n = len([x for x in re.split(r"(?<=[.])\s+|\n\n", body["input"][0]["content"][0]["text"]) if x.strip()])
         pcm = b"".join(_tone(0.8) + _silence(0.4) for _ in range(n))
         buf = io.BytesIO()
         with wave.open(buf, "wb") as w:
@@ -310,12 +311,29 @@ def test_gemini_voice_request_retry_and_sentence_pieces(monkeypatch):
              tts.Unit(2, 0, 5, "하나다.", end_of_block=False), tts.Unit(2, 6, 11, "둘이다.", end_of_block=True)]
     ticks: list[int] = []
     out = v.synth_units(units, lambda: ticks.append(1))
-    assert len(out) == 3 and all(out) and len(ticks) == 3 and sleeps          # 429 뒤 다시 시도
+    assert len(out) == 3 and all(out) and len(ticks) == 3 and sleeps == [2.0]   # 429가 말한 만큼 기다렸다 다시
     texts = [b["input"][0]["content"][0]["text"] for b in seen[1:]]
-    assert sorted(texts) == ["1 서론", "하나다. 둘이다."]                     # 제목 따로, 문단은 한 번에
+    assert texts == ["1 서론\n\n하나다. 둘이다."]                               # 섹션을 한 요청으로 묶는다
     assert seen[1]["generation_config"]["speech_config"] == [{"voice": "Charon"}]
     assert seen[1]["model"] == "gemini-3.8-flash-lite-tts" and seen[1]["response_format"] == {"type": "audio"}
     assert v.id == "gemini:gemini-3.8-flash-lite-tts:Charon" and tts.GeminiVoice.sample_rate == 24000
+
+
+def test_gemini_daily_quota_stops_at_once(monkeypatch):
+    import httpx
+
+    calls = []
+
+    def handler(req):  # noqa: ANN001
+        calls.append(1)
+        return httpx.Response(429, json={"error": {"message": "Rate limit exceeded for model gemini-3.8-flash-tts "
+                                                   "(limit: 10 requests per day on Free Tier). Please retry in 12h51m7s"}})
+    monkeypatch.setattr("time.sleep", lambda s: pytest.fail("하루 한도는 기다리지 않는다"))
+    v = tts.GeminiVoice(key="k", http=httpx.Client(transport=httpx.MockTransport(handler)), workers=1)
+    with pytest.raises(tts.GeminiQuota) as e:
+        v.synth_units([tts.Unit(1, 0, 3, "하나다.", end_of_block=True)])
+    assert len(calls) == 1 and "13" in str(e.value)   # 약 13시간 뒤
+    assert tts.gemini_requests([500, 3000, 3001, 0]) == 4
 
 
 def test_gemini_cost_estimate():

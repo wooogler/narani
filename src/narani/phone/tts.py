@@ -348,7 +348,35 @@ GEMINI_VOICES = ("Kore", "Charon", "Aoede", "Leda", "Orus", "Puck", "Zephyr", "F
                  "Vindemiatrix", "Sadachbia", "Sadaltager", "Sulafat")
 GEMINI_STYLE = "calm, clear narration of a research paper at a steady pace"
 _TOKENS_PER_SEC = 25
-_BLOCK_MAX = 1500            # 한 번에 보내는 글자 수 — 긴 문단은 문장 단위로 나눠 보낸다
+# 한 요청에 보내는 글자 수 — 여러 문단을 묶어 요청 수를 줄인다(무료 등급은 하루 몇 번뿐). 한 응답의 음성은 10분쯤이
+# 한계라 한국어 3000자(약 7분)로 묶는다. 넘는 문단은 문장 단위로 나눈다.
+_BLOCK_MAX = 3000
+
+
+class GeminiQuota(RuntimeError):
+    """하루 한도처럼 오래 기다려야 하는 429 — 다시 시도하지 않고 바로 알린다."""
+
+
+def _retry_after(r) -> float | None:  # noqa: ANN001 — httpx.Response
+    """429 응답이 말하는 기다릴 시간(초) — RetryInfo의 retryDelay나 메시지의 'retry in 12h51m7s'."""
+    try:
+        err = r.json().get("error", {})
+    except ValueError:
+        return None
+    for d in err.get("details") or []:
+        m = re.match(r"([\d.]+)s$", str(d.get("retryDelay", "")))
+        if m:
+            return float(m.group(1))
+    m = re.search(r"retry in (?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?", str(err.get("message", "")), re.I)
+    if m and any(m.groups()):
+        h, mi, se = (float(x or 0) for x in m.groups())
+        return h * 3600 + mi * 60 + se
+    return None
+
+
+def gemini_requests(section_chars: list[int]) -> int:
+    """만들 섹션들의 글자 수 → 대략 요청 수 (섹션마다 따로 묶는다)."""
+    return sum(max(1, -(-n // _BLOCK_MAX)) for n in section_chars if n)
 
 
 def gemini_cost(model: str, seconds: float, today: str | None = None) -> float:
@@ -444,7 +472,18 @@ class GeminiVoice:
         http = self.http or httpx.Client(timeout=120)
         for attempt in range(5):
             r = http.post(GEMINI_URL, json=body, headers={"x-goog-api-key": self._key()})
-            if r.status_code in (429, 500, 502, 503, 504) and attempt < 4:
+            if r.status_code == 429:
+                wait = _retry_after(r)
+                if (wait is not None and wait > 90) or "per day" in r.text.lower() or attempt == 4:
+                    from narani.i18n import t
+                    raise GeminiQuota(t("Gemini 요청 한도에 걸렸습니다{wait} — 무료 등급 키는 TTS가 하루 몇 번뿐이라 논문 한 편을 "
+                                        "만들기 어렵습니다. Google AI Studio에서 결제를 켠 키를 쓰거나 Mac 목소리로 만드세요. "
+                                        "다 만든 섹션은 남아 있어 다시 하면 이어서 만듭니다.",
+                                        wait=t(" (약 {h}시간 뒤에 풀림)", h=max(1, round(wait / 3600))) if wait and wait > 3600
+                                        else ""))
+                _time.sleep(min(60, wait if wait is not None else 2 ** attempt * 2))
+                continue
+            if r.status_code in (500, 502, 503, 504) and attempt < 4:
                 _time.sleep(min(30, 2 ** attempt * 2))
                 continue
             if r.status_code >= 400:
@@ -467,19 +506,19 @@ class GeminiVoice:
         raise RuntimeError("Gemini TTS: 다시 시도해도 실패했습니다")  # pragma: no cover
 
     def synth_units(self, units: list[Unit], tick: Callable[[], None] | None = None) -> list[bytes]:
-        groups: list[list[int]] = []                              # 한 번에 보낼 문장 묶음 (문단 · 제목 따로)
+        groups: list[list[int]] = []                              # 한 번에 보낼 문장 묶음 — 섹션 안에서 _BLOCK_MAX까지
         for i, u in enumerate(units):
             g = groups[-1] if groups else None
-            same = (g is not None and not u.head and not units[g[-1]].head and not units[g[-1]].end_of_block
-                    and sum(len(units[j].text) for j in g) + len(u.text) <= _BLOCK_MAX)
-            if same:
+            if g is not None and sum(len(units[j].text) for j in g) + len(u.text) <= _BLOCK_MAX:
                 g.append(i)
             else:
                 groups.append([i])
         out: list[bytes] = [b""] * len(units)
 
         def run(g: list[int]) -> None:
-            pcm = self._call(" ".join(units[j].text for j in g))
+            # 문단 사이는 빈 줄로 — 목소리가 문단 끝에서 더 쉰다(쉼으로 문장을 가르는 데도 도움)
+            pcm = self._call("".join(units[j].text + ("\n\n" if units[j].end_of_block or units[j].head else " ")
+                                     for j in g).strip())
             for j, piece in zip(g, _split_by_pauses(pcm, self.sample_rate, [len(units[j].text) for j in g])):
                 out[j] = piece
                 if tick:
