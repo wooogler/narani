@@ -275,6 +275,7 @@
     });
   }
   function onSentence(e, cell){
+    if (typeof sentenceTap === 'function' && sentenceTap(e, cell)) return;   // 쓰는 쪽이 누르기를 가로챌 수 있다(폰: 듣는 중엔 바로 거기부터)
     var row = cell.parentElement, side = cell.classList.contains('ko') ? 'ko' : 'en';
     if (!row.querySelector('.cell.en') || !row.querySelector('.cell.ko')){ clearSent(); closeSheet(); return; }  // 짝이 될 쪽이 없는 행
     var other = side === 'ko' ? 'en' : 'ko', label = other === 'en' ? md4T('원문') : md4T('번역');
@@ -1097,6 +1098,21 @@
     }
     return null;
   }
+  // 재생 막대가 떠 있으면(듣는 중·멈춤) 문장을 누르는 게 곧 '여기부터 듣기' — 시트 없이 바로. 표시·메모는 막대를 닫고
+  function sentenceTap(e, cell){
+    if (!body.classList.contains('listening') || TK || !audioOf(AU.e)) return false;
+    if (cell.parentElement.classList.contains('tts-off')){ clearSent(); return true; }   // 읽지 않는 행은 눌러도 그대로
+    var rowEl = cell.parentElement, side = cell.classList.contains('ko') ? 'ko' : 'en', off = null;
+    var pr = rowEl.querySelector('.cell.en') && rowEl.querySelector('.cell.ko') ? prepare(rowEl) : null;
+    var pi = pr ? sentAt(e, cell, pr, side) : null;
+    if (pi !== null && pi !== undefined){
+      var sp = spanOf(pr[side], pr.pairs[+pi][side === 'en' ? 0 : 1]);
+      var aside = AU.tl ? AU.tl.side : (AU.e.has_ko ? 'ko' : 'en');
+      off = sp && side === aside ? sp[0] : null;
+    }
+    clearSent(); listenFrom(+rowEl.id.replace(/^p\d+-r/, ''), off);
+    return true;
+  }
   function sentenceActs(rowEl, pi, pr, side){
     var acts = notesActs(rowEl, pi, pr, side), a = audioOf(AU.e);
     if (!a) return acts;
@@ -1353,6 +1369,7 @@
   doc.getElementById('fab').onclick = function(e){
     e.stopPropagation();
     closeSheet();
+    if (body.classList.contains('listening')){ talkStart(); return; }   // 듣는 중엔 말로 묻기 단추
     setText('ag-clear', '⟲'); doc.getElementById('ag-clear').setAttribute('aria-label', md4T('대화 지우기'));
     agIn.placeholder = md4T('이 논문에 대해 물어보세요');
     agent.classList.add('open'); scrim.classList.add('open');
@@ -1534,7 +1551,7 @@
     try { au.pause(); } catch (x) {}
     savePos();
     body.classList.remove('listening', 'has-audio');
-    unmarkNow();
+    unmarkNow(); markSpoken(true);
     if (AU.url){ try { URL.revokeObjectURL(AU.url); } catch (x) {} AU.url = null; }
     au.removeAttribute('src'); try { au.load(); } catch (x) {}
     AU.e = null; AU.tl = null; AU.ready = false; AU.cur = AU.sec = -1;
@@ -1549,7 +1566,7 @@
     if (show) setText('pl-sec', md4T('음성 받는 중…'));
     AU.busy = audioTl(a).then(function(tl){
       if (AU.e !== e) throw new Error('stale');
-      AU.tl = tl;
+      AU.tl = tl; markSpoken();
       return audioBlob(a, function(f){ if (show && AU.e === e) setText('pl-sec', md4T('음성 받는 중… {p}%', {p: Math.round(f * 100)})); });
     }).then(function(blob){
       if (AU.e !== e) throw new Error('stale');
@@ -1684,10 +1701,12 @@
   doc.getElementById('pl-prev').onclick = function(){ jumpSec(-1); };
   doc.getElementById('pl-next').onclick = function(){ jumpSec(1); };
   doc.getElementById('pl-range').onclick = function(){ if (AU.tl) rangeSheet(); };
+  // 막대의 누르기가 문서의 '시트 바깥을 눌렀다'(시트 닫기)까지 가지 않게 — 범위 시트가 열리자마자 닫혔다
+  doc.getElementById('player').addEventListener('click', function(e){ e.stopPropagation(); });
   doc.getElementById('pl-x').onclick = function(){ au.pause(); savePos(); body.classList.remove('listening'); unmarkNow(); };
   function audioLabels(){
     setText('pl-range', md4T('범위'));
-    setText('pl-mic', '🎙 ' + md4T('묻기')); setText('tk-end', md4T('끝'));
+    setText('fab-ask-t', md4T('묻기')); setText('tk-end', md4T('끝'));
     var am = doc.getElementById('ag-mic'); if (am) am.setAttribute('aria-label', md4T('말로 묻기'));
     [['lis', md4T('여기부터 듣기')], ['pl-range', md4T('듣기 범위')], ['pl-prev', md4T('이전 섹션')], ['pl-back', md4T('15초 뒤로')],
      ['pl-pp', md4T('재생')], ['pl-fwd', md4T('15초 앞으로')], ['pl-next', md4T('다음 섹션')], ['pl-spd', md4T('속도')],
@@ -1749,6 +1768,15 @@
   function unmarkNow(){
     if (HL) try { CSS.highlights.delete('tts'); } catch (x) {}
     if (nowRow){ nowRow.classList.remove('tts-row'); nowRow = null; }
+  }
+  // 음성에 없는 행(그림·표·캡션·참고문헌·뺀 섹션…) — 듣는 동안 흐리게 두고 눌러도 아무 일 없게
+  function markSpoken(clear){
+    var art = doc.getElementById(PID), on = {};
+    if (!art) return;
+    if (!clear && AU.tl) AU.tl.sents.forEach(function(s){ on[s[1]] = 1; });
+    [].forEach.call(art.querySelectorAll('.row[id]'), function(r){
+      r.classList.toggle('tts-off', !clear && !on[+r.id.replace(/^p\d+-r/, '')]);
+    });
   }
   function markNow(i){
     var s = AU.tl.sents[i], row = doc.getElementById(PID + '-r' + s[1]);
@@ -1992,7 +2020,6 @@
     if (secs > 1800) talkEnd(md4T('30분이 지나 끝냈어요'));
     else if (!TK.userTalking && !TK.botTalking && TK.dc && Date.now() - TK.last > 20000) talkEnd(md4T('조용해서 끝냈어요'));
   }, 1000);
-  doc.getElementById('pl-mic').onclick = function(){ if (TK) talkEnd(md4T('끝')); else talkStart(); };
   doc.getElementById('ag-mic').onclick = function(){ if (TK) talkEnd(md4T('끝')); else { closeDrawers(); talkStart(); } };
   doc.getElementById('tk-end').onclick = function(){ talkEnd(md4T('끝')); };
 })();
