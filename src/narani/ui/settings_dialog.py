@@ -71,12 +71,14 @@ def any_library_dirs() -> bool:
 # ====================================================================================
 # 전역 설정
 # ====================================================================================
-def build_settings(state: dict, on_change: Callable[[], None]) -> Callable[[str | None], None]:
+def build_settings(state: dict, on_change: Callable[[], None],
+                   on_wizard: Callable[[], None] | None = None) -> Callable[[str | None], None]:
     """전역 설정 대화상자를 짓고 여는 함수를 돌려준다 — `opener("ai")`처럼 탭을 골라 연다.
 
     홈을 그릴 때 한 번만 짓고 닫아도 지우지 않는다. 서지 보강은 몇 분씩 돌며 진행 막대를 갱신하는데,
     열 때마다 새로 지으면 대화상자를 닫은 사이 그 막대가 사라진 위젯을 건드리게 된다.
     on_change는 목록에 보이는 것(작업 폴더·이름·서지)이 바뀌었을 때 홈이 다시 훑도록 부른다.
+    on_wizard가 있으면 머리에 '처음 설정 다시 하기'를 둔다(§ui/setup_wizard.py).
     """
     from nicegui import run, ui
 
@@ -96,6 +98,11 @@ def build_settings(state: dict, on_change: Callable[[], None]) -> Callable[[str 
         with ui.row().classes("md4-setdlg-head items-center w-full no-wrap"):
             ui.label(t("설정")).classes("text-base font-bold")
             ui.space()
+            if on_wizard is not None:
+                ui.button(t("처음 설정 다시 하기"), icon="auto_fix_high",
+                          on_click=lambda: (dlg.close(), on_wizard())) \
+                    .props("flat dense no-caps size=sm color=grey") \
+                    .tooltip(t("언어 · AI 연결 · 저장 위치를 차례로 안내하는 마법사"))
             ui.button(icon="close", on_click=dlg.close).props("flat dense round size=sm color=grey")
         with ui.row().classes("md4-setdlg-body w-full no-wrap gap-0"):
             with ui.tabs().props("vertical no-caps dense").classes("md4-settabs") as tabs:
@@ -432,12 +439,14 @@ def _convert_panel(ui, save_global, export_target):  # noqa: ANN001, ANN202 — 
     def pick_ui_lang(e) -> None:  # noqa: ANN001
         if e.value == i18n.ui_lang():
             return
-        save_global("ui", "language", e.value, t("화면 언어 — 창을 새로 열면 바뀝니다"))
+        config.set_section_value("ui", "language", e.value)
+        i18n._ui_lang.cache_clear()  # mtime 캐시가 옛 언어를 주지 않게
+        ui.navigate.reload()  # 헤더·홈·JS 문구까지 새 언어로 — 화면을 새로 부른다
 
     _ui = i18n.ui_lang()
     ui.select({c: langs.get(c).native if c != "en" else "English" for c in i18n.available()}, value=_ui,
               label=t("화면 언어"), on_change=pick_ui_lang).props("dense outlined").classes("w-full")
-    ui.label(t("메뉴·단추·안내문의 언어입니다. 창을 새로 열면 바뀝니다.")) \
+    ui.label(t("메뉴·단추·안내문의 언어입니다. 고르면 화면을 새로 불러 바로 바뀝니다.")) \
         .classes("text-xs text-gray-400")
     _lang = config.resolve_target_lang()
     ui.select(langs.language_options(_lang), value=_lang, label=t("번역 언어 (모국어)"), on_change=pick_lang) \
