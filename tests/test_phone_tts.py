@@ -252,3 +252,103 @@ def test_service_make_audio_and_refresh_remakes_stale_free_voice(tmp_path, monke
     e = sync.read_index(store)["papers"][0]
     assert e["audio"]["src"] == e["hash"]
     assert service.refresh()["audio"] == 0                    # 바뀐 게 없으면 다시 만들지 않는다
+
+
+# ---- Gemini ----
+def _tone(sec: float, rate: int = 24000) -> bytes:
+    import array
+    import math
+
+    return array.array("h", (int(8000 * math.sin(i / 7)) for i in range(int(sec * rate)))).tobytes()
+
+
+def _silence(sec: float, rate: int = 24000) -> bytes:
+    return b"\x00\x00" * int(sec * rate)
+
+
+def test_split_by_pauses_cuts_at_the_nearest_silence():
+    # 문장 셋: 2초 · 1초 · 3초, 사이에 0.4초 쉼 — 글자 수는 일부러 조금 어긋나게
+    pcm = _tone(2) + _silence(0.4) + _tone(1) + _silence(0.4) + _tone(3)
+    parts = tts._split_by_pauses(pcm, 24000, [25, 10, 30])
+    secs = [len(p) / 2 / 24000 for p in parts]
+    assert len(parts) == 3 and b"".join(parts) == pcm
+    assert secs[0] == pytest.approx(2.2, abs=0.08) and secs[1] == pytest.approx(1.4, abs=0.08)
+    assert tts._split_by_pauses(pcm, 24000, [5]) == [pcm]
+
+
+def test_gemini_voice_request_retry_and_sentence_pieces(monkeypatch):
+    import base64
+    import io
+    import wave
+
+    import httpx
+
+    seen: list[dict] = []
+
+    def handler(req: httpx.Request) -> httpx.Response:
+        body = json.loads(req.content)
+        seen.append(body)
+        assert req.headers["x-goog-api-key"] == "k" and str(req.url) == tts.GEMINI_URL
+        if len(seen) == 1:
+            return httpx.Response(429, json={"error": "slow down"})
+        n = max(1, body["input"][0]["content"][0]["text"].count("."))
+        pcm = b"".join(_tone(0.8) + _silence(0.4) for _ in range(n))
+        buf = io.BytesIO()
+        with wave.open(buf, "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(24000)
+            w.writeframes(pcm)
+        return httpx.Response(200, json={"steps": [{"type": "model_output", "content": [
+            {"type": "audio", "data": base64.b64encode(buf.getvalue()).decode()}]}]})
+
+    sleeps: list[float] = []
+    monkeypatch.setattr("time.sleep", lambda sec: sleeps.append(sec))
+    v = tts.GeminiVoice("Charon", "gemini-3.8-flash-lite-tts", key="k",
+                        http=httpx.Client(transport=httpx.MockTransport(handler)), workers=1)
+    units = [tts.Unit(1, 0, 3, "1 서론", head=True, end_of_block=True),
+             tts.Unit(2, 0, 5, "하나다.", end_of_block=False), tts.Unit(2, 6, 11, "둘이다.", end_of_block=True)]
+    ticks: list[int] = []
+    out = v.synth_units(units, lambda: ticks.append(1))
+    assert len(out) == 3 and all(out) and len(ticks) == 3 and sleeps          # 429 뒤 다시 시도
+    texts = [b["input"][0]["content"][0]["text"] for b in seen[1:]]
+    assert sorted(texts) == ["1 서론", "하나다. 둘이다."]                     # 제목 따로, 문단은 한 번에
+    assert seen[1]["generation_config"]["speech_config"] == [{"voice": "Charon"}]
+    assert seen[1]["model"] == "gemini-3.8-flash-lite-tts" and seen[1]["response_format"] == {"type": "audio"}
+    assert v.id == "gemini:gemini-3.8-flash-lite-tts:Charon" and tts.GeminiVoice.sample_rate == 24000
+
+
+def test_gemini_cost_estimate():
+    hour = 3600
+    assert tts.gemini_cost("gemini-3.8-flash-lite-tts", hour, today="2026-10-27") == pytest.approx(0.54)
+    assert tts.gemini_cost("gemini-3.8-flash-lite-tts", hour, today="2027-01-02") == pytest.approx(1.08)
+    assert tts.gemini_cost("gemini-3.8-flash-tts", hour, today="2026-12-31") == pytest.approx(0.81)
+
+
+@needs_afconvert
+def test_service_make_audio_with_gemini_remembers_choice_and_is_not_remade(tmp_path, monkeypatch):
+    from narani.phone import gdrive, service
+
+    wd = _wd(tmp_path)
+    store = LocalStore(tmp_path / "store")
+    rows = [{"root": wd.root, "name": wd.root.stem, "pinned": False, "has_ko": True, "hidden": False}]
+    monkeypatch.setattr(service.config, "CONFIG_DIR", tmp_path / "cfg")
+    monkeypatch.setattr(service, "_rows", lambda: rows)
+    monkeypatch.setattr(service, "connected", lambda: True)
+    monkeypatch.setattr(service, "configured", lambda: True)
+    monkeypatch.setattr(gdrive, "open_store", lambda: store)
+    made = []
+
+    class G(tts.GeminiVoice):
+        def _call(self, text):  # noqa: ANN001
+            made.append((self.voice, self.model))
+            return b"".join(_tone(0.3) + _silence(0.3) for _ in range(max(1, text.count("."))))
+    monkeypatch.setattr(tts, "GeminiVoice", G)
+    out = service.make_audio([wd.root], "Puck", engine="gemini", model="gemini-3.8-flash-tts")
+    assert out["made"] == 1 and made and set(made) == {("Puck", "gemini-3.8-flash-tts")}
+    assert service.on_mobile()[wd.root.stem]["audio"]["voice"] == "gemini:gemini-3.8-flash-tts:Puck"
+    assert service.gemini_choice() == {"voice": "Puck", "model": "gemini-3.8-flash-tts"}
+    # 유료 음성은 번역이 바뀌어도 켤 때 저절로 다시 만들지 않는다(비용) — 폰은 '옛 음성'으로 안다
+    wd.ko_md.write_text(KO.replace("면담했다", "만났다"), encoding="utf-8")
+    n = len(made)
+    assert service.refresh()["audio"] == 0 and len(made) == n

@@ -1040,7 +1040,11 @@ def build_home(state: dict) -> None:
         return None
 
     async def make_mobile_audio(roots: list[Path]) -> None:
-        """모바일에서 들을 음성 — Mac 목소리로 만들어 Drive에 올린다. 논문 하나면 넣을 섹션을 고른다."""
+        """모바일에서 들을 음성 — 무료 Mac 목소리 또는 Gemini(유료, 내 키)로 만들어 Drive에 올린다.
+
+        논문 하나면 넣을 섹션을 고른다. Gemini는 길이로 어림한 비용을 먼저 보여 준다."""
+        from narani.phone import tts
+
         roots = [Path(r) for r in roots]
         if not roots:
             ui.notify(t("음성을 만들 논문이 없습니다."), type="warning")
@@ -1050,28 +1054,51 @@ def build_home(state: dict) -> None:
             return
         langs = sorted({await run.io_bound(phone_service.paper_lang, r) for r in roots})
         names = await run.io_bound(phone_service.voices, langs[0]) if len(langs) == 1 else []
-        if len(langs) == 1 and not names:
+        gem_ok = await run.io_bound(phone_service.gemini_ready)
+        if len(langs) == 1 and not names and not gem_ok:
             ui.notify(t("이 Mac에 '{lang}' 목소리가 없습니다 — 시스템 설정 → 손쉬운 사용 → 읽기 및 말하기에서 받으세요.",
                         lang=langs[0]), type="warning")
             return
-        secs = await run.io_bound(phone_service.sections, roots[0]) if len(roots) == 1 else []
+        per = [await run.io_bound(phone_service.sections, r) for r in roots]
+        secs = per[0] if len(roots) == 1 else []
+        gc = phone_service.gemini_choice()
         picked = {"go": False}
 
         def go() -> None:
             picked["go"] = True
             dlg.close()
 
-        def preview() -> None:
+        sample = (secs[1]["title"] if len(secs) > 1 else "") or "Narani"
+
+        async def preview() -> None:
             import subprocess
+            import tempfile
 
-            subprocess.Popen(["say", "-v", voice.value, "--", secs[0]["title"] if secs else "Narani"])
+            if eng.value == "mac":
+                subprocess.Popen(["say", "-v", voice.value, "--", sample])
+                return
+            try:
+                wav = await run.io_bound(phone_service.gemini_preview, gvoice.value, gmodel.value, sample)
+            except Exception as e:  # noqa: BLE001
+                ui.notify(t("들어 보기 실패: {e}", e=e), type="negative")
+                return
+            f = Path(tempfile.gettempdir()) / "narani-voice-preview.wav"
+            f.write_bytes(wav)
+            subprocess.Popen(["afplay", str(f)])
 
-        with host, ui.dialog() as dlg, ui.card().classes("gap-2").style("width:460px"):
+        with host, ui.dialog() as dlg, ui.card().classes("gap-2").style("width:480px"):
             ui.label(t("모바일에서 들을 음성 만들기")).classes("font-bold")
-            ui.label(t("Mac 내장 목소리로 만듭니다 — 무료이고 이 컴퓨터에서 만듭니다. 그림·표·수식·인용 표기·참고문헌은 "
-                       "건너뛰고, 섹션 제목은 알립니다. 만든 음성은 Drive의 Narani 폴더에 올라갑니다(시간당 약 15MB).")) \
-                .classes("text-xs text-gray-500")
-            with ui.row().classes("items-center gap-2 w-full no-wrap"):
+            ui.label(t("번역 본문을 읽은 음성을 만들어 Drive의 Narani 폴더에 올립니다(시간당 약 15MB). 그림·표·수식·인용 "
+                       "표기·참고문헌은 건너뛰고, 섹션 제목은 알립니다.")).classes("text-xs text-gray-500")
+            opts = {"mac": t("무료 — Mac 목소리")}
+            if gem_ok:
+                opts["gemini"] = t("Gemini — 더 자연스러움 (유료)")
+            eng = ui.toggle(opts, value="gemini" if (gem_ok and len(langs) == 1 and not names) else "mac") \
+                .props("dense no-caps")
+            if not gem_ok:
+                ui.label(t("설정 → AI에서 Gemini 키를 넣으면 더 자연스러운 Gemini 목소리도 고를 수 있습니다.")) \
+                    .classes("text-xs text-gray-500")
+            with ui.row().classes("items-center gap-2 w-full no-wrap") as mac_row:
                 # 'Yuna (Korean (South Korea))' → 'Yuna' 로 보이게 (값은 say에 줄 전체 이름)
                 shown = {n: re.sub(r"\s+\([^()]*\([^()]*\)\)$", "", n) for n in names}
                 voice = ui.select(shown, value=names[0] if names else None, label=t("목소리")) \
@@ -1079,22 +1106,41 @@ def build_home(state: dict) -> None:
                 if not names:
                     voice.set_visibility(False)
                     ui.label(t("논문 언어마다 지난번 목소리(처음이면 기본 목소리)로 만듭니다.")).classes("text-xs")
-                else:
-                    ui.button(t("들어 보기"), icon="volume_up", on_click=preview).props("flat dense no-caps")
+            with ui.row().classes("items-center gap-2 w-full no-wrap") as gem_row:
+                gmodel = ui.select({m: (t("flash-lite — 더 쌈") if "lite" in m else t("flash — 더 자연스러움"))
+                                    for m in tts.GEMINI_MODELS}, value=gc["model"], label=t("모델")) \
+                    .props("dense outlined").classes("grow")
+                gvoice = ui.select(list(tts.GEMINI_VOICES), value=gc["voice"], label=t("목소리")) \
+                    .props("dense outlined").classes("grow")
+            ui.button(t("들어 보기"), icon="volume_up", on_click=preview).props("flat dense no-caps")
+            est = ui.label().classes("text-xs text-gray-600")
             checks: list = []
-            if secs:
-                est = ui.label().classes("text-xs text-gray-600")
 
-                def total() -> None:
+            def total() -> None:
+                if secs:
                     m = sum(sec["minutes"] for c, sec in zip(checks, secs) if c.value)
-                    est.set_text(t("넣을 섹션 — 약 {m}분", m=round(m)))
-                with ui.scroll_area().style("height:260px").classes("w-full border rounded"):
+                else:
+                    m = sum(sec["minutes"] for p in per for sec in p)
+                mac_row.set_visibility(eng.value == "mac")
+                gem_row.set_visibility(eng.value == "gemini")
+                txt = t("약 {m}분", m=round(m))
+                if eng.value == "gemini":
+                    txt += t(" · 예상 비용 약 ${c} (내 Gemini 키의 계정에 청구)",
+                             c=f"{tts.gemini_cost(gmodel.value, m * 60):.2f}")
+                else:
+                    txt += t(" · 무료")
+                est.set_text(txt)
+            eng.on_value_change(lambda _: total())
+            gmodel.on_value_change(lambda _: total())
+            if secs:
+                ui.label(t("넣을 섹션")).classes("text-xs")
+                with ui.scroll_area().style("height:240px").classes("w-full border rounded"):
                     for sec in secs:
                         checks.append(ui.checkbox(f"{sec['title']} · {sec['minutes']:.0f}′", value=True,
                                                   on_change=lambda _: total()).props("dense"))
-                total()
             else:
                 ui.label(t("{n}편 — 본문 전체로 만듭니다.", n=len(roots))).classes("text-xs")
+            total()
             with ui.row().classes("justify-end w-full gap-2"):
                 ui.button(t("취소"), on_click=dlg.close).props("flat")
                 ui.button(t("만들기"), icon="headphones", on_click=go).props("unelevated no-caps color=primary")
@@ -1114,8 +1160,13 @@ def build_home(state: dict) -> None:
         def prog(i: int, n: int, done: int, tot: int, title: str) -> None:
             pct = round(100 * done / tot) if tot else 100
             progress["msg"] = t("음성 만드는 중… {i}/{n}편 · {p}% · {title}", i=i + 1, n=n, p=pct, title=title[:40])
-        s = await mobile_call(lambda rs: phone_service.make_audio(rs, voice.value if names else None, include, prog),
-                              roots, busy, progress)
+        if eng.value == "gemini":
+            def job(rs):  # noqa: ANN001, ANN202
+                return phone_service.make_audio(rs, gvoice.value, include, prog, engine="gemini", model=gmodel.value)
+        else:
+            def job(rs):  # noqa: ANN001, ANN202
+                return phone_service.make_audio(rs, voice.value if names else None, include, prog)
+        s = await mobile_call(job, roots, busy, progress)
         if s is None:
             return
         ui.notify(t("음성을 만들어 올렸습니다 — {n}편 · {m}분 · {mb:.0f}MB", n=s["made"], m=round(s["seconds"] / 60),
