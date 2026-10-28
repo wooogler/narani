@@ -1813,9 +1813,10 @@
   // ---- 듣기 (§phone.tts) — 데스크톱이 만든 음성 파일 하나 + 문장 시간표 [t, 행, s, e] ----
   // 화면이 꺼져도·잠금 화면·CarPlay 단추로 듣는다(실기기 시험 tts-test.html로 확인한 방식: <audio> 하나 +
   // Media Session, 섹션 이동은 파일 안에서 seek). 파일은 처음 들을 때 받아 Cache Storage에 두고 blob URL로 꽂는다.
-  var AC = 'narani-audio', au = doc.getElementById('pl-au'), player = doc.getElementById('player');
+  // au는 지금 쓰는 재생기 — 데스크톱 음성이면 <audio>(auEl), 폰 내장 음성이면 그것을 흉내 낸 SA(아래)
+  var AC = 'narani-audio', auEl = doc.getElementById('pl-au'), au = auEl, player = doc.getElementById('player');
   var AU = {e: null, key: null, tl: null, url: null, ready: false, cur: -1, sec: -1, lastSave: 0, lastPS: 0,
-            lastTU: 0, userScroll: 0, want: null, busy: false, follow: false};
+            lastTU: 0, userScroll: 0, want: null, busy: false, follow: false, web: false};
   var HL = !!(window.CSS && CSS.highlights && window.Highlight);
   function audioOf(e){ return e && e.audio && e.audio.file ? e.audio : null; }
   function fmtT(s){ s = Math.max(0, Math.floor(s || 0)); var h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60;
@@ -1859,28 +1860,226 @@
     });
   }
 
+  // ---- 폰 내장 음성 (Web Speech) — 데스크톱에서 만든 음성이 없는 논문, 또는 직접 고른 경우 ----
+  // 무엇을 읽을지는 데스크톱이 음성 만들기와 같은 규칙(§tts.speech_plan)으로 골라 올린 목록 그대로 — 폰은 말하기만.
+  // <audio>와 같은 꼴(currentTime·play·pause·이벤트)로 흉내 내 재생 막대·섹션 이동·범위·문장 칠하기를 그대로 쓴다.
+  // 시각은 글자 수로 어림한 것이라 ±15초는 대략 그 근처 문장으로 간다. iOS·Android 모두 화면이 꺼지거나 앱을
+  // 떠나면 멈추고, 잠금 화면·CarPlay 단추는 듣지 않는다. iOS는 긴 말을 중간에 끊고 pause/resume이 어긋나서 —
+  // 문장 하나씩 말하고, 멈춤은 cancel, 이어 듣기는 그 문장 처음부터.
+  var SS = window.speechSynthesis || null;
+  var WCPS = {ko: 7.4, ja: 8, zh: 5.5};   // 1배속 초당 글자 수 어림(그 밖은 14) — 막대·남은 시간에만
+  var WGAP = [0.25, 0.6, 0.9];            // 쉼(초): 문장 · 문단 끝 · 제목 (§tts.GAP)
+  function speechOf(e){ return e && e.speech && e.speech.file ? e.speech : null; }
+  function langBase(l){ return String(l || 'en').toLowerCase().replace('_', '-').split('-')[0]; }
+  function webTl(plan){   // 읽을 목록 → 음성 시간표와 같은 꼴 (+ durs: 문장마다 어림 길이)
+    var cps = WCPS[langBase(plan.lang)] || 14, t = 0, k = 0, sents = [], durs = [], sections = [];
+    plan.sections.forEach(function(sec){
+      var start = t;
+      for (var j = 0; j < sec.n; j++, k++){
+        var u = plan.units[k], d = Math.max(0.6, u[3].length / cps);
+        sents.push([Math.round(t * 100) / 100, u[0], u[1], u[2]]); durs.push(d);
+        t += d + WGAP[u[4]] ;
+      }
+      sections.push({title: sec.title, row: sec.row, start: Math.round(start * 100) / 100, end: Math.round(t * 100) / 100});
+    });
+    return {side: plan.side, lang: plan.lang, duration: Math.round(t * 100) / 100, sections: sections, sents: sents, durs: durs, web: true};
+  }
+  function webVoices(lang){
+    if (!SS) return [];
+    var b = langBase(lang);
+    return SS.getVoices().filter(function(v){ return langBase(v.lang) === b; });
+  }
+  function webVoice(lang){   // 고른 목소리 — 처음이면 좋은 것(Premium·Enhanced·기본) 먼저
+    var vs = webVoices(lang), name = lsGet('narani:wvoice:' + langBase(lang), '');
+    for (var i = 0; i < vs.length; i++) if (vs[i].name === name) return vs[i];
+    var rank = function(v){ return /premium|enhanced|natural|neural/i.test(v.name) ? 0 : (v.default ? 1 : (v.localService ? 2 : 3)); };
+    return vs.slice().sort(function(a, b){ return rank(a) - rank(b); })[0] || null;
+  }
+  function SpeechAudio(){
+    var me = this, et = doc.createElement('span'), P = null, tl = null, i = 0, pos = 0, began = 0, tok = 0, tick = null, wait = null;
+    function fire(t){ et.dispatchEvent(new Event(t)); }
+    me.addEventListener = function(t, f, o){ et.addEventListener(t, f, o); };
+    me.removeEventListener = function(t, f, o){ et.removeEventListener(t, f, o); };
+    me.src = ''; me.paused = true; me.playbackRate = me.defaultPlaybackRate = 1; me.duration = 0; me.unlocked = false;
+    me.load = function(){}; me.removeAttribute = function(){};
+    me.setPlan = function(plan, t){ me.pause(); P = plan; tl = t; i = 0; pos = 0; me.duration = t.duration; };
+    function idxAt(t){
+      var S = tl.sents, lo = 0, hi = S.length - 1;
+      while (lo < hi){ var m = (lo + hi + 1) >> 1; if (S[m][0] <= t + 0.05) lo = m; else hi = m - 1; }
+      return lo;
+    }
+    Object.defineProperty(me, 'currentTime', {
+      get: function(){
+        if (!tl) return 0;
+        if (me.paused || !began) return pos;
+        return tl.sents[i][0] + Math.min((Date.now() - began) / 1000 * me.playbackRate, tl.durs[i] * 0.95);
+      },
+      set: function(t){
+        if (!tl) return;
+        var was = i, now = me.currentTime;
+        i = idxAt(Math.max(0, Math.min(tl.duration, t || 0)));
+        if (i === was && t > now + 1 && i < tl.sents.length - 1) i++;   // 긴 문장 안에서 앞으로(+15초) — 다음 문장으로
+        pos = tl.sents[i][0];   // 문장 처음으로
+        if (!me.paused) speak();
+        fire('seeked'); fire('timeupdate');
+      }
+    });
+    me.unlock = function(){   // iOS: 처음 말하기는 손가락 누르기 안에서 — 빈 말 한 번으로 길을 연다
+      if (!SS || me.unlocked) return;
+      me.unlocked = true;
+      try { var u = new SpeechSynthesisUtterance(' '); u.volume = 0; SS.speak(u); } catch (x) {}
+    };
+    function stopTick(){ if (tick){ clearInterval(tick); tick = null; } }
+    function speak(){
+      clearTimeout(wait);
+      var my = ++tok, u = P && P.units[i];
+      if (!u){ finish(); return; }
+      began = Date.now(); pos = tl.sents[i][0];
+      // 말하는 중에 끊고 곧바로 새로 말하면 Chrome이 새 말을 삼킨다 — 끊은 뒤 잠깐 두고 말한다
+      if (SS.speaking || SS.pending){ try { SS.cancel(); } catch (x) {} wait = setTimeout(function(){ if (my === tok && !me.paused) say(my, u); }, 120); }
+      else say(my, u);
+    }
+    function say(my, u){
+      var ut = new SpeechSynthesisUtterance(u[3]), v = webVoice(P.lang);
+      ut.lang = v ? v.lang : P.lang; if (v) ut.voice = v;
+      ut.rate = Math.max(0.5, Math.min(2, me.playbackRate));
+      ut.onend = function(){ if (my === tok) next(); };
+      ut.onerror = function(ev){ if (my === tok && ev.error !== 'interrupted' && ev.error !== 'canceled') next(); };
+      began = Date.now();
+      SS.speak(ut);
+      // onend가 안 오는 때(iOS가 말을 삼킬 때) — 어림 길이의 두 배가 지나도 조용하면 다음 문장으로
+      var guard = (tl.durs[i] / me.playbackRate * 2 + 4) * 1000;
+      setTimeout(function(){ if (my === tok && !me.paused && !SS.speaking && !SS.pending) next(); }, guard);
+    }
+    function next(){
+      var u = P.units[i], gap = WGAP[u ? u[4] : 0] / me.playbackRate;
+      tok++; i++; began = 0;
+      if (i >= P.units.length){ finish(); return; }
+      pos = tl.sents[i][0];
+      var my = tok;
+      wait = setTimeout(function(){ if (my === tok && !me.paused) speak(); }, gap * 1000);
+    }
+    function finish(){
+      tok++; stopTick(); me.paused = true; began = 0; i = Math.max(0, tl.sents.length - 1); pos = tl.duration;
+      fire('pause'); fire('ended');
+    }
+    me.play = function(){
+      if (!SS || !P) return Promise.reject(new Error('no speech'));
+      me.unlock();
+      if (!me.paused) return Promise.resolve();
+      if (pos >= tl.duration - 0.05){ i = 0; pos = 0; }
+      me.paused = false;
+      speak();
+      stopTick(); tick = setInterval(function(){ fire('timeupdate'); }, 250);
+      fire('play');
+      return Promise.resolve();
+    };
+    me.pause = function(){
+      if (me.paused) return;
+      pos = me.currentTime; tok++; clearTimeout(wait); stopTick(); began = 0; me.paused = true;
+      try { SS.cancel(); } catch (x) {}
+      pos = tl.sents[i][0];   // 다시 ▶하면 그 문장 처음부터
+      fire('pause');
+    };
+  }
+  var SA = new SpeechAudio();
+  if (SS && SS.addEventListener) SS.addEventListener('voiceschanged', function(){});   // 목소리 목록을 미리 채워 둔다
+  if (SS) try { SS.getVoices(); } catch (x) {}
+  // 처음 말하기는 누르기 안에서만 된다(iOS) — 내장 음성 논문을 연 동안의 첫 누르기에서 길을 연다
+  doc.addEventListener('click', function(){ if (AU.web) SA.unlock(); }, true);
+  function onAu(ev, f){ auEl.addEventListener(ev, f); SA.addEventListener(ev, f); }
+  function webPlan(sp){
+    return cacheGet(sp.file).then(function(c){
+      if (c && c.__h === sp.sig) return c;
+      if (!source) { if (c) return c; throw new Error('no source'); }
+      return source.get(sp.file).then(function(t){ t.__h = sp.sig; cachePut(sp.file, t); return t; }, function(err){ if (c) return c; throw err; });
+    });
+  }
+  function primeWeb(show){
+    var e = AU.e, sp = speechOf(e);
+    if (AU.ready) return Promise.resolve();
+    if (AU.busy) return AU.busy;
+    if (show) setText('pl-sec', md4T('음성 받는 중…'));
+    AU.busy = webPlan(sp).then(function(plan){
+      if (AU.e !== e) throw new Error('stale');
+      var tl = webTl(plan);
+      SA.setPlan(plan, tl); SA.playbackRate = lsGet('narani:aspd', 1);
+      AU.tl = tl; AU.ready = true; markSpoken();
+      doc.getElementById('pl-seek').max = Math.floor(tl.duration);
+      setText('pl-dur', '~' + fmtT(tl.duration));
+      var stale = plan.src && e.hash && plan.src !== e.hash;
+      setText('pl-sec', stale ? md4T('본문이 바뀐 뒤의 옛 목록이에요 — 하이라이트가 어긋날 수 있어요')
+                              : md4T('폰 내장 음성 · 화면을 켜 두어야 해요'));
+    });
+    AU.busy.then(function(){ AU.busy = false; }, function(err){
+      AU.busy = false;
+      if (AU.e === e && show) setText('pl-sec', (err && err.kind === 'auth') ? md4T('Google Drive 연결이 만료됐어요.') : md4T('읽을 목록을 받지 못했어요. 인터넷에 연결된 뒤 다시 눌러 보세요.'));
+    });
+    return AU.busy;
+  }
+  // 목소리 단추 — 이 논문 언어의 폰 목소리 고르기, 데스크톱 음성이 있으면 둘 중 고르기, 내장 음성의 한계 안내
+  function voiceSheet(){
+    var e = AU.e, a = audioOf(e), sp = speechOf(e), nodes = [], box = el('div', 'rng');
+    if (a && sp && SS){
+      [['file', md4T('데스크톱에서 만든 음성 (화면이 꺼져도·잠금 화면·CarPlay)')], ['web', md4T('폰 내장 음성')]].forEach(function(x){
+        var l = el('label'), r = el('input'); r.type = 'radio'; r.name = 'aeng'; r.value = x[0];
+        r.checked = (AU.web ? 'web' : 'file') === x[0];
+        l.appendChild(r); l.appendChild(doc.createTextNode(' ' + x[1])); box.appendChild(l);
+      });
+    }
+    var lang = (AU.tl && AU.tl.lang) || (e && e.lang) || 'en', vs = webVoices(lang), cur = webVoice(lang), sel = null;
+    if (sp && SS){
+      if (vs.length){
+        sel = el('select', 'wv-sel');
+        vs.forEach(function(v){ var o = el('option', '', v.name + (v.localService === false ? ' ☁' : '')); o.value = v.name; o.selected = cur && cur.name === v.name; sel.appendChild(o); });
+        var lab = el('label', 'wv'); lab.appendChild(doc.createTextNode(md4T('폰 목소리') + ' ')); lab.appendChild(sel); box.appendChild(lab);
+      } else box.appendChild(para(md4T('이 폰에 이 언어의 목소리가 없어요 — 기기 설정의 손쉬운 사용 → 읽기 및 말하기(또는 텍스트 음성 변환)에서 받으면 고를 수 있어요.'), 'more'));
+      box.appendChild(para(md4T('폰 내장 음성은 화면을 켜 두어야 들려요 — 화면이 꺼지거나 다른 앱으로 가면 멈추고, 잠금 화면·CarPlay 단추는 듣지 않아요. 데스크톱에서 음성을 만들면 화면이 꺼져도 들을 수 있어요.'), 'more'));
+    } else if (!SS) box.appendChild(para(md4T('이 브라우저는 내장 음성을 지원하지 않아요.'), 'more'));
+    nodes.push(box);
+    var ok = button(md4T('적용'), function(){
+      if (sel){ lsSet('narani:wvoice:' + langBase(lang), sel.value); }
+      var pick = (box.querySelector('input[name=aeng]:checked') || {}).value;
+      closeSheet();
+      if (pick && (pick === 'web') !== AU.web){
+        lsSet('narani:aeng', pick);
+        // 두 쪽의 시각은 다르다(내장 음성은 어림) — 듣던 문장(행·위치)으로 옮긴다
+        var was = AU.tl ? AU.tl.sents[sentAtT(au.currentTime || 0)] : null, keep = AU.e;
+        stopAudio(); audioOpened(keep); body.classList.add('listening');
+        (AU.web ? primeWeb(true) : prime(true)).then(function(){ try { au.currentTime = was ? timeAtRow(was[1], was[2]) : 0; } catch (x) {} }, function(){});
+      } else if (AU.web && !au.paused){ au.pause(); au.play(); }   // 새 목소리로 지금 문장부터
+    });
+    openSheet(md4T('목소리'), nodes, [ok]);
+  }
+
   // ---- 열고 닫기 ----
   function audioOpened(e){
     stopAudio();
     AU.e = e; AU.key = e.key; AU.tl = null; AU.ready = false;
-    var a = audioOf(e);
-    body.classList.toggle('has-audio', !!a);
-    if (!a) return;
+    var a = audioOf(e), sp = SS ? speechOf(e) : null;
+    // 데스크톱 음성이 먼저(화면이 꺼져도 들린다) — 없거나 직접 고른 때만 폰 내장 음성
+    AU.web = !!sp && (!a || lsGet('narani:aeng', 'file') === 'web');
+    au = AU.web ? SA : auEl;
+    body.classList.toggle('has-audio', !!(a || sp));
+    body.classList.toggle('web-tts', AU.web);
+    body.classList.toggle('two-eng', !!(a && sp));
+    if (!a || AU.web) return;
     audioCached(a).then(function(yes){ if (yes && AU.e === e) prime(false); });   // 받아 둔 음성 — 바로 들을 수 있게 꽂아 둔다
   }
   function stopAudio(){
     if (!AU.e) return;
     try { au.pause(); } catch (x) {}
     savePos();
-    body.classList.remove('listening', 'has-audio');
+    body.classList.remove('listening', 'has-audio', 'web-tts', 'two-eng');
     unmarkNow(); markSpoken(true);
     if (AU.url){ try { URL.revokeObjectURL(AU.url); } catch (x) {} AU.url = null; }
     au.removeAttribute('src'); try { au.load(); } catch (x) {}
-    AU.e = null; AU.tl = null; AU.ready = false; AU.cur = AU.sec = -1;
+    AU.e = null; AU.tl = null; AU.ready = false; AU.cur = AU.sec = -1; AU.web = false; au = auEl;
     if ('mediaSession' in navigator) try { navigator.mediaSession.metadata = null; navigator.mediaSession.playbackState = 'none'; } catch (x) {}
   }
   // 시간표와 파일을 준비해 <audio>에 꽂는다. 처음 받는 것이면 받는 동안 막대에 진행을 보인다.
   function prime(show){
+    if (AU.web) return primeWeb(show);
     var e = AU.e, a = audioOf(e);
     if (!a) return Promise.reject(new Error('no audio'));
     if (AU.ready) return Promise.resolve();
@@ -1979,7 +2178,7 @@
     if (p && p.then) p.then(null, function(){ setText('pl-sec', md4T('▶을 눌러 들으세요')); });
   }
   function listenFrom(row, off){   // 🎧·'여기부터 듣기' — 화면을 보고 있던 자리에서
-    if (!audioOf(AU.e)) return;
+    if (!audioOf(AU.e) && !AU.web) return;
     body.classList.add('listening'); closeSheet(); closeDrawers();
     var go = function(){
       var t = row != null ? timeAtRow(row, off) : null;
@@ -2023,6 +2222,7 @@
   doc.getElementById('pl-prev').onclick = function(){ jumpSec(-1); };
   doc.getElementById('pl-next').onclick = function(){ jumpSec(1); };
   doc.getElementById('pl-range').onclick = function(){ if (AU.tl) rangeSheet(); };
+  doc.getElementById('pl-voice').onclick = function(){ voiceSheet(); };
   // 막대의 누르기가 문서의 '시트 바깥을 눌렀다'(시트 닫기)까지 가지 않게 — 범위 시트가 열리자마자 닫혔다
   doc.getElementById('player').addEventListener('click', function(e){ e.stopPropagation(); });
   doc.getElementById('pl-x').onclick = function(){ au.pause(); savePos(); body.classList.remove('listening'); unmarkNow(); };
@@ -2032,7 +2232,7 @@
     var am = doc.getElementById('ag-mic'); if (am) am.setAttribute('aria-label', md4T('말로 묻기'));
     [['lis', md4T('여기부터 듣기')], ['pl-range', md4T('듣기 범위')], ['pl-prev', md4T('이전 섹션')], ['pl-back', md4T('15초 뒤로')],
      ['pl-pp', md4T('재생')], ['pl-fwd', md4T('15초 앞으로')], ['pl-next', md4T('다음 섹션')], ['pl-spd', md4T('속도')],
-     ['pl-x', md4T('듣기 닫기')], ['pl-seek', md4T('재생 위치')]].forEach(function(x){
+     ['pl-x', md4T('듣기 닫기')], ['pl-seek', md4T('재생 위치')], ['pl-voice', md4T('목소리')]].forEach(function(x){
       var n = doc.getElementById(x[0]); if (n) n.setAttribute('aria-label', x[1]);
     });
   }
@@ -2055,7 +2255,7 @@
   function setAudioSession(type){   // iOS 17+ Safari — 듣기는 'playback'(무음 스위치·화면 꺼짐에도), 말로 묻기는 'play-and-record'
     if ('audioSession' in navigator) try { navigator.audioSession.type = type; } catch (x) {}
   }
-  function setSpd(v){ au.playbackRate = au.defaultPlaybackRate = v; lsSet('narani:aspd', v); setText('pl-spd', v + '×'); }
+  function setSpd(v){ auEl.playbackRate = auEl.defaultPlaybackRate = SA.playbackRate = v; lsSet('narani:aspd', v); setText('pl-spd', v + '×'); }
   setSpd(lsGet('narani:aspd', 1));
   doc.getElementById('pl-spd').onclick = function(){ var v = au.playbackRate, i = SPEEDS.indexOf(v); setSpd(SPEEDS[(i + 1) % SPEEDS.length]); };
   var seekEl = doc.getElementById('pl-seek');
@@ -2087,14 +2287,14 @@
   function ppIcon(playing){ doc.getElementById('pl-pp').innerHTML = playing ? PP_PAUSE : PP_PLAY; }
   ppIcon(false);
   ['play', 'pause'].forEach(function(ev){
-    au.addEventListener(ev, function(){
+    onAu(ev, function(){
       ppIcon(ev === 'play');
       doc.getElementById('pl-pp').setAttribute('aria-label', ev === 'play' ? md4T('일시정지') : md4T('재생'));
       if ('mediaSession' in navigator) try { navigator.mediaSession.playbackState = ev === 'play' ? 'playing' : 'paused'; } catch (x) {}
       if (ev === 'pause') savePos();
     });
   });
-  au.addEventListener('ended', function(){ savePos(); });
+  onAu('ended', function(){ savePos(); });
 
   // ---- 지금 문장 칠하기 (CSS Custom Highlight — DOM을 바꾸지 않는다; 없으면 행째로) ----
   function cellRange(cell, s, e){
@@ -2147,12 +2347,12 @@
     if (e.target && e.target.closest && e.target.closest('#player')) return;   // 재생 막대를 끄는 손가락은 본문 스크롤이 아니다
     AU.userScroll = Date.now();
   }, {passive: true}); });
-  au.addEventListener('seeked', function(){
+  onAu('seeked', function(){
     if (!AU.tl || !body.classList.contains('listening')) return;
     var si = sentAtT(au.currentTime);
     if (si !== AU.cur || AU.follow){ AU.cur = si; markNow(si); }
   });
-  au.addEventListener('timeupdate', function(){
+  onAu('timeupdate', function(){
     if (!AU.tl) return;
     var t = au.currentTime, now = Date.now(), k = secAt(t), S = SEC();
     if (!allowed(k)){   // 고른 범위 밖 — 다음 고른 섹션으로, 없으면 멈춤
@@ -2175,10 +2375,12 @@
   doc.addEventListener('visibilitychange', function(){
     if (doc.visibilityState !== 'visible' || !AU.e) return;
     // 멈춘 채 다시 보이면 다음 ▶ 때 캐시에서 새로 꽂는다 — 실기기 시험에서 통과한 방식(재생 직전에 src)과 같게
-    if (au.paused) AU.ready = false;
+    if (au.paused && !AU.web) AU.ready = false;
     if (AU.tl && AU.cur >= 0 && body.classList.contains('listening')) markNow(AU.cur);
   });
-  window.addEventListener('pageshow', function(e){ if (e.persisted && au.paused) AU.ready = false; });
+  // 내장 음성은 화면을 떠나면 브라우저가 말을 끊는다 — 멈춤으로 맞춰 두고, 돌아와 ▶하면 그 문장부터
+  doc.addEventListener('visibilitychange', function(){ if (doc.visibilityState === 'hidden' && AU.web && !au.paused) au.pause(); });
+  window.addEventListener('pageshow', function(e){ if (e.persisted && au.paused && !AU.web) AU.ready = false; });
 
   // ---- 말로 묻기 (OpenAI realtime) — 듣다가 🎙: 듣기를 멈추고 이 논문에 대해 음성으로 묻고 답을 듣는다 ----
   // 서버 없이: 이 기기에 넣어 둔 OpenAI 키로 단기 키(client_secrets)를 받아 WebRTC(calls)로 붙는다(마이크·재생·반향
