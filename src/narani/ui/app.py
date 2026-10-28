@@ -3124,6 +3124,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         if not hits:  # 첫 헤더 앞(저자·초록 앞부분) — 위쪽 구조가 바뀌지 않으니 그대로
             return row, "same"
         k = max(hits)
+        _rows_memo.clear()  # 본문 글이 그대로여도 구조(섹션맵)는 바뀌었을 수 있다 — refresh_canvas와 같은 이유
         sid, new = old["row_sid"][k], layout_rows()
         if sid in new["sid_row"]:
             return new["sid_row"][sid] + (row - k), "same"
