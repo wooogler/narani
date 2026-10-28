@@ -271,6 +271,6 @@ def test_phone_reader_zooms_figures_fullscreen():
     js, html = files["app.js"][0].decode(), files["index.html"][0].decode()
     assert "user-scalable=no" in html and "html { touch-action: pan-x pan-y; }" in html
     assert "addEventListener('gesturestart'" in js
-    assert "function mediaTap" in js and "function openZoom" in js
+    assert "function mediaTap" in js and "function openZoom" in js and "function zoomBy" in js   # 확대·축소 단추
     assert "mediaTap(media)" in js.split("doc.addEventListener('click'", 1)[1]   # 문장 누르기보다 먼저 가로챈다
     assert "#zv .zv-box" in html
