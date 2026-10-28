@@ -193,7 +193,9 @@ ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3p
 .pl-ctl button:active { background: var(--hl2); }
 .pl-ctl button svg { width: 30px; height: 30px; }
 #pl-pp { flex: none; width: 64px; height: 64px; border-radius: 50%; background: var(--accent); color: #fff; font-size: 1.6em; }
-#pl-pp:active { background: var(--accent); filter: brightness(.9); }
+#pl-pp:active { background: var(--accent); filter: brightness(.9); transform: scale(.96); }
+#pl-pp { box-shadow: 0 4px 12px rgba(35,131,226,.35); transition: transform .08s; }
+#pl-pp svg { width: 30px; height: 30px; }
 #pl-range, #pl-spd { font-size: .95em; }
 ::highlight(tts) { background-color: rgba(255, 196, 0, .45); }
 /* 말로 묻기 — 막대의 🎙, 대화 중 상태 막대(재생 막대 위·없으면 아래) */
@@ -1783,6 +1785,21 @@ _AUDIO_JS = r"""
     });
   }
   var SPEEDS = [1, 1.25, 1.5, 1.75, 2, 0.8];
+  // 말로 묻기를 마친 뒤 듣기 소리를 새로 붙인다 — 같은 자리에서 다시 불러 새 소리 경로(에어팟·카플레이)로 나가게
+  function reattachAudio(done){
+    if (!AU.ready || !au.src){ done(); return; }
+    var at = au.currentTime || 0, fired = false;
+    var go = function(){ if (fired) return; fired = true; try { au.currentTime = at; } catch (x) {} done(); };
+    au.addEventListener('loadedmetadata', go, {once: true});
+    setTimeout(go, 1500);   // 메타데이터 알림이 안 와도 이어 간다
+    try { au.load(); } catch (x) { go(); }
+  }
+  function claimNowPlaying(){   // 대화 소리가 가져간 잠금 화면·카플레이 '지금 재생'을 되찾는다
+    if (!('mediaSession' in navigator)) return;
+    meta(Math.max(0, secAt(au.currentTime || 0)));
+    Object.keys(MH || {}).forEach(function(k){ try { navigator.mediaSession.setActionHandler(k, MH[k]); } catch (x) {} });
+    try { navigator.mediaSession.playbackState = au.paused ? 'paused' : 'playing'; } catch (x) {}
+  }
   function setAudioSession(type){   // iOS 17+ Safari — 듣기는 'playback'(무음 스위치·화면 꺼짐에도), 말로 묻기는 'play-and-record'
     if ('audioSession' in navigator) try { navigator.audioSession.type = type; } catch (x) {}
   }
@@ -1800,8 +1817,9 @@ _AUDIO_JS = r"""
         album: APP, artwork: [{src: 'icon-512.png', sizes: '512x512', type: 'image/png'}, {src: 'icon-192.png', sizes: '192x192', type: 'image/png'}]});
     } catch (x) {}
   }
+  var MH = null;
   if ('mediaSession' in navigator){
-    var MH = {
+    MH = {
       play: function(){ startAt(null); }, pause: function(){ au.pause(); }, stop: function(){ au.pause(); },
       seekbackward: function(d){ au.currentTime = Math.max(0, au.currentTime - ((d && d.seekOffset) || 15)); },
       seekforward: function(d){ au.currentTime = au.currentTime + ((d && d.seekOffset) || 15); },
@@ -1811,9 +1829,14 @@ _AUDIO_JS = r"""
     Object.keys(MH).forEach(function(k){ try { navigator.mediaSession.setActionHandler(k, MH[k]); } catch (x) {} });
   }
   setAudioSession('playback');
+  // 재생·일시정지 단추 — 글자(▶·⏸)는 iOS에서 색 이모지 상자로 나와 그림으로 그린다(재생 삼각형은 눈으로 가운데 보이게 살짝 오른쪽)
+  var PP_PLAY = '<svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="currentColor" d="M8.5 5.6v12.8c0 .8.9 1.3 1.6.8l9.6-6.4a1 1 0 0 0 0-1.6L10.1 4.8c-.7-.5-1.6 0-1.6.8z"/></svg>';
+  var PP_PAUSE = '<svg viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><rect x="6" y="5" width="4.2" height="14" rx="1.4" fill="currentColor"/><rect x="13.8" y="5" width="4.2" height="14" rx="1.4" fill="currentColor"/></svg>';
+  function ppIcon(playing){ doc.getElementById('pl-pp').innerHTML = playing ? PP_PAUSE : PP_PLAY; }
+  ppIcon(false);
   ['play', 'pause'].forEach(function(ev){
     au.addEventListener(ev, function(){
-      setText('pl-pp', ev === 'play' ? '⏸' : '▶');
+      ppIcon(ev === 'play');
       doc.getElementById('pl-pp').setAttribute('aria-label', ev === 'play' ? md4T('일시정지') : md4T('재생'));
       if ('mediaSession' in navigator) try { navigator.mediaSession.playbackState = ev === 'play' ? 'playing' : 'paused'; } catch (x) {}
       if (ev === 'pause') savePos();
@@ -2076,19 +2099,32 @@ _TALK_JS = r"""
   function talkEnd(why, quiet){
     if (!TK) return;
     var t = TK; TK = null;
+    // 마이크 → 연결 → 답 소리 순으로 완전히 내려놓는다. 답 소리 요소가 소리 길을 쥐고 있으면 iOS가 에어팟·카플레이로
+    // 돌아가지 않고 폰 스피커에 남는다
+    try { t.mic && t.mic.getTracks().forEach(function(tr){ tr.stop(); }); } catch (x) {}
     try { t.dc && t.dc.close(); } catch (x) {}
     try { t.pc && t.pc.close(); } catch (x) {}
-    try { t.mic && t.mic.getTracks().forEach(function(tr){ tr.stop(); }); } catch (x) {}
-    doc.getElementById('tk-au').srcObject = null;
-    setAudioSession('playback');
+    var ta = doc.getElementById('tk-au');
+    try { ta.pause(); ta.srcObject = null; ta.removeAttribute('src'); ta.load(); } catch (x) {}
     body.classList.remove('talking');
     var secs = Math.round((Date.now() - t.started) / 1000);
     tkBar.className = 'on'; setText('tk-st', md4T('대화 끝 · {t} · 약 ${c}', {t: fmtT(secs), c: t.cost.toFixed(3)})); setText('tk-meta', '');
     setTimeout(function(){ if (!TK) tkBar.className = ''; }, quiet ? 4000 : 2500);
-    if ((t.wasPlaying || t.resume) && AU.e){
-      if (t.resumeRow != null) listenFrom(t.resumeRow, null);
-      else startAt(null);
-    }
+    // 듣기로 돌아가기 — 소리 모드를 한 번에 바꾸면 iOS가 경로(에어팟·카플레이)를 다시 잡기 전에 재생이 시작돼
+    // 스피커로 나가거나 막힌다. 'auto'를 거쳐 'playback'으로 바꾸고 잠깐 기다린 뒤, 듣기 소리를 다시 붙이고
+    // 잠금 화면·카플레이의 '지금 재생'을 되찾은 다음 재생한다.
+    setAudioSession('auto');
+    setTimeout(function(){ setAudioSession('playback'); }, 250);
+    if (!AU.e) return;
+    var again = t.wasPlaying || t.resume, row = t.resumeRow;
+    setTimeout(function(){
+      if (TK || !AU.e) return;
+      reattachAudio(function(){
+        claimNowPlaying();
+        if (!again) return;
+        if (row != null) listenFrom(row, null); else startAt(null);
+      });
+    }, 700);
   }
   setInterval(function(){   // 조용하면 저절로 끝 · 시간·비용 표시 · 30분 상한
     if (!TK) return;
@@ -2216,7 +2252,7 @@ def _index_html(cfg: dict) -> str:
         "<input type=\"range\" id=\"pl-seek\" min=\"0\" step=\"1\" value=\"0\">"
         "<div class=\"pl-t\"><span id=\"pl-cur\">0:00</span><span id=\"pl-dur\">0:00</span></div>"
         "<div class=\"pl-ctl\"><button id=\"pl-prev\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M6 6h2v12H6zm3.5 6 8.5 6V6z\"/></svg></button>"
-        "<button id=\"pl-back\">−15</button><button id=\"pl-pp\">▶</button><button id=\"pl-fwd\">+15</button>"
+        "<button id=\"pl-back\">−15</button><button id=\"pl-pp\"></button><button id=\"pl-fwd\">+15</button>"
         "<button id=\"pl-next\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M6 18l8.5-6L6 6v12zM16 6v12h2V6z\"/></svg></button></div>"
         "<audio id=\"pl-au\" preload=\"none\"></audio></div>"
         "<button id=\"jback\"><span aria-hidden=\"true\">↩</span><span id=\"jback-t\"></span></button>"
