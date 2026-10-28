@@ -147,8 +147,11 @@ def remove(store: Store, roots: Iterable[Path]) -> dict:
 
 
 def push_audio(store: Store, jobs: list[tuple[Path, object, list[int] | None]],
-               on_progress: Callable[[int, int, int, int, str], None] | None = None) -> dict:
+               on_progress: Callable[[int, int, int, int, str], None] | None = None,
+               captions: bool = False, math: bool = False) -> dict:
     """논문마다 듣기 음성을 만들어 올린다. jobs: (작업 디렉토리, 엔진, 넣을 섹션 행들|None=전부).
+
+    captions면 그림·표 설명도, math면 수식도(논문의 speech_math.json에 읽는 말이 있는 것만) 읽는다.
 
     논문이 이미 모바일 목록에 있어야 한다(번들을 먼저 올린 뒤). 섹션 캐시(§tts)가 있어 바뀐 섹션만 다시 만든다.
     on_progress(논문 순번, 논문 수, 만든 문장, 만들 문장, 섹션 제목). 반환: {made, seconds, bytes, missing}.
@@ -172,13 +175,15 @@ def push_audio(store: Store, jobs: list[tuple[Path, object, list[int] | None]],
         def prog(done: int, total: int, title: str, n: int = n) -> None:
             if on_progress:
                 on_progress(n, len(jobs), done, total, title)
-        data, tl = tts.build(b, engine, WorkDir(root).root / "audio", include, prog, terms=tts.load_terms(root))
+        data, tl = tts.build(b, engine, WorkDir(root).root / "audio", include, prog, terms=tts.load_terms(root),
+                             captions=captions, math=tts.load_math(root) if math else None)
         a_name, t_name = audio_names(root.stem)
         store.write(a_name, data, "audio/mp4")
         store.write(t_name, bmod.dumps(tl))
         e["audio"] = {"file": a_name, "tl": t_name, "hash": hashlib.sha256(data).hexdigest()[:16],
                       "bytes": len(data), "duration": tl["duration"], "voice": tl["voice"], "src": tl["src"],
-                      "sections": len(tl["sections"]), "include": include, "built": time.time()}
+                      "sections": len(tl["sections"]), "include": include, "built": time.time(),
+                      "captions": captions, "math": math}
         made += 1
         sent += len(data)
         seconds += tl["duration"]

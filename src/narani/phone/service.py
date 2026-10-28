@@ -244,7 +244,7 @@ def sections(root: Path) -> list[dict]:
 
     _side, secs = tts.plan(bmod.build_paper(Path(root)))
     return [{"row": s.row, "title": s.title, "level": s.level, "minutes": tts.minutes([s]),
-             "first": next((u.text for u in s.units if not u.head), "")} for s in secs]
+             "first": tts.strip_math(next((u.text for u in s.units if not u.head), ""))} for s in secs]
 
 
 def speech_terms(root: Path) -> dict:
@@ -271,7 +271,7 @@ def suggest_speech_terms(root: Path, terms: list[str]) -> dict[str, str]:
 
 def make_audio(roots: list[Path], voice: str | None = None, include: list[int] | None = None,
                on_progress=None, engine: str = "mac", model: str | None = None,
-               style: str | None = None) -> dict:  # noqa: ANN001
+               style: str | None = None, captions: bool = True, math: bool = True) -> dict:  # noqa: ANN001
     """논문들의 듣기 음성을 만들어 올린다 — 먼저 번들·메모를 맞추고(send), 음성은 바뀐 섹션만 새로 만든다.
 
     engine: mac(무료 — voice가 없으면 논문 언어마다 지난번 목소리) | gemini(유료 — 사용자 키, voice·model).
@@ -305,11 +305,54 @@ def make_audio(roots: list[Path], voice: str | None = None, include: list[int] |
             raise RuntimeError(f"이 컴퓨터에 '{lang}' 목소리가 없습니다")
         chosen[lang] = name
         jobs.append((Path(root), tts.MacVoice(name), inc))
-    out = sync.push_audio(store, jobs, on_progress)
+    if math:   # 수식을 말로 — 아직 읽는 말이 없는 수식만 AI에게(논문마다 저장). 키가 없거나 실패하면 수식은 건너뛴다
+        for root, _engine, _inc in jobs:
+            prepare_math(root, captions)
+    out = sync.push_audio(store, jobs, on_progress, captions=captions, math=math)
     c = load_cache()
     extra = {"gemini": gem} if gem else ({"qwen": qwen} if qwen else {})
+    extra["audio_opts"] = {"captions": captions, "math": math}
     _remember(sync.read_index(store), voices={**(c.get("voices") or {}), **chosen}, **extra)
     return out
+
+
+def ai_ready() -> bool:
+    """번역에 쓰는 AI 키가 있는가 — 수식을 말로 바꾸는 데 쓴다."""
+    from narani import config
+
+    try:
+        config.build_provider()
+        return True
+    except Exception:  # noqa: BLE001
+        return False
+
+
+def audio_opts() -> dict:
+    """지난번 음성 만들기의 '캡션도 읽기'·'수식도 읽기' (처음이면 둘 다 켬)."""
+    o = load_cache().get("audio_opts") or {}
+    return {"captions": o.get("captions", True) is not False, "math": o.get("math", True) is not False}
+
+
+def prepare_math(root: Path, captions: bool = True) -> int:
+    """이 논문의 수식 중 읽는 말이 없는 것을 AI로 만들어 둔다. 만든 수 (키가 없거나 실패하면 0 — 그 수식은 건너뛴다)."""
+    import logging
+
+    from narani.phone import bundle as bmod
+    from narani.phone import tts
+
+    _side, secs = tts.plan(bmod.build_paper(Path(root)), captions)
+    have = tts.load_math(root)
+    need = [t for t in tts.math_in(secs) if t not in have]
+    if not need or not ai_ready():
+        return 0
+    try:
+        got = tts.speak_math(need, paper_lang(root))
+    except Exception as e:  # noqa: BLE001 — 수식 읽기 때문에 음성 전체가 실패하지 않게
+        logging.getLogger(__name__).warning("수식 읽는 말을 만들지 못함: %s", e)
+        return 0
+    if got:
+        tts.save_math(root, {**have, **got})
+    return len(got)
 
 
 def remove_audio(roots: list[Path]) -> int:
@@ -333,16 +376,20 @@ def _remake_stale_audio(store) -> int:  # noqa: ANN001
         if not a or a.get("src") == e.get("hash") or e.get("key") not in rows:
             continue
         root = rows[e["key"]]
+        opts = (bool(a.get("captions")), bool(a.get("math")))   # 옛 음성은 둘 다 꺼진 채 만들었다
         if voice.startswith("mac:"):
             name, _, rate = voice[4:].partition("@")
-            jobs.append((root, tts.MacVoice(name, int(rate) if rate else None), a.get("include")))
+            jobs.append((root, tts.MacVoice(name, int(rate) if rate else None), a.get("include"), opts))
         elif voice.startswith("qwen:") and tts.qwen_ready():
             _, size, speaker, tag = (voice.split(":") + ["", "", ""])[:4]
             style = qwen_style() if tag else None   # 말투 지시는 지문만 남으니 지금 저장된 지시가 그 지문일 때만
             if tag and tts.qwen_style_tag(style) != tag:
                 continue
-            jobs.append((root, tts.QwenVoice(speaker, paper_lang(root), size, style=style), a.get("include")))
-    return sync.push_audio(store, jobs)["made"] if jobs else 0
+            jobs.append((root, tts.QwenVoice(speaker, paper_lang(root), size, style=style), a.get("include"), opts))
+    made = 0
+    for opts in {j[3] for j in jobs}:   # 캡션·수식 설정이 같은 것끼리 — 지난번과 같은 설정으로 다시 만든다
+        made += sync.push_audio(store, [j[:3] for j in jobs if j[3] == opts], captions=opts[0], math=opts[1])["made"]
+    return made
 
 
 def refresh() -> dict:

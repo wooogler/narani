@@ -1120,7 +1120,6 @@
  "음성 {n}편": "Audio {n}",
  "모바일에서 들을 음성 {m}분": "{m} min de audio para el móvil",
  "들어 보기 실패: {e}": "Falló la muestra: {e}",
- "번역 본문을 읽은 음성을 만들어 Drive의 Narani 폴더에 올립니다(시간당 약 15MB). 그림·표·수식·인용 표기·참고문헌은 건너뛰고, 섹션 제목은 알립니다.": "Crea audio de la traducción leída en voz alta y lo sube a la carpeta Narani de tu Drive (unos 15 MB por hora). Se omiten figuras, tablas, ecuaciones, marcas de cita y referencias; se anuncian los títulos de sección.",
  "무료 — Mac 목소리": "Gratis — voz de Mac",
  "Gemini — 더 자연스러움 (유료)": "Gemini — más natural (de pago)",
  "설정 → AI에서 Gemini 키를 넣으면 더 자연스러운 Gemini 목소리도 고를 수 있습니다.": "Añade una clave de Gemini en Ajustes → IA para elegir también las voces de Gemini, más naturales.",
@@ -1322,5 +1321,9 @@
  " · 남은 약 {r}": " · quedan unos {r}",
  "멈추는 중…": "Deteniendo…",
  "멈추기": "Detener",
- "'{t}' 음성 만들기를 멈췄습니다 — 이미 만든 섹션은 남아 다음에 이어서 만듭니다.": "Se detuvo el audio de '{t}': las secciones ya hechas se conservan y la próxima vez continúa desde ahí."
+ "'{t}' 음성 만들기를 멈췄습니다 — 이미 만든 섹션은 남아 다음에 이어서 만듭니다.": "Se detuvo el audio de '{t}': las secciones ya hechas se conservan y la próxima vez continúa desde ahí.",
+ "그림·표 설명도 읽기": "Leer también los pies de figuras y tablas",
+ "수식도 읽기 (AI가 읽는 말을 만듦)": "Leer fórmulas (la IA escribe cómo decirlas)",
+ "설정 → AI에서 키를 넣으면 수식도 말로 읽습니다 — 없으면 수식은 건너뜁니다.": "Añade una clave en Ajustes → IA para que se lean las fórmulas; sin ella, se omiten.",
+ "번역 본문을 읽은 음성을 만들어 Drive의 Narani 폴더에 올립니다(시간당 약 15MB). 그림·표·인용 표기·참고문헌은 건너뛰고, 섹션 제목은 알립니다. 캡션·수식은 아래에서 고릅니다.": "Crea el audio de la traducción y lo sube a la carpeta Narani de tu Drive (unos 15 MB por hora). Se omiten figuras, tablas, marcas de cita y referencias; se anuncian los títulos de sección. Elige abajo si leer los pies de figura y las fórmulas."
 }

@@ -42,9 +42,12 @@ def _tighten_link_dests(md: str) -> str:
 def _math_renderer(content: str, _opts) -> str:  # noqa: ANN001 — mdit 플러그인 시그니처
     """dollarmath가 잡아낸 LaTeX를 MathML로. 변환 실패는 원문을 그대로 보여준다."""
     try:
+        import html
+
         from latex2mathml.converter import convert
 
-        return convert(content)
+        # LaTeX 원문을 alttext로 남긴다 — 화면 읽기 프로그램과 폰 듣기(수식을 말로 읽기, phone/tts.py)가 쓴다
+        return convert(content).replace("<math", f'<math alttext="{html.escape(content.strip(), quote=True)}"', 1)
     except Exception:  # noqa: BLE001 — 수식 하나 때문에 문서 전체가 안 뜨면 안 된다
         return f'<code class="md-math-raw">{content}</code>'
 
