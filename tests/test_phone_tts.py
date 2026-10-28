@@ -655,3 +655,35 @@ def test_service_on_windows_uses_windows_voice(tmp_path, monkeypatch):
     Voice.available = staticmethod(lambda: False)
     wd.ko_md.write_text(KO, encoding="utf-8")
     assert service.refresh()["audio"] == 0
+
+
+# ---- 폰 내장 음성(Web Speech)이 읽을 목록 ----
+def test_speech_plan_matches_desktop_rules(tmp_path):
+    wd = _wd(tmp_path)
+    b = bundle.build_paper(wd.root)
+    sp = tts.speech_plan(b, {"LLM": "엘엘엠"}, None)
+    side, secs = tts.plan(b, True)
+    secs = tts.apply_terms(tts.apply_math(secs, None), {"LLM": "엘엘엠"})
+    assert sp["side"] == side == "ko" and sp["lang"] == b["lang"] and sp["src"] == b["hash"]
+    assert [x["row"] for x in sp["sections"]] == [x.row for x in secs]
+    assert sum(x["n"] for x in sp["sections"]) == len(sp["units"])
+    assert sp["units"] == [[u.row, u.s, u.e, u.text, 2 if u.head else (1 if u.end_of_block else 0)]
+                           for x in secs for u in x.units]
+    assert not any("⟦M" in u[3] or "[1]" in u[3] or "http" in u[3] for u in sp["units"])   # 데스크톱처럼 건너뛴다
+
+
+def test_push_uploads_speech_plan_and_refreshes_on_terms(tmp_path):
+    wd = _wd(tmp_path)
+    store = LocalStore(tmp_path / "store")
+    sync.push([wd.root], store)
+    e = sync.read_index(store)["papers"][0]
+    sp = e["speech"]
+    assert sp["file"] == sync.speech_name(wd.root.stem) and json.loads(store.read(sp["file"]))["units"]
+    sync.push([wd.root], store)                                           # 그대로면 그대로
+    assert sync.read_index(store)["papers"][0]["speech"] == sp
+    tts.save_terms(wd.root, {"Bespoke": "비스포크"})                       # 발음 용어집이 바뀌면 목록만 다시
+    out = sync.push([wd.root], store)
+    e2 = sync.read_index(store)["papers"][0]
+    assert out["skipped"] == 1 and e2["hash"] == e["hash"] and e2["speech"]["sig"] != sp["sig"]
+    sync.remove(store, [wd.root])
+    assert store.read(sp["file"]) is None

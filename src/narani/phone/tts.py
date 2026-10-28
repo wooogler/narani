@@ -495,6 +495,36 @@ def speak_math(texes: list[str], lang: str, provider=None,  # noqa: ANN001
     return {texes[it.index]: it.speech.strip() for it in out.items if 0 <= it.index < len(texes) and it.speech.strip()}
 
 
+SPEECH_FORMAT = 1
+
+
+def speech_plan(bundle: dict, terms: dict[str, str] | None = None, math: dict[str, str] | None = None,
+                captions: bool = True) -> dict:
+    """번들 → 폰 브라우저 내장 음성(Web Speech)이 읽을 목록. 데스크톱 음성과 **같은 규칙**(plan·apply_math·
+    apply_terms)으로 고른 글을 그대로 담아, 폰은 문장마다 말하기만 한다 — 규칙을 JS로 옮겨 갈라지지 않게.
+
+    units: [행, s, e, 읽을 글, 쉼 종류(0 문장 · 1 문단 끝 · 2 제목)] — s·e는 음성 시간표와 같은 셀 안 위치.
+    """
+    side, secs = plan(bundle, captions)
+    secs = apply_terms(apply_math(secs, math), terms)
+    return {"format": SPEECH_FORMAT, "key": bundle["key"], "src": bundle.get("hash", ""), "side": side,
+            "lang": bundle.get("lang") if side == "ko" else "en",
+            "sections": [{"title": x.title, "row": x.row, "level": x.level, "n": len(x.units)} for x in secs],
+            "units": [[u.row, u.s, u.e, u.text, 2 if u.head else (1 if u.end_of_block else 0)]
+                      for x in secs for u in x.units]}
+
+
+def speech_sig(digest: str, root: Path) -> str:
+    """읽을 목록의 지문 — 본문 지문 + 발음 용어집 + 수식 읽는 말 + 이 파일(읽는 규칙). 하나라도 바뀌면 다시 만든다."""
+    h = hashlib.sha256(f"{SPEECH_FORMAT};{digest}".encode())
+    for f in (Path(__file__), terms_path(root), math_path(root)):
+        try:
+            h.update(f.read_bytes())
+        except OSError:
+            h.update(b"-")
+    return h.hexdigest()[:16]
+
+
 def minutes(sections: list[Section]) -> float:
     return sum(s.chars() for s in sections) / CPS / 60
 
