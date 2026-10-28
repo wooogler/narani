@@ -292,3 +292,12 @@ def test_phone_reconnects_drive_silently():
     assert "function gSilent" in js and "o.prompt = 'none'" in js and "o.login_hint = hint" in js
     assert "narani:gsilent" in js and "600000" in js
     assert "else if (!saved.silent) authError" in js
+
+
+def test_phone_library_keeps_offline_by_default():
+    # 받아 두기는 처음부터 켜짐(끈 사람만 '0') · 설정은 목록 아래 · 카드 꼬리표는 예외(원문만·음성)만
+    files = web.site_files(local=True)
+    js, html = files["app.js"][0].decode(), files["index.html"][0].decode()
+    assert "localStorage.getItem('narani:auto') !== '0'" in js and "localStorage.getItem('narani:autoaudio') !== '0'" in js
+    assert 'id="lib-opts"' in html and "function onCellular" in js
+    assert "md4T('번역') : md4T('원문만')" not in js

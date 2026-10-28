@@ -128,6 +128,12 @@ a.figref { color: var(--accent); text-decoration: underline dotted; text-underli
 #loading { color: var(--muted); text-align: center; margin: 30vh 0 0; font-size: .95em; }
 #lib .empty { color: var(--muted); font-size: .9em; padding: 12px 2px; }
 .lib-foot { color: var(--muted); font-size: .8em; text-align: center; margin: 8px 0 24px; }
+.lib-bar button.re { width: 36px; height: 36px; padding: 0; border-radius: 50%; font-size: 1.25em; line-height: 1; }
+.lib-opts { display: flex; flex-direction: column; gap: 10px; margin: 18px 2px 4px; padding-top: 14px; border-top: 1px solid var(--line);
+  color: var(--muted); font-size: .82em; }
+.lib-opts:empty { display: none; }
+.lib-opts label.auto { display: flex; align-items: center; gap: 8px; }
+.lib-opts label.auto input { width: 18px; height: 18px; margin: 0; flex: none; }
 .lib-foot a { color: var(--muted); }
 
 /* 하이라이트 — 데스크톱 뷰어와 같은 색. 글자는 형광 위라 늘 어둡게 */
@@ -566,6 +572,13 @@ _APP_JS = r"""
     for (var i = 0; i < INDEX.papers.length; i++) if (fileId(INDEX.papers[i]) === id) return INDEX.papers[i];
     return null;
   }
+  function fmtWhen(sec){   // 오늘이면 시각만, 아니면 날짜만 — 목록 머리의 '언제 올렸나'
+    var d = new Date(sec * 1000), now = new Date();
+    try {
+      return d.toDateString() === now.toDateString() ? d.toLocaleTimeString(md4Lang, {hour: 'numeric', minute: '2-digit'})
+                                                     : d.toLocaleDateString(md4Lang, {month: 'short', day: 'numeric'});
+    } catch (e) { return d.toLocaleString(); }
+  }
   function fmtDate(sec){
     var d = new Date(sec * 1000);
     try { return d.toLocaleString(md4Lang, {dateStyle: 'medium', timeStyle: 'short'}); } catch (e) { return d.toLocaleString(); }
@@ -591,30 +604,36 @@ _APP_JS = r"""
         a.appendChild(by);
       }
       var tags = el('span', 'li-tags');
-      tags.appendChild(el('span', 'tag', e.has_ko ? md4T('번역') : md4T('원문만')));
+      if (!e.has_ko) tags.appendChild(el('span', 'tag', md4T('원문만')));   // 번역이 기본 — 다른 것만 표시
       if (audioOf(e)){
         var au = el('span', 'tag au');
         au.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 0 0-9 9v6a3 3 0 0 0 3 3h1a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H5v-1a7 7 0 0 1 14 0v1h-2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1a3 3 0 0 0 3-3v-6a9 9 0 0 0-9-9z"/></svg>';
         au.appendChild(doc.createTextNode(fmtT(e.audio.duration)));
         tags.appendChild(au);
       }
-      if (off) tags.appendChild(el('span', 'tag dl', '⤓'));   // 이 기기에 받아 둔 논문
+      if (!off && !OFFLINE && !autoSave()) tags.appendChild(el('span', 'tag', md4T('받아 두지 않음')));   // 받아 두기를 끈 때만
       if (li.className === 'na') tags.appendChild(el('span', 'tag na-t', md4T('받아 두지 않음')));
-      a.appendChild(tags); li.appendChild(a); libList.appendChild(li);
+      if (tags.childNodes.length) a.appendChild(tags);
+      li.appendChild(a); libList.appendChild(li);
     });
     if (INDEX && !INDEX.papers.length) libList.appendChild(el('li', 'empty', md4T('올린 논문이 없어요. 데스크톱 앱에서 모바일로 보내 주세요.')));
     libBar.innerHTML = '';
+    // 머리 한 줄 — 언제 올린 목록인지, 받는 중이면 진행, 덜 받았을 때만 몇 편 받았는지. 그리고 새로 고침(↻)
     var info = [];
-    if (INDEX && INDEX.updated) info.push(md4T('{date}에 올린 목록', {date: fmtDate(INDEX.updated)}));
-    if (SAVING) info.push(md4T('저장 중… {n}/{m}', {n: SAVING.done, m: SAVING.total}));
-    else if (INDEX && INDEX.papers.length) info.push(md4T('오프라인 {n}/{m}편', {n: n, m: INDEX.papers.length}));
+    if (INDEX && INDEX.updated) info.push(md4T('{date} 업데이트', {date: fmtWhen(INDEX.updated)}));
+    if (SAVING) info.push(md4T('받는 중 {n}/{m}', {n: SAVING.done, m: SAVING.total}));
+    else if (INDEX && INDEX.papers.length && n < INDEX.papers.length) info.push(md4T('받아 둠 {n}/{m}편', {n: n, m: INDEX.papers.length}));
     if (OFFLINE && !note) note = md4T('오프라인 — 받아 둔 논문만 열려요');
     if (note) info.push(note);
     libBar.appendChild(el('span', 'grow', info.join(' · ')));
     if (source){
-      var re = el('button', '', md4T('새로 고침')); re.onclick = function(){ loadIndex(true); };
+      var re = el('button', 're', '\u21bb'); re.setAttribute('aria-label', md4T('새로 고침')); re.title = md4T('새로 고침');
+      re.onclick = function(){ loadIndex(true); };
       libBar.appendChild(re);
     }
+    // 받아 두기 설정은 목록 아래로 — 처음부터 켜져 있어 자주 만질 일이 없다
+    var opts = doc.getElementById('lib-opts');
+    opts.innerHTML = '';
     if (INDEX && INDEX.papers.length && source){
       // 오프라인 모드 — 켜 두면 모든 논문(과 데스크톱의 하이라이트·메모)을 받아 두고, 목록을 새로 받을 때마다
       // 새로 올라온·바뀐 것만 더 받는다. 끄면 더 받지 않을 뿐 받아 둔 것은 그대로.
@@ -625,8 +644,8 @@ _APP_JS = r"""
         renderLib();   // '음성도 받아 두기'가 바로 보이게
         if (cb.checked) saveOffline();
       };
-      lab.appendChild(cb); lab.appendChild(doc.createTextNode(md4T('오프라인 모드 — 모두 받아 두기')));
-      libBar.appendChild(lab);
+      lab.appendChild(cb); lab.appendChild(doc.createTextNode(md4T('모든 논문을 이 기기에 받아 두기 (오프라인에서도)')));
+      opts.appendChild(lab);
       var withAudio = INDEX.papers.filter(function(e){ return audioOf(e); });
       if (withAudio.length && cb.checked){   // 음성은 편당 십수 MB라 따로 고른다
         var mb = withAudio.reduce(function(n, e){ return n + (e.audio.bytes || 0); }, 0) / 1e6;
@@ -636,13 +655,16 @@ _APP_JS = r"""
           try { localStorage.setItem('narani:autoaudio', ca.checked ? '1' : '0'); } catch (e) {}
           if (ca.checked) saveOffline();
         };
-        la.appendChild(ca); la.appendChild(doc.createTextNode(md4T('음성도 받아 두기 ({n}편 · {mb}MB — 와이파이에서)', {n: withAudio.length, mb: Math.round(mb)})));
-        libBar.appendChild(la);
+        la.appendChild(ca); la.appendChild(doc.createTextNode(md4T('음성도 받아 두기 ({n}편 · {mb}MB)', {n: withAudio.length, mb: Math.round(mb)})));
+        opts.appendChild(la);
       }
     }
   }
-  function autoAudio(){ try { return localStorage.getItem('narani:autoaudio') === '1'; } catch (e) { return false; } }
-  function autoSave(){ try { return localStorage.getItem('narani:auto') === '1'; } catch (e) { return false; } }
+  // 받아 두기는 처음부터 켜 둔다(끈 사람만 '0') — 폰 리더는 지하철·비행기에서 읽는 게 큰 쓸모라
+  function autoAudio(){ try { return localStorage.getItem('narani:autoaudio') !== '0'; } catch (e) { return true; } }
+  function autoSave(){ try { return localStorage.getItem('narani:auto') !== '0'; } catch (e) { return true; } }
+  // 셀룰러라고 알려 주는 브라우저(안드로이드 Chrome)에서는 음성(편당 십수 MB)을 미리 받지 않는다 — iOS는 알려 주지 않는다
+  function onCellular(){ var c = navigator.connection; return !!(c && (c.saveData || c.type === 'cellular')); }
   var SAVING = null, OFFLINE = false;
   function saveOffline(){
     if (!INDEX || !source || SAVING || OFFLINE) return;
@@ -654,7 +676,7 @@ _APP_JS = r"""
     (function next(){
       if (!todo.length){   // 논문을 다 받았으면 하이라이트·메모 파일 — 바뀐 것만 받는다
         Promise.all(all.map(function(e){ return getNotes(e).catch(function(){}); })).then(function(){
-          return autoAudio() ? saveAudio(all) : 0;
+          return autoAudio() && !onCellular() ? saveAudio(all) : 0;
         }).then(function(n){
           var had = SAVING.total || n; SAVING = null;
           if (had) renderLib(failed ? md4T('{n}편은 받지 못했어요', {n: failed}) : '');
@@ -2636,7 +2658,7 @@ def _index_html(cfg: dict) -> str:
         "<button class=\"fs\" id=\"fs-up\"></button></div>"
         "</header>"
         f"<main><nav id=\"lib\"><h1 id=\"lib-h\">{APP_NAME}</h1><div class=\"lib-bar\" id=\"lib-bar\"></div>"
-        "<ol id=\"lib-list\"></ol><p class=\"lib-foot\"><a href=\"about.html\" id=\"lnk-about\"></a> · "
+        "<ol id=\"lib-list\"></ol><div class=\"lib-opts\" id=\"lib-opts\"></div><p class=\"lib-foot\"><a href=\"about.html\" id=\"lnk-about\"></a> · "
         "<a href=\"privacy.html\" id=\"lnk-privacy\"></a></p></nav><p id=\"loading\" style=\"display:none\"></p></main>"
         "<div id=\"sheet\" role=\"dialog\" aria-live=\"polite\"><div class=\"sh-grip\"></div>"
         "<div class=\"sh-label\"></div><div class=\"sh-text\"></div><div class=\"sh-acts\"></div></div>"
