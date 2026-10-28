@@ -4388,8 +4388,9 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     def refresh_staleness() -> None:
         """원문(en.md)이 바뀐 뒤 — 트리의 '원문 바뀜' 아이콘, 번역 패널 배너, 헤더 칩을 함께 갱신."""
         update_tree_status()
-        if _translate_refs.get("stale") is not None:
-            _translate_refs["stale"].refresh()
+        for key in ("stale", "pending"):
+            if _translate_refs.get(key) is not None:
+                _translate_refs[key].refresh()
         status_chip.refresh()
 
     # --- 용어집 편집 상태 (build 스코프 — 용어집 시트 편집 + '번역할 섹션'의 용어 추가가 공유) · 자동 저장 ---
@@ -4663,7 +4664,8 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             translate_state.update(status={}, done=0, total=0, failures={})
             failure_panel.refresh()
             translate_state["active"] = True
-            stale_panel.refresh()  # 도는 동안엔 '낡음' 표시를 치운다
+            stale_panel.refresh()  # 도는 동안엔 '낡음'·'설정 바뀜' 표시를 치운다
+            pending_panel.refresh()
             attach_translate(job)
             paper_tabs.refresh()  # 탭 아이콘이 '작업 중'으로 돈다
 
@@ -4716,6 +4718,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             update_tree_status()
             failure_panel.refresh()
             stale_panel.refresh()
+            pending_panel.refresh()
             status_chip.refresh()
             translate_btn.enable()
 
@@ -4743,6 +4746,29 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                     .classes("text-xs text-orange-800")
                 ui.label(t("PDF에서 다시 변환했거나 레이아웃을 고쳤거나 원문을 직접 편집한 섹션입니다. 트리에서도 "
                          "주황 ↻ 아이콘으로 표시됩니다.")).classes("text-xs text-gray-500")
+
+        @ui.refreshable
+        def pending_panel() -> None:
+            """번역 설정을 바꿨는데 번역문엔 아직 반영 안 됨 — 바꾸는 즉시 번역하지는 않는다(LLM 비용). 얼마나
+            다시 번역하는지 정직하게 알리고 그 자리에서 다시 번역한다."""
+            if translate_state["active"]:
+                return
+            p = ctrl.settings_pending()
+            if p is None:
+                return
+            with ui.column().classes("w-full gap-1 q-pa-sm").style(
+                    "background:#fff7ed; border:1px solid #fdba74; border-radius:8px"):
+                with ui.row().classes("items-center gap-2 w-full no-wrap"):
+                    ui.icon("tune", color="orange-7")
+                    ui.label(t("번역 설정이 바뀌었습니다 — 다시 번역해야 반영됩니다")) \
+                        .classes("text-sm font-medium text-orange-9 min-w-0")
+                    ui.space()
+                    ui.button(t("다시 번역"), icon="refresh", on_click=do_translate) \
+                        .props("dense no-caps color=orange").classes("shrink-0").style("white-space:nowrap")
+                ui.label(t("문체·섹션 제목·참고문헌 설정이 지난 번역과 달라, 다시 번역하면 {n}개 섹션 전체를 새로 번역합니다.",
+                           n=p["sections"]) if p["full"] else
+                         t("논문 제목 설정만 바뀌었습니다 — 다시 번역하면 제목 줄만 바뀝니다.")) \
+                    .classes("text-xs text-gray-600")
 
         @ui.refreshable
         def failure_panel() -> None:
@@ -4875,6 +4901,8 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             bar.visible = False
             prog_lbl = ui.label("").classes("text-sm text-gray-500")
             _translate_refs["stale"] = stale_panel  # 원문이 바뀌는 곳(편집 저장·레이아웃 수정)에서 갱신
+            _translate_refs["pending"] = pending_panel  # 번역 설정 스위치를 바꾸면 갱신
+            pending_panel()  # 번역 설정이 바뀌어 다시 번역해야 반영됨 (없으면 안 보임)
             stale_panel()    # 원문이 바뀐 섹션 + 재번역 버튼 (없으면 안 보임)
             failure_panel()  # 번역 실패 섹션 이유 + 재번역 버튼 (실패 없으면 안 보임)
         running = jobs.get(ctrl.wd.root, "translate")
@@ -5121,11 +5149,14 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                                     t("번역이 돌고 있습니다 — 진행은 번역 패널에서"))
         elif has_ko:
             stale = len(ctrl.stale_sections())
+            pending = ctrl.settings_pending() is not None
             text = (t("번역됨") + (t(" · 실패 {n}", n=fails) if fails else "")
-                    + (t(" · 원문 바뀜 {n}", n=stale) if stale else ""))
-            icon, cls = ("warning", "md4-chip warn") if (fails or stale) else ("check_circle", "md4-chip done")
+                    + (t(" · 원문 바뀜 {n}", n=stale) if stale else "")
+                    + (t(" · 설정 바뀜") if pending else ""))
+            icon, cls = ("warning", "md4-chip warn") if (fails or stale or pending) else ("check_circle", "md4-chip done")
             tip = (t("구조 검증에 실패해 영어로 남은 섹션이 있습니다 — 번역 패널에서 재번역") if fails
                    else t("원문이 바뀐 섹션이 있어 번역이 낡았습니다 — 번역 패널에서 바뀐 섹션만 재번역") if stale
+                   else t("번역 설정을 바꿨습니다 — 번역 패널에서 다시 번역해야 반영됩니다") if pending
                    else t("번역이 있습니다 — 다시 번역하거나 섹션을 바꾸려면 번역 패널로"))
         else:
             icon, text, cls, tip = ("translate", t("번역 안 됨 · 번역하기"), "md4-chip todo",
@@ -5294,9 +5325,11 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     def translate_settings() -> None:
         """번역 관련 설정 — 방식은 아코디언, 번역할 섹션이 주인공."""
         def set_tsetting(field: str, value) -> None:  # noqa: ANN001
-            """번역 설정 변경 → sections.yaml에 즉시 저장 (새로고침해도 유지)."""
+            """번역 설정 변경 → sections.yaml에 즉시 저장 (새로고침해도 유지). 번역문은 다시 번역할 때 바뀐다 —
+            그때까지 번역 패널 배너와 헤더 칩이 '설정 바뀜'을 알린다."""
             ctrl.set_setting(field, value)
             ctrl.save()
+            refresh_staleness()
 
         def translate_method_panel() -> None:
             with ui.expansion(t("번역 방식 (문체·범위)"), icon="tune").classes("w-full md4-subexp").props("dense"):
@@ -5314,7 +5347,8 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                           native=langs.get(lang).native))
                 if ctrl.title_section() is not None:
                     ui.switch(t("논문 제목도 번역"), value=ctrl.translate_title(),
-                              on_change=lambda e: (ctrl.set_translate_title(e.value), ctrl.save())).props("dense") \
+                              on_change=lambda e: (ctrl.set_translate_title(e.value), ctrl.save(),
+                                                   refresh_staleness())).props("dense") \
                         .tooltip(t("문서 맨 위 논문 제목 한 줄. 끄면 영어 원제를 그대로 둡니다."))
                 ui.switch(t("섹션 제목도 번역"), value=m.translate_headers,
                           on_change=lambda e: set_tsetting("translate_headers", e.value)).props("dense") \

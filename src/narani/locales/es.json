@@ -1318,5 +1318,10 @@
  "칩을 눌러 헤더를 고치고, 제목을 누르면 그 자리로 갑니다.": "Pulsa una etiqueta para corregir un encabezado; pulsa un título para ir allí.",
  "처리 방식": "Tratamiento",
  "번역 전에 번역어와 처리 방식을 확인하세요 — 고친 내용은 바로 저장됩니다.": "Revisa las traducciones y el tratamiento antes de traducir; los cambios se guardan al instante.",
- "체크한 섹션만 번역합니다 · 제목을 누르면 그 자리로 갑니다.": "Solo se traducen las secciones marcadas · pulsa un título para ir allí."
+ "체크한 섹션만 번역합니다 · 제목을 누르면 그 자리로 갑니다.": "Solo se traducen las secciones marcadas · pulsa un título para ir allí.",
+ "번역 설정이 바뀌었습니다 — 다시 번역해야 반영됩니다": "Cambió la configuración de traducción: vuelve a traducir para aplicarla",
+ "문체·섹션 제목·참고문헌 설정이 지난 번역과 달라, 다시 번역하면 {n}개 섹션 전체를 새로 번역합니다.": "El estilo o los ajustes de títulos de sección o referencias difieren de la última traducción, así que volver a traducir retraduce las {n} secciones.",
+ "논문 제목 설정만 바뀌었습니다 — 다시 번역하면 제목 줄만 바뀝니다.": "Solo cambió el ajuste del título del artículo: al volver a traducir solo cambia la línea del título.",
+ " · 설정 바뀜": " · ajustes cambiados",
+ "번역 설정을 바꿨습니다 — 번역 패널에서 다시 번역해야 반영됩니다": "Cambiaste la configuración de traducción: vuelve a traducir en el panel Traducción para aplicarla"
 }
