@@ -1692,7 +1692,10 @@
       [node].concat([].slice.call(node.querySelectorAll('[id]'))).forEach(function(n){ n.removeAttribute('id'); });
       [].forEach.call(node.querySelectorAll('a[href]'), function(a){ a.removeAttribute('href'); });
     }
-    box.appendChild(node); o.appendChild(box); o.appendChild(x);
+    var zm = el('div', 'zv-zm'), zOut = el('button', '', '\u2212'), zIn = el('button', '', '+');
+    zOut.type = zIn.type = 'button'; zOut.setAttribute('aria-label', md4T('축소')); zIn.setAttribute('aria-label', md4T('확대'));
+    zm.appendChild(zOut); zm.appendChild(zIn);
+    box.appendChild(node); o.appendChild(box); o.appendChild(zm); o.appendChild(x);
     var cap = zvCaption(media), cb = null;
     if (cap){ cb = el('div', 'zv-cap'); cb.appendChild(el('strong', '', cap.label)); cb.appendChild(doc.createTextNode(' ' + cap.caption)); o.appendChild(cb); }
     doc.body.appendChild(o);
@@ -1705,6 +1708,7 @@
       box.style.transition = anim ? 'transform .22s ease' : 'none';
       box.style.transform = 'translate(' + Z.x + 'px,' + Z.y + 'px) scale(' + Z.s + ')';
       o.classList.toggle('zoomed', zoomed());
+      zOut.disabled = !zoomed(); zIn.disabled = Z.s >= maxS() * .99;
     }
     function clampXY(){
       var aw = innerWidth, ah = zoomed() ? innerHeight : Z.ah, sw = Z.w * Z.s, sh = Z.h * Z.s;
@@ -1735,9 +1739,16 @@
       var ns = Math.min(Z.fit * 2.5, maxS()), px = (cx - Z.x) / Z.s, py = (cy - Z.y) / Z.s;
       Z.s = ns; Z.x = cx - px * ns; Z.y = cy - py * ns; settle();
     }
+    function zoomBy(k){   // 단추 — 화면 가운데를 기준으로
+      var cx = innerWidth / 2, cy = (zoomed() ? innerHeight : Z.ah) / 2, ns = Math.max(Z.fit, Math.min(maxS(), Z.s * k));
+      var px = (cx - Z.x) / Z.s, py = (cy - Z.y) / Z.s;
+      Z.s = ns; Z.x = cx - px * ns; Z.y = cy - py * ns; settle();
+    }
+    zIn.onclick = function(){ zoomBy(1.6); };
+    zOut.onclick = function(){ zoomBy(1 / 1.6); };
     function onContent(cx, cy){ var r = box.getBoundingClientRect(); return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom; }
     o.addEventListener('pointerdown', function(e){
-      if (e.target === x || (cb && cb.contains(e.target))) return;
+      if (e.target.closest('button') || (cb && cb.contains(e.target))) return;
       P[e.pointerId] = {x: e.clientX, y: e.clientY};
       try { o.setPointerCapture(e.pointerId); } catch (err) {}
       begin(false);
