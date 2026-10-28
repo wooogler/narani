@@ -1194,8 +1194,8 @@ def build_home(state: dict) -> None:
 
         with host, ui.dialog() as dlg, ui.card().classes("gap-2").style("width:540px;max-height:92vh;overflow-y:auto"):
             ui.label(t("모바일에서 들을 음성 만들기")).classes("font-bold")
-            ui.label(t("번역 본문을 읽은 음성을 만들어 Drive의 Narani 폴더에 올립니다(시간당 약 15MB). 그림·표·수식·인용 "
-                       "표기·참고문헌은 건너뛰고, 섹션 제목은 알립니다.")).classes("text-xs text-gray-500")
+            ui.label(t("번역 본문을 읽은 음성을 만들어 Drive의 Narani 폴더에 올립니다(시간당 약 15MB). 그림·표·인용 "
+                       "표기·참고문헌은 건너뛰고, 섹션 제목은 알립니다. 캡션·수식은 아래에서 고릅니다.")).classes("text-xs text-gray-500")
             opts = {"mac": t("무료 — Mac 목소리")}
             if qs["supported"]:
                 opts["qwen"] = t("Qwen3 — 무료·로컬, 자연스러움")
@@ -1251,6 +1251,15 @@ def build_home(state: dict) -> None:
                 ui.button(t("들어 보기"), icon="volume_up", on_click=preview).props("flat dense no-caps")
                 ui.label(f"“{sample}”").classes("text-xs text-gray-500 truncate min-w-0").tooltip(sample)
             est = ui.label().classes("text-xs text-gray-600")
+            # 무엇을 읽을지 — 그림·표 설명, 수식(AI가 읽는 말을 만들어 둔다 — 번역에 쓰는 키, 논문마다 몇 원)
+            ao, ai_ok = phone_service.audio_opts(), await run.io_bound(phone_service.ai_ready)
+            with ui.row().classes("items-center gap-3 w-full"):
+                cap_cb = ui.checkbox(t("그림·표 설명도 읽기"), value=ao["captions"]).props("dense").classes("text-sm")
+                math_cb = ui.checkbox(t("수식도 읽기 (AI가 읽는 말을 만듦)"), value=ao["math"] and ai_ok) \
+                    .props("dense").classes("text-sm")
+                if not ai_ok:
+                    math_cb.disable()
+                    math_cb.tooltip(t("설정 → AI에서 키를 넣으면 수식도 말로 읽습니다 — 없으면 수식은 건너뜁니다."))
             own = [True] * len(secs)        # 섹션마다 넣을지 — 나무의 체크는 이것에서 그린다
 
             def total() -> None:
@@ -1406,7 +1415,8 @@ def build_home(state: dict) -> None:
         opts_ = {"voice": gvoice.value if engine == "gemini" else (qvoice.value if engine == "qwen"
                                                                    else (voice.value if names else None)),
                  "model": gmodel.value if engine == "gemini" else None,
-                 "style": (qstyle.value or "").strip() if engine == "qwen" else None}
+                 "style": (qstyle.value or "").strip() if engine == "qwen" else None,
+                 "captions": bool(cap_cb.value), "math": bool(math_cb.value)}
         started = 0
         for root in roots:
             def work(job, root=root):  # noqa: ANN001, ANN202 — 워커 스레드 (화면 없이 끝까지)
@@ -1414,7 +1424,7 @@ def build_home(state: dict) -> None:
                     job.progress(done, tot)
                     job.detail["section"] = title
                 s = phone_service.make_audio([root], opts_["voice"], include, prog, engine=engine, model=opts_["model"],
-                                             style=opts_["style"])
+                                             style=opts_["style"], captions=opts_["captions"], math=opts_["math"])
                 job.message = t("음성 {m}분 · {mb:.0f}MB를 올렸습니다", m=round(s["seconds"] / 60), mb=s["bytes"] / 1e6)
                 return s
             row = data["by_root"].get(str(root)) or {}

@@ -55,6 +55,11 @@ _SKIP_TAGS = {"figure", "table", "pre", "svg", "sup", "script", "style", "img"}
 _BLOCK_TAGS = {"p", "h1", "h2", "h3", "h4", "h5", "h6", "li", "blockquote", "dt", "dd", "figcaption"}
 _VOID = {"img", "br", "hr", "input", "meta", "link", "source", "col", "wbr", "area", "embed", "track"}
 _MATH_MAX = 12               # 이보다 짧은 인라인 수식(N=8, p<.05)은 읽는다 — 첨자·분수·근호가 없을 때만
+# 긴 수식은 글자 대신 표식 '⟦M지문⟧'으로 둔다 — 말로 읽는 법(speak_math, AI)이 있으면 그 말로 바꾸고 없으면 뺀다.
+# 지문 → LaTeX 표는 이 프로세스 안에서만 쓴다(같은 수식은 늘 같은 지문). 표식 글자는 수식 자리에 걸쳐 놓아
+# 듣기 하이라이트가 수식을 가리킨다.
+_MATH_TEX: dict[str, str] = {}
+_MATH_TOKEN = re.compile(r"⟦M([0-9a-f]{10})⟧")
 _MATH_STRUCT = {"msub", "msup", "msubsup", "mfrac", "msqrt", "mroot", "munder", "mover", "munderover", "mtable"}
 
 _LOCALE = {"ko": "ko_KR", "ja": "ja_JP", "zh": "zh_CN", "zh-Hans": "zh_CN", "zh-Hant": "zh_TW", "es": "es_ES",
@@ -104,6 +109,7 @@ class _Cells(HTMLParser):
         self._skip = 0
         self._math: list[tuple[str, int]] | None = None
         self._math_hard = False
+        self._math_tex = ""
         self._pos = 0
         self._chars: list[tuple[str, int]] = []
         self._blocks: list[tuple[str, int]] = []
@@ -126,12 +132,12 @@ class _Cells(HTMLParser):
             return
         if self._cell is None:
             return
-        skip = (tag in _SKIP_TAGS or (tag == "div" and "math" in cls and "block" in cls)
-                or (tag == "a" and "-ref-" in (a.get("href") or "")))
-        if tag in _BLOCK_TAGS and not self._skip:
-            self._blocks.append((tag, len(self._chars)))
+        skip = tag in _SKIP_TAGS or (tag == "a" and "-ref-" in (a.get("href") or ""))
+        display = tag == "div" and "math" in cls and "block" in cls   # 따로 선 수식 — 제 문장(단위)으로
+        if (tag in _BLOCK_TAGS or display) and not self._skip:
+            self._blocks.append(("p" if display else tag, len(self._chars)))
         if tag == "math" and not self._skip:
-            self._math, self._math_hard = [], False
+            self._math, self._math_hard, self._math_tex = [], False, (a.get("alttext") or "").strip()
         if tag in _MATH_STRUCT:
             self._math_hard = True
         if tag in _VOID:
@@ -156,6 +162,12 @@ class _Cells(HTMLParser):
                 txt = "".join(c for c, _ in self._math).strip()
                 if 0 < len(txt) <= _MATH_MAX and not self._math_hard:
                     self._chars += self._math
+                elif self._math and self._math_tex:
+                    h = hashlib.sha256(self._math_tex.encode()).hexdigest()[:10]
+                    _MATH_TEX[h] = self._math_tex
+                    tok = f" ⟦M{h}⟧ "
+                    first, last = self._math[0][1], self._math[-1][1]
+                    self._chars += [(c, first) for c in tok[:-1]] + [(tok[-1], last)]
                 self._math = None
             if t == tag:
                 break
@@ -217,8 +229,10 @@ def _sentences(chars: list[tuple[str, int]]) -> list[tuple[str, int, int]]:
     return out
 
 
-def plan(bundle: dict) -> tuple[str, list[Section]]:
-    """번들 → (읽는 쪽 ko|en, 섹션들). 섹션 0은 제목과 초록(첫 섹션 제목 앞의 긴 문단들)."""
+def plan(bundle: dict, captions: bool = False) -> tuple[str, list[Section]]:
+    """번들 → (읽는 쪽 ko|en, 섹션들). 섹션 0은 제목과 초록(첫 섹션 제목 앞의 긴 문단들).
+
+    captions면 그림·표 설명("Figure 3: …")도 읽는다. 긴 수식은 표식(⟦M…⟧)으로 남는다 — apply_math가 바꾼다."""
     p = _Cells()
     p.feed(bundle["html"])
     side = "ko" if bundle.get("has_ko") else "en"
@@ -255,7 +269,7 @@ def plan(bundle: dict) -> tuple[str, list[Section]]:
             continue
         for tag, sents in blocks:
             head = tag.startswith("h")
-            if _CAPTION.match(sents[0][0]):
+            if _CAPTION.match(sents[0][0]) and not captions:
                 continue
             if head:
                 if _FRONT.match(sents[0][0]):
@@ -318,7 +332,7 @@ def latin_terms(sections: list[Section], limit: int = 80) -> list[tuple[str, int
     c: Counter[str] = Counter()
     for s in sections:
         for u in s.units:
-            c.update(m.group(0) for m in _LATIN.finditer(u.text) if len(m.group(0)) >= 2)
+            c.update(m.group(0) for m in _LATIN.finditer(strip_math(u.text)) if len(m.group(0)) >= 2)
     return c.most_common(limit)
 
 
@@ -369,6 +383,90 @@ def suggest_readings(terms: list[str], lang: str, provider=None) -> dict[str, st
     out = prov.parse(system, "\n".join(terms), Readings, max_tokens=4096)
     asked = set(terms)
     return {it.term: it.reading.strip() for it in out.items if it.term in asked and it.reading.strip()}
+
+
+# ---- 수식을 말로 — LaTeX를 그 언어 낭독자가 읽을 말로(번역에 쓰는 AI). 논문마다 speech_math.json에 {LaTeX: 말} ----
+def strip_math(text: str) -> str:
+    return re.sub(r"\s{2,}", " ", _MATH_TOKEN.sub(" ", text)).strip()
+
+
+def math_in(sections: list[Section]) -> list[str]:
+    """읽을 글에 든 긴 수식들의 LaTeX (나온 순서, 겹치지 않게)."""
+    out: dict[str, None] = {}
+    for s in sections:
+        for u in s.units:
+            for m in _MATH_TOKEN.finditer(u.text):
+                if m.group(1) in _MATH_TEX:
+                    out[_MATH_TEX[m.group(1)]] = None
+    return list(out)
+
+
+def apply_math(sections: list[Section], spoken: dict[str, str] | None) -> list[Section]:
+    """수식 표식을 읽는 말로 바꾼다 — 말이 없는 수식은 뺀다(예전처럼 건너뜀). 수식만 있던 단위가 비면 그 단위는 뺀다."""
+    spoken = spoken or {}
+
+    def say(m: re.Match) -> str:
+        w = spoken.get(_MATH_TEX.get(m.group(1), ""), "").strip()
+        return f" {w} " if w else " "
+    out = []
+    for s in sections:
+        units = []
+        for u in s.units:
+            t = re.sub(r"\s{2,}", " ", _MATH_TOKEN.sub(say, u.text)).strip()
+            t = re.sub(r"\s+(?=[.,;:!?。、，])", "", t)
+            if any(c.isalnum() for c in t):
+                units.append(Unit(u.row, u.s, u.e, t, u.head, u.end_of_block))
+        if units:
+            out.append(Section(s.title, s.row, units, s.level))
+    return out
+
+
+def math_path(root: Path) -> Path:
+    from narani.workdir import WorkDir
+
+    return WorkDir(Path(root)).root / "speech_math.json"
+
+
+def load_math(root: Path) -> dict[str, str]:
+    try:
+        data = json.loads(math_path(root).read_text(encoding="utf-8"))
+        return {str(k): str(v) for k, v in data.items() if str(v).strip()} if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def save_math(root: Path, spoken: dict[str, str]) -> None:
+    math_path(root).write_text(json.dumps(spoken, ensure_ascii=False, indent=1), encoding="utf-8")
+
+
+def speak_math(texes: list[str], lang: str, provider=None) -> dict[str, str]:  # noqa: ANN001
+    """LaTeX 수식들 → 그 언어 낭독자가 소리 내어 읽을 말. 번역에 쓰는 AI로 한 번에(수식 수십 개에 몇 원)."""
+    from pydantic import BaseModel
+
+    from narani import config, langs
+
+    class Spoken(BaseModel):
+        index: int
+        speech: str
+
+    class SpokenAll(BaseModel):
+        items: list[Spoken]
+
+    if not texes:
+        return {}
+    name = langs.get(lang).english if hasattr(langs.get(lang), "english") else lang
+    system = (f"You turn LaTeX formulas from a research paper into what a {name} narrator says aloud in their place when "
+              f"reading the paper to a listener (text-to-speech, no screen). Each formula sits inside a {name} sentence, so "
+              "return a PHRASE that can replace the formula in that sentence — never a full sentence, no sentence-final or "
+              "polite endings, no explanation of what the formula means. Write it the way researchers in the field read "
+              f"formulas aloud in {name}: concise, no LaTeX commands or symbols left. Variable and function names stay as "
+              "Latin letters (x, R lcs, LCS); named quantities by name (\\text{ROUGE-N} → ROUGE-N); font commands "
+              "(\\mathcal, \\mathbf) are not read; Greek letters by name; fractions, sums, sub/superscripts, conditionals "
+              f"(p(y | x)) and comparisons in the usual {name} wording. For long formulas say the gist rather than every "
+              "symbol. Return one item per input with the same index.")
+    prov = provider or config.build_provider()
+    out = prov.parse(system, "\n".join(f"{i}: {t}" for i, t in enumerate(texes)), SpokenAll, max_tokens=8192)
+    return {texes[it.index]: it.speech.strip() for it in out.items if 0 <= it.index < len(texes) and it.speech.strip()}
 
 
 def minutes(sections: list[Section]) -> float:
@@ -849,15 +947,17 @@ def _make_section(engine, sec: Section, cache: Path, key: str, tmp: Path,  # noq
 
 def build(bundle: dict, engine, cache: Path, include: list[int] | None = None,
           on_progress: Callable[[int, int, str], None] | None = None,
-          terms: dict[str, str] | None = None) -> tuple[bytes, dict]:
+          terms: dict[str, str] | None = None, captions: bool = False,
+          math: dict[str, str] | None = None) -> tuple[bytes, dict]:
     """번들 → (m4a 바이트, 시간표). include는 넣을 섹션의 행 번호들(없으면 전부).
 
     on_progress(만든 문장 수, 새로 만들 문장 수, 섹션 제목) — 캐시에 있는 섹션은 세지 않는다.
     """
-    side, secs = plan(bundle)
+    side, secs = plan(bundle, captions)
     if include is not None:
         rows = set(include)
         secs = [s for s in secs if s.row in rows]
+    secs = apply_math(secs, math)       # 수식 — 읽는 말이 있으면 그 말, 없으면 뺀다
     if not secs:
         raise ValueError("읽을 본문이 없습니다")
     secs = apply_terms(secs, terms)   # 발음 용어집 — 읽는 글만 바뀐다(위치·제목 표시는 원문)

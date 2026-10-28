@@ -121,7 +121,7 @@ def test_plan_reads_body_and_skips_meta_citations_figures_refs(tmp_path):
     cells.feed(b["html"])
     for u in (u for s in secs for u in s.units):
         piece = cells.text[u.row][u.s:u.e].replace(" ", "")
-        want, i = u.text.replace(" ", ""), 0
+        want, i = tts.strip_math(u.text).replace(" ", ""), 0          # 긴 수식은 표식(⟦M…⟧) — 그 자리는 수식 글자
         for ch in piece:
             if i < len(want) and ch == want[i]:
                 i += 1
@@ -496,3 +496,24 @@ def test_suggest_readings_uses_provider_and_keeps_asked_terms():
                              {"term": "extra", "reading": "x"}])
     got = tts.suggest_readings(["Hedwig", "LLM"], "ko", provider=FakeProvider(parse_fn=parse))
     assert got == {"Hedwig": "헤드위그", "LLM": "엘엘엠"}
+
+
+def test_long_formula_becomes_token_spoken_by_ai_or_dropped(tmp_path):
+    # 긴 수식은 표식으로 남아 — 읽는 말(speech_math.json, AI)이 있으면 그 말로, 없으면 예전처럼 뺀다
+    b = bundle.build_paper(_wd(tmp_path).root)
+    _, secs = tts.plan(b)
+    texes = tts.math_in(secs)
+    assert texes == ["\\sum_{i=1}^{n} w_i x_i + b"]
+    plain = [u.text for s in tts.apply_math(secs, None) for u in s.units]
+    assert "모델은 이다." in plain and not any("⟦" in t for t in plain)
+    said = [u.text for s in tts.apply_math(secs, {texes[0]: "시그마 i는 1부터 n까지 w i x i 더하기 b"}) for u in s.units]
+    assert "모델은 시그마 i는 1부터 n까지 w i x i 더하기 b 이다." in said
+    tts.save_math(_wd(tmp_path).root, {texes[0]: "말"})
+    assert tts.load_math(_wd(tmp_path).root) == {texes[0]: "말"}
+
+
+def test_captions_read_only_when_asked(tmp_path):
+    b = bundle.build_paper(_wd(tmp_path).root)
+    def caps(c):
+        return [u.text for s in tts.plan(b, c)[1] for u in s.units if u.text.startswith("Figure 1")]
+    assert caps(False) == [] and caps(True) == ["Figure 1: 인터페이스."]

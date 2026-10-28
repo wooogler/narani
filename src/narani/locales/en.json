@@ -1120,7 +1120,6 @@
  "음성 {n}편": "Audio {n}",
  "모바일에서 들을 음성 {m}분": "{m} min of audio for mobile",
  "들어 보기 실패: {e}": "Preview failed: {e}",
- "번역 본문을 읽은 음성을 만들어 Drive의 Narani 폴더에 올립니다(시간당 약 15MB). 그림·표·수식·인용 표기·참고문헌은 건너뛰고, 섹션 제목은 알립니다.": "Makes audio of the translation read aloud and uploads it to the Narani folder in your Drive (about 15 MB per hour). Figures, tables, equations, citation marks and references are skipped; section titles are announced.",
  "무료 — Mac 목소리": "Free — Mac voice",
  "Gemini — 더 자연스러움 (유료)": "Gemini — more natural (paid)",
  "설정 → AI에서 Gemini 키를 넣으면 더 자연스러운 Gemini 목소리도 고를 수 있습니다.": "Add a Gemini key in Settings → AI to choose the more natural Gemini voices too.",
@@ -1322,5 +1321,9 @@
  " · 남은 약 {r}": " · about {r} left",
  "멈추는 중…": "Stopping…",
  "멈추기": "Stop",
- "'{t}' 음성 만들기를 멈췄습니다 — 이미 만든 섹션은 남아 다음에 이어서 만듭니다.": "Stopped making audio for '{t}' — sections already made are kept, so next time picks up where it left off."
+ "'{t}' 음성 만들기를 멈췄습니다 — 이미 만든 섹션은 남아 다음에 이어서 만듭니다.": "Stopped making audio for '{t}' — sections already made are kept, so next time picks up where it left off.",
+ "그림·표 설명도 읽기": "Read figure & table captions",
+ "수식도 읽기 (AI가 읽는 말을 만듦)": "Read formulas (AI writes how to say them)",
+ "설정 → AI에서 키를 넣으면 수식도 말로 읽습니다 — 없으면 수식은 건너뜁니다.": "Add a key in Settings → AI to have formulas read aloud — without one, formulas are skipped.",
+ "번역 본문을 읽은 음성을 만들어 Drive의 Narani 폴더에 올립니다(시간당 약 15MB). 그림·표·인용 표기·참고문헌은 건너뛰고, 섹션 제목은 알립니다. 캡션·수식은 아래에서 고릅니다.": "Makes audio of the translation and uploads it to the Narani folder in your Drive (about 15 MB per hour). Figures, tables, citation marks and references are skipped; section titles are announced. Choose below whether to read captions and formulas."
 }
