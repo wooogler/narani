@@ -266,10 +266,11 @@ def test_phone_reader_has_jumps_and_back_pill():
 
 
 def test_phone_reader_zooms_figures_fullscreen():
-    # 그림·표를 누르면 전체 화면 — 그 안에서만 핀치·끌기·두 번 누르기. 본문 확대는 막지 않는다
+    # 그림·표를 누르면 전체 화면 — 그 안에서만 핀치·끌기·두 번 누르기. 본문 화면 확대는 막는다
     files = web.site_files(local=True)
     js, html = files["app.js"][0].decode(), files["index.html"][0].decode()
-    assert "user-scalable" not in html and "maximum-scale" not in html
+    assert "user-scalable=no" in html and "html { touch-action: pan-x pan-y; }" in html
+    assert "addEventListener('gesturestart'" in js
     assert "function mediaTap" in js and "function openZoom" in js
     assert "mediaTap(media)" in js.split("doc.addEventListener('click'", 1)[1]   # 문장 누르기보다 먼저 가로챈다
     assert "#zv .zv-box" in html
