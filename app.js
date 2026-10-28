@@ -451,19 +451,42 @@
       try {
         localStorage.setItem('narani:gtok', JSON.stringify({at: p.access_token, exp: Date.now() + (+p.expires_in || 3600) * 1000}));
         localStorage.setItem('narani:gconn', '1');
+        localStorage.removeItem('narani:gsilent');
       } catch (e) {}
-    } else authError = p.error || 'error';
+      // 어느 계정인지 기억해 둔다 — 조용한 재연결 때 login_hint로(계정이 여럿이어도 묻지 않게)
+      fetch(GAPI + '/about?fields=user(emailAddress)', {headers: {Authorization: 'Bearer ' + p.access_token}})
+        .then(function(r){ return r.ok ? r.json() : null; })
+        .then(function(d){ if (d && d.user && d.user.emailAddress) try { localStorage.setItem('narani:gmail', d.user.emailAddress); } catch (e) {} }, function(){});
+    } else if (!saved.silent) authError = p.error || 'error';   // 조용한 재연결이 안 됐으면 그냥 '다시 연결' 단추로
   }
   function gToken(){
     try { var t = JSON.parse(localStorage.getItem('narani:gtok') || 'null'); return t && t.exp > Date.now() + 60000 ? t.at : null; }
     catch (e) { return null; }
   }
-  function gSignIn(){
-    var st = Math.random().toString(36).slice(2) + Date.now().toString(36);
-    try { sessionStorage.setItem('narani:gstate', JSON.stringify({s: st, back: location.hash})); } catch (e) {}
+  function gSignIn(silent){
+    var st = Math.random().toString(36).slice(2) + Date.now().toString(36), hint = '';
+    try { sessionStorage.setItem('narani:gstate', JSON.stringify({s: st, back: location.hash, silent: !!silent})); } catch (e) {}
+    try { hint = localStorage.getItem('narani:gmail') || ''; } catch (e) {}
     var o = {client_id: CFG.google_client_id, redirect_uri: location.origin + location.pathname.replace(/index\.html$/, ''), response_type: 'token',
              scope: GSCOPE, include_granted_scopes: 'true', state: st};
+    if (silent) o.prompt = 'none';
+    if (hint) o.login_hint = hint;
     location.href = 'https://accounts.google.com/o/oauth2/v2/auth?' + qs(o);
+  }
+  // 끊긴 연결을 조용히 다시 — 토큰은 한 시간짜리라 앱을 다시 열면 거의 늘 끊겨 있다. 이 앱에 Google 로그인이
+  // 살아 있고 이미 허락했으면 prompt=none으로 화면 없이 새 토큰을 받아 돌아온다(잠깐 깜빡임). 안 되면(로그인
+  // 만료·계정 고르기가 필요) 지금처럼 '다시 연결' 단추. 실패한 채 계속 오가지 않게 10분에 한 번만, 듣는 중·말로
+  // 묻는 중에는 하지 않는다(페이지를 떠나면 소리가 끊긴다).
+  function gSilent(){
+    if (CFG.local || !CFG.google_client_id || gToken() || navigator.onLine === false) return false;
+    if (doc.body && (doc.body.classList.contains('talking') || (doc.body.classList.contains('listening') && typeof au !== 'undefined' && au && !au.paused))) return false;
+    try {
+      if (!localStorage.getItem('narani:gconn')) return false;
+      if (Date.now() - (+localStorage.getItem('narani:gsilent') || 0) < 600000) return false;
+      localStorage.setItem('narani:gsilent', String(Date.now()));
+    } catch (e) { return false; }
+    gSignIn(true);
+    return true;
   }
   function driveSource(){
     var folder = null, ids = null;
@@ -540,11 +563,16 @@
   }
   takeRedirect();
   var source = CFG.local ? localSource() : (CFG.google_client_id ? driveSource() : null);
+  var reconnecting = !!(source && source.drive) && gSilent();
+  doc.addEventListener('visibilitychange', function(){
+    if (doc.visibilityState === 'visible' && source && source.drive) reconnecting = gSilent() || reconnecting;
+  });
   function sourceProblem(err){
     // 저장소 오류 → 목록 위에 보일 안내와 단추
     var kind = err && err.kind;
     // 꺼진 망에서는 다시 연결도 못 한다 — 승인이 만료됐어도 오프라인 안내만
     if (navigator.onLine === false) return {text: md4T('오프라인 — 받아 둔 논문만 열려요')};
+    if (reconnecting && kind === 'auth') return {text: md4T('Google Drive에 다시 연결하는 중…')};
     if (source && source.drive && (kind === 'auth' || authError)){
       var first = true;
       try { first = !localStorage.getItem('narani:gconn'); } catch (e) {}
