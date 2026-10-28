@@ -313,6 +313,19 @@ ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3p
   padding: 6px 8px 6px 14px; font-size: .85em; box-shadow: 0 6px 18px rgba(0,0,0,.2); white-space: nowrap; }
 #upd.on { display: flex; }
 #upd button { border: 0; border-radius: 999px; background: var(--accent); color: #fff; font: inherit; font-weight: 600; padding: 5px 12px; }
+/* 그림·표 전체 화면 — 두 손가락으로 키우고 끌어 옮긴다(본문 화면은 그대로) */
+#zv { position: fixed; inset: 0; z-index: 30; background: rgba(0,0,0,calc(.94 * var(--zv-a, 1))); touch-action: none;
+  overflow: hidden; -webkit-user-select: none; user-select: none; }
+#zv .zv-box { position: absolute; left: 0; top: 0; width: max-content; transform-origin: 0 0; }
+#zv .zv-box img { display: block; background: #fff; border-radius: 2px; -webkit-user-drag: none; }
+#zv .zv-box table { border-collapse: collapse; background: #fff; color: #111; font-size: 15px; line-height: 1.4; }
+#zv .zv-box th, #zv .zv-box td { border: 1px solid #ccc; padding: 4px 8px; vertical-align: top; }
+#zv .zv-x { position: absolute; top: calc(env(safe-area-inset-top) + 10px); right: 12px; width: 44px; height: 44px;
+  border: 0; border-radius: 50%; background: rgba(60,60,60,.7); color: #fff; font-size: 26px; line-height: 1; }
+#zv .zv-cap { position: absolute; left: 0; right: 0; bottom: 0; max-height: 30vh; overflow-y: auto; touch-action: pan-y;
+  padding: 22px 16px calc(14px + env(safe-area-inset-bottom)); color: #eee; font-size: .88em; line-height: 1.5;
+  background: linear-gradient(transparent, rgba(0,0,0,.7) 20px); transition: opacity .2s; }
+#zv.zoomed .zv-cap { opacity: 0; pointer-events: none; }
 /* 오프라인 — 받아 두지 않은 논문은 흐리게 */
 #lib-list li.na a { opacity: .45; }
 .lib-bar label.auto { display: inline-flex; align-items: center; gap: 6px; color: var(--fg); }

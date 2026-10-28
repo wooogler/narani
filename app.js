@@ -376,6 +376,8 @@
     var sel = window.getSelection && window.getSelection();
     if (sel && !sel.isCollapsed) return;               // 길게 눌러 고르는 중이면 건드리지 않는다
     var cell = e.target.closest('.row .cell.ko, .row .cell.en');
+    var media = e.target.closest('.row .cell img, .row .cell table');   // 그림만 있는 행은 .cell.same
+    if (media && typeof mediaTap === 'function' && mediaTap(media)){ clearSent(); closeSheet(); return; }  // 쓰는 쪽이 그림·표를 크게 연다(폰: 전체 화면)
     if (!cell || e.target.closest('img, table, math, pre')){ clearSent(); closeSheet(); return; }
     onSentence(e, cell);
   });
@@ -772,7 +774,7 @@
   }
 
   // ---- 목록 ↔ 논문 ----
-  function unmount(){ if (cur){ cur.parentNode.removeChild(cur); cur = null; } }
+  function unmount(){ if (ZV) ZV.close(); if (cur){ cur.parentNode.removeChild(cur); cur = null; } }
   function showLib(push){
     loadSeq++; unmount(); loading.style.display = 'none'; readerClosed();
     lib.classList.remove('off'); topTitle.textContent = APP;
@@ -1657,6 +1659,143 @@
   doc.getElementById('ag-form').addEventListener('submit', function(e){ e.preventDefault(); send(); });
   agIn.addEventListener('input', function(){ agIn.style.height = ''; agIn.style.height = Math.min(agIn.scrollHeight, 200) + 'px'; });
   agIn.addEventListener('keydown', function(e){ if (e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); send(); } });
+  // ---- 그림·표 전체 화면 — 누르면 열고, 두 손가락으로 키우고, 끌어 옮기고, 두 번 눌러 확대·원래대로,
+  // 원래 크기에서 위아래로 쓸거나 바깥을 누르면 닫는다. 본문 화면 확대(핀치)는 막지 않는다 ----
+  var ZV = null;
+  function zvCaption(media){
+    if (media.matches('img')){
+      var src = media.getAttribute('src');
+      for (var i = 0; i < FIGS.length; i++) if (FIGS[i].img && FIGS[i].img === src) return FIGS[i];
+    }
+    var b = media.matches('table') ? media : (media.closest('p') || media), sibs = [b.nextElementSibling, b.previousElementSibling];
+    for (var k = 0; k < sibs.length; k++){
+      var bq = sibs[k], st = bq && bq.matches('blockquote') ? bq.querySelector('p:first-child > strong:first-child') : null;
+      if (st && FIG_RX.test(st.textContent.trim()))
+        return {label: st.textContent.replace(/[:.\s]+$/, ''), caption: bq.textContent.replace(st.textContent, '').replace(/\s+/g, ' ').trim()};
+    }
+    return null;
+  }
+  function mediaTap(media){
+    if (!cur || !cur.contains(media)) return false;
+    openZoom(media);
+    return true;
+  }
+  function openZoom(media){
+    if (ZV) ZV.close();
+    var o = el('div'), box = el('div', 'zv-box'), x = el('button', 'zv-x', '×'), node;
+    o.id = 'zv'; x.type = 'button'; x.setAttribute('aria-label', md4T('닫기'));
+    if (media.matches('img')){ node = el('img'); node.src = media.currentSrc || media.src; node.alt = media.alt || ''; node.draggable = false; }
+    else {
+      node = media.cloneNode(true);   // 표 속 링크·이름은 떼어 낸다 — 누르면 본문으로 건너뛰고, 같은 id가 둘이 된다
+      [node].concat([].slice.call(node.querySelectorAll('[id]'))).forEach(function(n){ n.removeAttribute('id'); });
+      [].forEach.call(node.querySelectorAll('a[href]'), function(a){ a.removeAttribute('href'); });
+    }
+    box.appendChild(node); o.appendChild(box); o.appendChild(x);
+    var cap = zvCaption(media), cb = null;
+    if (cap){ cb = el('div', 'zv-cap'); cb.appendChild(el('strong', '', cap.label)); cb.appendChild(doc.createTextNode(' ' + cap.caption)); o.appendChild(cb); }
+    doc.body.appendChild(o);
+
+    var Z = {s: 1, fit: 1, x: 0, y: 0, w: 1, h: 1, ah: innerHeight}, P = {}, g = null, lastTap = 0, lastXY = null;
+    function zoomed(){ return Z.s > Z.fit * 1.02; }
+    function dist(a, b){ return Math.hypot(a.x - b.x, a.y - b.y); }
+    function mid(a, b){ return {x: (a.x + b.x) / 2, y: (a.y + b.y) / 2}; }
+    function apply(anim){
+      box.style.transition = anim ? 'transform .22s ease' : 'none';
+      box.style.transform = 'translate(' + Z.x + 'px,' + Z.y + 'px) scale(' + Z.s + ')';
+      o.classList.toggle('zoomed', zoomed());
+    }
+    function clampXY(){
+      var aw = innerWidth, ah = zoomed() ? innerHeight : Z.ah, sw = Z.w * Z.s, sh = Z.h * Z.s;
+      Z.x = sw <= aw ? (aw - sw) / 2 : Math.min(0, Math.max(aw - sw, Z.x));
+      Z.y = sh <= ah ? (ah - sh) / 2 : Math.min(0, Math.max(ah - sh, Z.y));
+    }
+    function settle(){
+      if (Z.s < Z.fit) Z.s = Z.fit;
+      clampXY(); apply(true);
+    }
+    function measure(){
+      box.style.width = '';
+      if (node.tagName === 'TABLE' && box.offsetWidth > innerWidth * 2.5) box.style.width = Math.round(innerWidth * 2.5) + 'px';   // 너무 넓은 표는 칸 안에서 줄을 바꾼다
+      Z.w = box.offsetWidth || 1; Z.h = box.offsetHeight || 1;
+      Z.ah = innerHeight - (cb ? Math.min(cb.offsetHeight, innerHeight * .3) : 0);
+      Z.fit = Math.min(innerWidth * .96 / Z.w, Z.ah * .9 / Z.h, node.tagName === 'TABLE' ? 1.4 : 3);
+      Z.s = Z.fit; clampXY(); apply(false);
+    }
+    function maxS(){ return Math.max(Z.fit * 6, 3); }
+    function begin(wasPinch){
+      var a = []; for (var k in P) a.push(P[k]);
+      if (a.length >= 2) g = {pinch: true, d: dist(a[0], a[1]) || 1, s: Z.s, x: Z.x, y: Z.y, m: mid(a[0], a[1])};
+      else if (a.length === 1) g = {sx: a[0].x, sy: a[0].y, x: Z.x, y: Z.y, moved: !!wasPinch};
+      else g = null;
+    }
+    function dbl(cx, cy){
+      if (zoomed()){ Z.s = Z.fit; settle(); return; }
+      var ns = Math.min(Z.fit * 2.5, maxS()), px = (cx - Z.x) / Z.s, py = (cy - Z.y) / Z.s;
+      Z.s = ns; Z.x = cx - px * ns; Z.y = cy - py * ns; settle();
+    }
+    function onContent(cx, cy){ var r = box.getBoundingClientRect(); return cx >= r.left && cx <= r.right && cy >= r.top && cy <= r.bottom; }
+    o.addEventListener('pointerdown', function(e){
+      if (e.target === x || (cb && cb.contains(e.target))) return;
+      P[e.pointerId] = {x: e.clientX, y: e.clientY};
+      try { o.setPointerCapture(e.pointerId); } catch (err) {}
+      begin(false);
+    });
+    o.addEventListener('pointermove', function(e){
+      if (!P[e.pointerId] || !g) return;
+      P[e.pointerId] = {x: e.clientX, y: e.clientY};
+      var a = []; for (var k in P) a.push(P[k]);
+      if (g.pinch){
+        if (a.length < 2) return;
+        var m = mid(a[0], a[1]), ns = Math.max(Z.fit * .6, Math.min(maxS(), g.s * dist(a[0], a[1]) / g.d));
+        var px = (g.m.x - g.x) / g.s, py = (g.m.y - g.y) / g.s;
+        Z.s = ns; Z.x = m.x - px * ns; Z.y = m.y - py * ns; apply(false);
+        return;
+      }
+      var dx = e.clientX - g.sx, dy = e.clientY - g.sy;
+      if (!g.moved && Math.abs(dx) + Math.abs(dy) > 8) g.moved = true;
+      if (!g.moved) return;
+      if (zoomed() && !g.drag){ Z.x = g.x + dx; Z.y = g.y + dy; apply(false); return; }
+      g.drag = true;   // 원래 크기에서 끌기 — 위아래로 멀리 끌면 닫는다
+      Z.y = g.y + dy; apply(false);
+      o.style.setProperty('--zv-a', String(Math.max(.25, 1 - Math.abs(dy) / 400)));
+    });
+    function up(e){
+      if (!P[e.pointerId]) return;
+      delete P[e.pointerId];
+      var was = g;
+      if (was && !was.pinch){
+        if (was.drag){
+          if (Math.abs(e.clientY - was.sy) > 110){ close(); return; }
+          o.style.removeProperty('--zv-a'); settle();
+        } else if (!was.moved && e.type === 'pointerup'){
+          var now = Date.now(), here = {x: e.clientX, y: e.clientY};
+          if (now - lastTap < 320 && lastXY && dist(lastXY, here) < 40){ lastTap = 0; dbl(here.x, here.y); }
+          else if (!zoomed() && !onContent(here.x, here.y)){ close(); return; }
+          else { lastTap = now; lastXY = here; }
+        } else settle();
+      } else settle();
+      begin(was && was.pinch);   // 두 손가락 중 하나만 떼면 남은 손가락으로 이어 옮긴다(누르기로 보지 않는다)
+    }
+    o.addEventListener('pointerup', up);
+    o.addEventListener('pointercancel', up);
+    // iOS: 겹친 화면 위에서도 페이지 확대·스크롤이 일어나지 않게
+    function stop(e){ if (!(cb && cb.contains(e.target))) e.preventDefault(); }
+    o.addEventListener('touchmove', stop, {passive: false});
+    o.addEventListener('gesturestart', stop);
+    function key(e){ if (e.key === 'Escape'){ e.stopPropagation(); close(); } }
+    function close(){
+      if (ZV !== api) return;
+      ZV = null; o.remove();
+      window.removeEventListener('resize', measure); doc.removeEventListener('keydown', key, true);
+    }
+    var api = {close: close};
+    ZV = api;
+    x.onclick = close;
+    window.addEventListener('resize', measure);
+    doc.addEventListener('keydown', key, true);
+    if (node.tagName === 'IMG' && !node.complete) node.onload = measure;
+    measure();
+  }
 
   // ---- 듣기 (§phone.tts) — 데스크톱이 만든 음성 파일 하나 + 문장 시간표 [t, 행, s, e] ----
   // 화면이 꺼져도·잠금 화면·CarPlay 단추로 듣는다(실기기 시험 tts-test.html로 확인한 방식: <audio> 하나 +
