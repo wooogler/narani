@@ -12,6 +12,7 @@ import json
 import re
 import sys
 import time
+from collections.abc import Callable
 from html import escape
 from pathlib import Path
 
@@ -2831,15 +2832,16 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         ui.notify(" ".join(parts), type="warning" if (r["conflicts"] or r["dropped"]) else "positive",
                   multi_line=len(parts) > 1, timeout=8000 if len(parts) > 1 else 4000)
 
-    def change_level(sid: str, value) -> None:  # noqa: ANN001
-        """레벨 변경 → 자동 저장 + 즉시 프리뷰·트리에 반영."""
+    async def change_level(sid: str, value) -> None:  # noqa: ANN001
+        """레벨 변경 → 자동 저장 + 즉시 프리뷰·트리에 반영. 캔버스를 다시 지어도 읽던 자리는 그대로 —
+        예전엔 그리드를 통째로 다시 지어 본문이 맨 위로 튀었다."""
         def apply() -> None:
             ctrl.set_level(sid, value)
             commit()
             section_list.refresh()
+            batch_level_panel.refresh()
             _refresh_translate_tree()
-            refresh_canvas()  # 그리드·목차(편집 중이면 에디터도) 새로 만들어진 en.md로
-        apply()
+        await refresh_canvas_keeping_place(apply)  # 그리드·목차(편집 중이면 에디터도) 새로 만들어진 en.md로
 
     @ui.refreshable
     def section_list() -> None:
@@ -2898,7 +2900,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         ui.label(t("같은 모양의 헤더를 한 번에 바꿉니다. 펼치면 그룹의 각 섹션을 개별 조정할 수 있어요.")) \
             .classes("text-xs text-gray-500")
 
-        def apply_group(key: str, name: str, value) -> None:  # noqa: ANN001
+        async def apply_group(key: str, name: str, value) -> None:  # noqa: ANN001
             if value is None:
                 return
 
@@ -2908,21 +2910,19 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                 section_list.refresh()
                 batch_level_panel.refresh()
                 _refresh_translate_tree()
-                refresh_canvas()
                 ui.notify(t("{name} {n}개 → {level}", name=name, n=n, level=t(_LEVEL_LABEL.get(value, str(value)))), type="positive")
 
-            apply()
+            await refresh_canvas_keeping_place(apply)
 
-        def change_in_group(sid: str, value) -> None:  # noqa: ANN001
+        async def change_in_group(sid: str, value) -> None:  # noqa: ANN001
             """그룹 내 개별 섹션 레벨 변경 → 프리뷰·섹션 트리·번역 트리 연동 (아코디언은 유지)."""
             def apply() -> None:
                 ctrl.set_level(sid, value)
                 commit()
                 section_list.refresh()
                 _refresh_translate_tree()
-                refresh_canvas()
 
-            apply()
+            await refresh_canvas_keeping_place(apply)
 
         for g in groups:
             gk = (g["scheme"], g["depth"])
@@ -3016,21 +3016,36 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     # 직접 스크롤하면 거기서 멈춘다).
     _KEEP_JS = """
     (function(){
+      // 헤더에 붙는 '섹션 구조' 점프 단추 글은 뺀다 — 본문으로 바꾼 뒤에도 같은 글이 되게
+      function tx(e){ var t = e.textContent, a = e.querySelector('.md-sec-jump');
+        if (a) t = t.replace(a.textContent, ''); return t.trim().slice(0, 80); }
+      var BLOCKS = 'p, li, h1, h2, h3, h4, h5, h6, pre, blockquote, table, figure';
       var g = document.querySelector('.sbs-grid') || document.querySelector('.vpane');
       if (!g) return null;
       g.dataset.md4old = '1';
       var top = g.getBoundingClientRect().top, cells = g.querySelectorAll('.sbs-cell[data-row]');
       for (var i = 0; i < cells.length; i++){
         var r = cells[i].getBoundingClientRect();
-        if (r.bottom > top + 1) return {row: cells[i].getAttribute('data-row'), off: r.top - top,
-                                         f: r.height > 0 ? Math.min(1, Math.max(0, (top - r.top) / r.height)) : 0,
-                                         ratio: g.scrollTop / Math.max(1, g.scrollHeight - g.clientHeight)};
+        if (r.bottom > top + 1){
+          // 행 안에서 화면 맨 위에 걸친 문단 — 그 글로 다시 찾으면 행이 합쳐지거나 높이가 바뀌어도 정확하다
+          var b = [].filter.call(cells[i].querySelectorAll(BLOCKS), function(e){
+            return e.getBoundingClientRect().bottom > top + 1 && tx(e); })[0];
+          return {row: cells[i].getAttribute('data-row'), off: r.top - top,
+                  f: r.height > 0 ? Math.min(1, Math.max(0, (top - r.top) / r.height)) : 0,
+                  txt: b ? tx(b) : null,
+                  toff: b ? b.getBoundingClientRect().top - top : 0,
+                  ratio: g.scrollTop / Math.max(1, g.scrollHeight - g.clientHeight)};
+        }
       }
       return {row: null, off: 0, ratio: g.scrollTop / Math.max(1, g.scrollHeight - g.clientHeight)};
     })()
     """
     _RESTORE_JS = """
     (function(p){
+      // 헤더에 붙는 '섹션 구조' 점프 단추 글은 뺀다 — 본문으로 바꾼 뒤에도 같은 글이 되게
+      function tx(e){ var t = e.textContent, a = e.querySelector('.md-sec-jump');
+        if (a) t = t.replace(a.textContent, ''); return t.trim().slice(0, 80); }
+      var BLOCKS = 'p, li, h1, h2, h3, h4, h5, h6, pre, blockquote, table, figure';
       var stop = false, n = 0, t0 = Date.now();
       function quit(){ stop = true; }
       ['wheel', 'touchmove', 'keydown', 'mousedown'].forEach(function(ev){
@@ -3040,7 +3055,16 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         var g = [].filter.call(document.querySelectorAll('.sbs-grid, .vpane'),
                                function(x){ return !x.dataset.md4old; })[0];
         var c = g && p.row !== null ? g.querySelector('.sbs-cell[data-row="' + p.row + '"]') : null;
-        if (g && c){
+        // 그 행에서, 없으면 바로 다음 두 행에서 찾는다 — 본문으로 바꿨던 헤더를 되살리면 보던 문단이 새 행으로 간다
+        var el = null;
+        for (var k = 0; g && p.txt && p.row !== null && !el && k < 3; k++){
+          var ck = g.querySelector('.sbs-cell[data-row="' + (+p.row + k) + '"]');
+          el = ck && [].filter.call(ck.querySelectorAll(BLOCKS), function(e){ return tx(e) === p.txt; })[0];
+        }
+        if (el){  // 보던 문단을 같은 높이로
+          var d = el.getBoundingClientRect().top - g.getBoundingClientRect().top - p.toff;
+          if (Math.abs(d) > 1){ g.scrollTop += d; g.dispatchEvent(new Event('scroll')); }
+        } else if (g && c){
           // f(행 안의 비율)가 있으면 그것으로 — 편집기에서 돌아올 때는 픽셀 차가 아니라 행 안 비율만 안다
           var cr = c.getBoundingClientRect(), off = p.f != null ? -p.f * cr.height : p.off;
           var d = cr.top - g.getBoundingClientRect().top - off;
@@ -3085,14 +3109,61 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     })(%d, %d, %s)
     """
 
-    async def refresh_canvas_keeping_place() -> None:
-        """캔버스를 다시 그리되 보던 자리(화면 맨 위의 행)를 지킨다 — 그림·수식 고치기 뒤에."""
+    def _remap_place(old: dict, row: int) -> tuple[int, str]:
+        """구조를 바꾸기 전의 행 → 바꾼 뒤의 행. ('same'|'tail'|'top')
+
+        헤더를 본문으로·위에 합침·통째 삭제로 바꾸면 그 뒤 행 번호가 모두 당겨진다 — 행 번호 대신 그 행이 속한
+        섹션 id로 옮긴다. 보던 섹션이 사라졌으면 합쳐진 위 섹션의 끝(tail)으로, 통째 지웠으면 다음 섹션 머리(top)로."""
+        hits = [k for k in old["row_sid"] if k <= row]
+        if not hits:  # 첫 헤더 앞(저자·초록 앞부분) — 위쪽 구조가 바뀌지 않으니 그대로
+            return row, "same"
+        k = max(hits)
+        sid, new = old["row_sid"][k], layout_rows()
+        if sid in new["sid_row"]:
+            return new["sid_row"][sid] + (row - k), "same"
+        ids = [e["id"] for e in old["smap"]]
+        i = ids.index(sid) if sid in ids else -1
+        sec = ctrl.section(sid)
+        if sec is not None and sec.level == "drop":
+            nxt = next((new["sid_row"][s] for s in ids[i + 1:] if s in new["sid_row"]), None)
+            if nxt is not None:
+                return nxt, "top"
+        prev = next((new["sid_row"][s] for s in reversed(ids[:max(i, 0)]) if s in new["sid_row"]), None)
+        return (prev, "tail") if prev is not None else (row, "same")
+
+    async def refresh_canvas_keeping_place(change: Callable[[], None] | None = None) -> None:
+        """캔버스를 다시 그리되 보던 자리(화면 맨 위의 행)를 지킨다 — 그림·수식 고치기, 구조(레벨) 바꾸기 뒤에.
+
+        change를 주면 자리를 잰 **뒤에** 그것(구조 바꾸기 + 재조립)을 부르고, 행 번호를 섹션 id로 옮겨 맞춘다
+        (§_remap_place). 편집 중이면 편집기의 줄을 행으로 바꿔 재고 새 편집기의 같은 행으로 옮긴다."""
+        editing = edit_state["on"] and edit_state.get("editor") is not None
+        if editing:
+            edit_flush()  # 편집기 글이 파일에 있어야 줄 → 행 계산이 맞는다
+        old = layout_rows() if change is not None else None
+        pos = None
         try:
-            pos = await ui.run_javascript(_KEEP_JS, timeout=2.0)
+            if editing:
+                at = await ui.run_javascript(_EDITOR_PLACE_JS % edit_state["editor"].id, timeout=2.0)
+                if isinstance(at, dict):
+                    pl = _line_to_place(int(at["line"]), float(at["f"]), edit_state["lang"])
+                    pos = {"row": pl[0], "f": pl[1]} if pl else None
+            else:
+                pos = await ui.run_javascript(_KEEP_JS, timeout=2.0)
         except Exception:  # noqa: BLE001 — 못 재면 그냥 다시 그린다
             pos = None
+        if change is not None:
+            change()
+            if isinstance(pos, dict) and pos.get("row") is not None:
+                row, how = _remap_place(old, int(pos["row"]))
+                pos["row"] = row
+                if how == "top":
+                    pos.update(f=0, off=0, txt=None)
+                elif how == "tail":  # 보던 문단은 합쳐진 위 행 안에 있다 — 글로 찾는다(편집기는 그 행의 끝으로)
+                    pos.update(f=1.0)
+        if editing and isinstance(pos, dict):
+            viewer_state["_place"] = (int(pos["row"]), float(pos.get("f") or 0))  # edit_view가 새 편집기를 그 자리로
         refresh_canvas()
-        if isinstance(pos, dict):
+        if not editing and isinstance(pos, dict):
             ui.run_javascript(_RESTORE_JS % json.dumps(pos))
 
     async def on_figure_recropped(e) -> None:  # noqa: ANN001 — 그림 파일은 이미 바뀌었다(서버 라우트)
