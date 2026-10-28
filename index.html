@@ -1,4 +1,4 @@
-<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#161615" media="(prefers-color-scheme: dark)"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Narani"><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icon-180.png"><title>Narani</title><style>
+<!doctype html><html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover"><meta name="color-scheme" content="light dark"><meta name="theme-color" content="#fbfaf7" media="(prefers-color-scheme: light)"><meta name="theme-color" content="#161615" media="(prefers-color-scheme: dark)"><meta name="mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-capable" content="yes"><meta name="apple-mobile-web-app-title" content="Narani"><link rel="manifest" href="manifest.webmanifest"><link rel="apple-touch-icon" href="icon-180.png"><title>Narani</title><style>
 :root { --bg:#fbfaf7; --fg:#1f1e1c; --muted:#6b6862; --line:#e4e1da; --card:#fff; --accent:#2f6fd0;
   --hl:#ffe9a8; --hl2:#fff4cf; --sheet:#fff; --fs:17px; }
 @media (prefers-color-scheme: dark) {
@@ -113,6 +113,8 @@ main { overflow-x: clip; }
 .sh-acts a, .sh-acts button { border: 1px solid var(--line); background: var(--card); color: var(--fg);
   border-radius: 9px; padding: 7px 12px; font: inherit; font-size: .85em; text-decoration: none; }
 
+/* 화면 전체 확대(핀치·두 번 누르기)는 막는다 — 글자는 '가' 단추로, 그림·표는 눌러서 전체 화면(#zv)에서 키운다 */
+html { touch-action: pan-x pan-y; }
 .top button { white-space: nowrap; }
 .top .back { font-size: 1.3em; line-height: 1; padding: 4px 10px; }
 .js.reading .top .tb.rd { display: inline-block; }

@@ -386,6 +386,8 @@
 
   var CFG = window.NARANI_CFG || {};
   var PID = 'p0', DC = 'narani-data';
+  // iOS Safari는 viewport의 user-scalable=no를 무시한다 — 두 손가락 제스처를 직접 막는다(#zv 안은 그쪽이 따로 처리)
+  doc.addEventListener('gesturestart', function(e){ e.preventDefault(); });
   var main = doc.querySelector('main'), libList = doc.getElementById('lib-list'),
       libBar = doc.getElementById('lib-bar'), loading = doc.getElementById('loading');
   var DATA = {}, INDEX = null, loadSeq = 0, routed = false;
@@ -1660,7 +1662,7 @@
   agIn.addEventListener('input', function(){ agIn.style.height = ''; agIn.style.height = Math.min(agIn.scrollHeight, 200) + 'px'; });
   agIn.addEventListener('keydown', function(e){ if (e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); send(); } });
   // ---- 그림·표 전체 화면 — 누르면 열고, 두 손가락으로 키우고, 끌어 옮기고, 두 번 눌러 확대·원래대로,
-  // 원래 크기에서 위아래로 쓸거나 바깥을 누르면 닫는다. 본문 화면 확대(핀치)는 막지 않는다 ----
+  // 원래 크기에서 위아래로 쓸거나 바깥을 누르면 닫는다. 본문 화면 확대는 막아 두었다(_PWA_CSS) ----
   var ZV = null;
   function zvCaption(media){
     if (media.matches('img')){
