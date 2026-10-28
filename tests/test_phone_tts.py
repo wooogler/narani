@@ -147,7 +147,7 @@ class FakeVoice:
         return out
 
 
-needs_afconvert = pytest.mark.skipif(not shutil.which("afconvert"), reason="macOS afconvert 필요")
+needs_afconvert = pytest.mark.skipif(not tts.codec_available(), reason="m4a 인코더(afconvert·PyAV) 필요")
 
 
 @needs_afconvert
@@ -520,3 +520,170 @@ def test_captions_read_only_when_asked(tmp_path):
     def caps(c):
         return [u.text for s in tts.plan(b, c)[1] for u in s.units if u.text.startswith("Figure 1")]
     assert caps(False) == [] and caps(True) == ["Figure 1: 인터페이스."]
+
+
+# ---- Windows 내장 목소리 · 엔진별로 되는지 · PyAV 인코딩 ----
+def test_win_voice_list_parsing(monkeypatch):
+    out = ("Microsoft Heami Desktop\tko-KR\n"
+           "Microsoft Zira Desktop\ten-US\n"
+           "Microsoft Haruka Desktop\tja-JP\n")
+    seen = {}
+
+    class R:
+        stdout = out
+
+    def run(args, **k):  # noqa: ANN001
+        seen["args"] = args
+        return R()
+    monkeypatch.setattr(tts.WinVoice, "available", staticmethod(lambda: True))
+    monkeypatch.setattr(tts.subprocess, "run", run)
+    assert tts.win_voices("ko") == ["Microsoft Heami Desktop"]
+    assert tts.win_voices("en") == ["Microsoft Zira Desktop"]
+    assert "-ExecutionPolicy" in seen["args"] and "-File" in seen["args"]
+    monkeypatch.setattr(tts.WinVoice, "available", staticmethod(lambda: False))
+    assert tts.win_voices("ko") == []
+
+
+class _FakePS:
+    """PowerShell 대신 — 받은 일감(JSON)의 문장마다 글자 수만큼의 WAV를 쓰고 'ok'를 한 줄씩."""
+
+    jobs: list = []
+
+    def __init__(self, args, **k):  # noqa: ANN001
+        from pathlib import Path
+
+        script, job = Path(args[-2]), json.loads(Path(args[-1]).read_text(encoding="utf-8"))
+        assert script.read_bytes()[:3] == b"\xef\xbb\xbf"           # BOM — PowerShell 5.1이 UTF-8로 읽게
+        _FakePS.jobs.append(job)
+        for it in job["items"]:
+            tts._write_wav(Path(it["out"]), b"\x01\x00" * (len(it["text"]) * 100), job["hz"])
+        self.stdout = iter(["ok\n"] * len(job["items"]))
+        self.stderr = type("E", (), {"read": lambda self: ""})()
+
+    def wait(self):
+        return 0
+
+
+def test_win_voice_synth_batches_and_ticks(monkeypatch):
+    _FakePS.jobs = []
+    monkeypatch.setattr(tts.subprocess, "Popen", _FakePS)
+    v = tts.WinVoice("Microsoft Heami Desktop", rate=2)
+    texts = ["가", "나다", "라마바", "사아자차", "카", "타파하"]
+    ticks = []
+    pcms = v.synth(texts, lambda: ticks.append(1))
+    assert [len(p) for p in pcms] == [len(t) * 200 for t in texts]     # 순서대로
+    assert len(ticks) == len(texts) and len(_FakePS.jobs) == 3         # 세 프로세스로 나눠
+    assert {j["voice"] for j in _FakePS.jobs} == {"Microsoft Heami Desktop"}
+    assert {j["rate"] for j in _FakePS.jobs} == {2} and {j["hz"] for j in _FakePS.jobs} == {tts.RATE}
+    assert v.id == "win:Microsoft Heami Desktop@2" and tts.WinVoice("X").id == "win:X"
+
+
+def test_win_voice_synth_error(monkeypatch):
+    class Bad(_FakePS):
+        def __init__(self, args, **k):  # noqa: ANN001
+            self.stdout = iter([])
+            self.stderr = type("E", (), {"read": lambda self: "SelectVoice: voice not found"})()
+
+        def wait(self):
+            return 1
+    monkeypatch.setattr(tts.subprocess, "Popen", Bad)
+    with pytest.raises(RuntimeError, match="voice not found"):
+        tts.WinVoice("Nope").synth(["안녕"])
+
+
+def test_engine_availability_per_platform(monkeypatch):
+    monkeypatch.setattr(tts, "codec_available", lambda: True)
+    monkeypatch.setattr(tts.sys, "platform", "win32")
+    monkeypatch.setattr(tts, "_powershell", lambda: "powershell.exe")
+    monkeypatch.setattr(tts.shutil, "which", lambda name: None)       # say 없음
+    assert not tts.MacVoice.available() and tts.WinVoice.available() and tts.GeminiVoice.available()
+    assert tts.system_voice_kind() == "win" and not tts.qwen_supported()
+    monkeypatch.setattr(tts, "codec_available", lambda: False)        # 인코더가 없으면 아무것도
+    assert not tts.WinVoice.available() and not tts.GeminiVoice.available() and tts.system_voice_kind() is None
+
+
+
+
+@pytest.mark.skipif(not shutil.which("afconvert"), reason="afconvert와 견줘 본다(macOS)")
+def test_pyav_path_matches_afconvert(tmp_path, monkeypatch):
+    pytest.importorskip("av")
+    wd = _wd(tmp_path)
+    b = bundle.build_paper(wd.root)
+    data_a, tl_a = tts.build(b, FakeVoice(), tmp_path / "a")
+    monkeypatch.setenv("NARANI_AUDIO_CODEC", "av")
+    data_v, tl_v = tts.build(b, FakeVoice(), tmp_path / "v")
+    assert data_v[4:8] == b"ftyp" and b"mp4a" in data_v
+    assert tl_v["duration"] == pytest.approx(tl_a["duration"], abs=0.02)   # 앞머리(priming)가 잘려 같은 길이
+    assert [s[0] for s in tl_v["sents"]] == pytest.approx([s[0] for s in tl_a["sents"]], abs=0.1)
+    # PyAV가 만든 캐시를 afconvert가 풀어도(같은 컴퓨터에서 길을 바꿔도) 같은 길이
+    monkeypatch.delenv("NARANI_AUDIO_CODEC")
+    _, tl_mix = tts.build(b, FakeVoice(), tmp_path / "v")
+    assert tl_mix["duration"] == pytest.approx(tl_v["duration"], abs=0.1)
+
+
+@needs_afconvert
+def test_service_on_windows_uses_windows_voice(tmp_path, monkeypatch):
+    from narani.phone import gdrive, service
+
+    wd = _wd(tmp_path)
+    store = LocalStore(tmp_path / "store")
+    rows = [{"root": wd.root, "name": wd.root.stem, "pinned": False, "has_ko": True, "hidden": False}]
+    monkeypatch.setattr(service.config, "CONFIG_DIR", tmp_path / "cfg")
+    monkeypatch.setattr(service, "_rows", lambda: rows)
+    monkeypatch.setattr(service, "configured", lambda: True)
+    monkeypatch.setattr(service, "connected", lambda: True)
+    monkeypatch.setattr(gdrive, "open_store", lambda: store)
+    made: list[str] = []
+
+    class Voice(FakeVoice):   # Windows 목소리 자리에 — id는 win:<이름>
+        def __init__(self, name, rate=None):  # noqa: ANN001
+            super().__init__()
+            self.id = f"win:{name}"
+            made.append(name)
+    monkeypatch.setattr(tts.MacVoice, "available", staticmethod(lambda: False))   # Mac이 아니다
+    monkeypatch.setattr(tts, "WinVoice", Voice)
+    Voice.available = staticmethod(lambda: True)
+    monkeypatch.setattr(tts, "win_voices", lambda lang: ["Microsoft Heami Desktop"])
+
+    assert service.system_kind() == "win" and service.voices("ko") == ["Microsoft Heami Desktop"]
+    out = service.make_audio([wd.root])                       # engine 기본값 'mac'이어도 이 컴퓨터의 내장 목소리로
+    assert out["made"] == 1 and made == ["Microsoft Heami Desktop"]
+    assert service.on_mobile()[wd.root.stem]["audio"]["voice"] == "win:Microsoft Heami Desktop"
+    wd.ko_md.write_text(KO.replace("면담했다", "만났다"), encoding="utf-8")
+    assert service.refresh()["audio"] == 1 and len(made) == 2   # 옛 판이 된 Windows 음성도 다시 만든다
+    # Windows 목소리를 못 쓰는 컴퓨터(예: 그 음성을 Mac에서 맞출 때)는 건드리지 않는다
+    Voice.available = staticmethod(lambda: False)
+    wd.ko_md.write_text(KO, encoding="utf-8")
+    assert service.refresh()["audio"] == 0
+
+
+# ---- 폰 내장 음성(Web Speech)이 읽을 목록 ----
+def test_speech_plan_matches_desktop_rules(tmp_path):
+    wd = _wd(tmp_path)
+    b = bundle.build_paper(wd.root)
+    sp = tts.speech_plan(b, {"LLM": "엘엘엠"}, None)
+    side, secs = tts.plan(b, True)
+    secs = tts.apply_terms(tts.apply_math(secs, None), {"LLM": "엘엘엠"})
+    assert sp["side"] == side == "ko" and sp["lang"] == b["lang"] and sp["src"] == b["hash"]
+    assert [x["row"] for x in sp["sections"]] == [x.row for x in secs]
+    assert sum(x["n"] for x in sp["sections"]) == len(sp["units"])
+    assert sp["units"] == [[u.row, u.s, u.e, u.text, 2 if u.head else (1 if u.end_of_block else 0)]
+                           for x in secs for u in x.units]
+    assert not any("⟦M" in u[3] or "[1]" in u[3] or "http" in u[3] for u in sp["units"])   # 데스크톱처럼 건너뛴다
+
+
+def test_push_uploads_speech_plan_and_refreshes_on_terms(tmp_path):
+    wd = _wd(tmp_path)
+    store = LocalStore(tmp_path / "store")
+    sync.push([wd.root], store)
+    e = sync.read_index(store)["papers"][0]
+    sp = e["speech"]
+    assert sp["file"] == sync.speech_name(wd.root.stem) and json.loads(store.read(sp["file"]))["units"]
+    sync.push([wd.root], store)                                           # 그대로면 그대로
+    assert sync.read_index(store)["papers"][0]["speech"] == sp
+    tts.save_terms(wd.root, {"Bespoke": "비스포크"})                       # 발음 용어집이 바뀌면 목록만 다시
+    out = sync.push([wd.root], store)
+    e2 = sync.read_index(store)["papers"][0]
+    assert out["skipped"] == 1 and e2["hash"] == e["hash"] and e2["speech"]["sig"] != sp["sig"]
+    sync.remove(store, [wd.root])
+    assert store.read(sp["file"]) is None

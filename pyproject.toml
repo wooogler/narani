@@ -33,6 +33,10 @@ dependencies = [
     # 이스케이프(&, %, _, 악센트)·직렬화·되읽기 검증을 이 라이브러리에 맡긴다 (순수 파이썬, MIT).
     "bibtexparser>=1.4",
     "pypdf>=5",
+    # 듣기 음성의 m4a(AAC) 인코딩·디코딩 — Mac은 내장 afconvert를 쓰고, Windows·Linux는 FFmpeg를 품은 PyAV 휠로
+    # (약 20~30MB). av 19부터는 cp312 이상 휠뿐이라 3.11에서는 cp311 휠이 있는 18에 묶는다(소스 빌드를 피한다).
+    "av>=18; sys_platform != 'darwin' and python_version >= '3.12'",
+    "av>=18,<19; sys_platform != 'darwin' and python_version < '3.12'",
 ]
 
 [project.optional-dependencies]
@@ -55,7 +59,7 @@ agent = ["pydantic-ai-slim[openai,anthropic,google]>=2.59"]
 narani = "narani.cli:main"
 
 [dependency-groups]
-dev = ["pytest>=8.0", "ruff>=0.6"]
+dev = ["pytest>=8.0", "ruff>=0.6", "av>=18"]   # av: Mac에서도 Windows 인코딩 경로를 시험한다
 
 [build-system]
 requires = ["hatchling"]

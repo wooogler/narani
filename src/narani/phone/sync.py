@@ -42,6 +42,32 @@ def _delete_audio(store: Store, e: dict) -> None:
             store.delete(name)
 
 
+def speech_name(key: str) -> str:
+    """폰 내장 음성이 읽을 목록(§tts.speech_plan) 파일 이름."""
+    return "speech/" + hashlib.sha256(key.encode("utf-8")).hexdigest()[:20] + ".json"
+
+
+def _put_speech(store: Store, root: Path, digest: str, prev: dict | None, bundle: dict | None = None) -> dict | None:
+    """읽을 목록을 (바뀌었으면) 다시 만들어 올린다. 목록 줄에 붙일 {file, sig} — 못 만들면 옛것(없으면 None)."""
+    from narani.phone import tts
+
+    old = (prev or {}).get("speech")
+    sig = tts.speech_sig(digest, root)
+    if old and old.get("sig") == sig:
+        return old
+    try:
+        b = bundle or bmod.build_paper(root, digest)
+        data = bmod.dumps(tts.speech_plan(b, tts.load_terms(root), tts.load_math(root)))
+    except Exception:  # noqa: BLE001 — 읽을 목록 때문에 논문 보내기가 실패하지 않게
+        import logging
+
+        logging.getLogger(__name__).warning("폰 내장 음성 목록을 만들지 못함: %s", root, exc_info=True)
+        return old
+    name = speech_name(root.stem)
+    store.write(name, data)
+    return {"file": name, "sig": sig, "bytes": len(data)}
+
+
 def read_index(store: Store) -> dict:
     raw = store.read(INDEX)
     if raw:
@@ -85,7 +111,8 @@ def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dic
         notes_sent += ns["wrote"]
         more = {**more, "notes_hash": ns["notes_hash"]}
         if prev and prev.get("hash") == digest and prev.get("format", bmod.FORMAT) == bmod.FORMAT:
-            entries.append({**prev, **more})
+            sp = _put_speech(store, root, digest, prev)
+            entries.append({**prev, **more, **({"speech": sp} if sp else {})})
             skipped += 1
             continue
         b = bmod.build_paper(root, digest)
@@ -93,6 +120,9 @@ def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dic
         store.write(bmod.file_name(key), data)
         if prev and prev.get("audio"):  # 음성은 그대로 — 지문이 달라져 폰이 '옛 음성'으로 안다
             more = {**more, "audio": prev["audio"]}
+        sp = _put_speech(store, root, digest, prev, b)
+        if sp:
+            more = {**more, "speech": sp}
         entries.append(bmod.index_entry(b, len(data), more))
         uploaded += 1
         sent += len(data)
@@ -105,6 +135,8 @@ def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dic
                 if e.get("notes_hash"):
                     store.delete(nmod.notes_name(k))
                 store.delete(nmod.mobile_name(k))
+                if e.get("speech"):
+                    store.delete(e["speech"]["file"])
                 _delete_audio(store, e)
                 removed += 1
     else:  # 고르지 않은 예전 논문은 목록에 그대로 둔다
@@ -134,7 +166,7 @@ def remove(store: Store, roots: Iterable[Path]) -> dict:
         root = by_key[key]
         if root.is_dir():
             merged += nmod.sync_paper(store, root, e.get("notes_hash", ""))["merged"]
-        for name in (e.get("file"), nmod.notes_name(key), nmod.mobile_name(key)):
+        for name in (e.get("file"), nmod.notes_name(key), nmod.mobile_name(key), (e.get("speech") or {}).get("file")):
             if name:
                 store.delete(name)
         _delete_audio(store, e)

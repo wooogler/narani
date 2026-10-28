@@ -124,16 +124,31 @@ def remove(roots: list[Path]) -> dict:
 
 # ---- 듣기 음성 (§phone.tts) ----
 def audio_available() -> bool:
+    """이 컴퓨터에서 음성을 만들 수 있는가 — m4a 인코더(Mac afconvert · PyAV)가 있으면. 어떤 목소리를 쓸지는 따로."""
     from narani.phone import tts
 
-    return tts.MacVoice.available()
+    return tts.codec_available()
 
 
-def voices(lang: str) -> list[str]:
-    """그 언어의 Mac 목소리 — 지난번에 고른 것을 맨 앞에."""
+def system_kind() -> str | None:
+    """무료 내장 목소리 — 'mac'(say) · 'win'(SAPI) · 없으면 None."""
     from narani.phone import tts
 
-    names = tts.mac_voices(lang)
+    return tts.system_voice_kind()
+
+
+def _system_voice(kind: str, name: str, rate: int | None = None):  # noqa: ANN202
+    from narani.phone import tts
+
+    return (tts.WinVoice if kind == "win" else tts.MacVoice)(name, rate)
+
+
+def voices(lang: str, kind: str | None = None) -> list[str]:
+    """그 언어의 내장 목소리(Mac·Windows) — 지난번에 고른 것을 맨 앞에."""
+    from narani.phone import tts
+
+    kind = kind or system_kind()
+    names = tts.win_voices(lang) if kind == "win" else (tts.mac_voices(lang) if kind == "mac" else [])
     last = (load_cache().get("voices") or {}).get(lang)
     if last in names:
         names.remove(last)
@@ -201,6 +216,8 @@ def voice_preview(engine: str, voice: str, lang: str, text: str, model: str | No
         finally:
             v.close()
         rate = v.sample_rate
+    elif engine == "win":
+        pcm, rate = tts.WinVoice(voice).synth([text])[0], tts.RATE
     else:
         return gemini_preview(voice, model or "", text)
     buf = io.BytesIO()
@@ -274,7 +291,8 @@ def make_audio(roots: list[Path], voice: str | None = None, include: list[int] |
                style: str | None = None, captions: bool = True, math: bool = True) -> dict:  # noqa: ANN001
     """논문들의 듣기 음성을 만들어 올린다 — 먼저 번들·메모를 맞추고(send), 음성은 바뀐 섹션만 새로 만든다.
 
-    engine: mac(무료 — voice가 없으면 논문 언어마다 지난번 목소리) | gemini(유료 — 사용자 키, voice·model).
+    engine: mac·win(무료 내장 목소리 — voice가 없으면 논문 언어마다 지난번 목소리; 이 컴퓨터에 없는 쪽을 주면
+    있는 쪽으로) | qwen(무료·로컬) | gemini(유료 — 사용자 키, voice·model).
     include는 논문 하나일 때 넣을 섹션 행들.
     """
     from narani.phone import tts
@@ -299,12 +317,16 @@ def make_audio(roots: list[Path], voice: str | None = None, include: list[int] |
             qwen = {"speaker": voice or qwen_choice(lang), "style": qwen_style() if style is None else style}
             jobs.append((Path(root), tts.QwenVoice(qwen["speaker"], lang, style=qwen["style"]), inc))
             continue
+        kind = engine if engine in ("mac", "win") and (tts.WinVoice if engine == "win" else tts.MacVoice).available() \
+            else system_kind()
+        if not kind:
+            raise RuntimeError("이 컴퓨터에는 무료 내장 목소리가 없습니다 — Gemini나 Qwen3로 만드세요")
         lang = paper_lang(root)
-        name = voice or (voices(lang) or [""])[0]
+        name = voice or (voices(lang, kind) or [""])[0]
         if not name:
             raise RuntimeError(f"이 컴퓨터에 '{lang}' 목소리가 없습니다")
         chosen[lang] = name
-        jobs.append((Path(root), tts.MacVoice(name), inc))
+        jobs.append((Path(root), _system_voice(kind, name), inc))
     if math:   # 수식을 말로 — 아직 읽는 말이 없는 수식만 AI에게(논문마다 저장). 키가 없거나 실패하면 수식은 건너뛴다
         for root, _engine, _inc in jobs:
             prepare_math(root, captions)
@@ -364,11 +386,9 @@ def remove_audio(roots: list[Path]) -> int:
 
 
 def _remake_stale_audio(store) -> int:  # noqa: ANN001
-    """본문이 바뀌어 옛 판이 된 무료 음성(Mac·Qwen)을 다시 만든다 — 섹션 캐시로 바뀐 섹션만. 유료(Gemini)는 건드리지 않는다."""
+    """본문이 바뀌어 옛 판이 된 무료 음성(Mac·Windows·Qwen)을 다시 만든다 — 섹션 캐시로 바뀐 섹션만. 유료(Gemini)는
+    건드리지 않는다. 엔진마다 이 컴퓨터에서 되는 것만(Mac에서 만든 음성은 Windows에서 다시 만들지 않는다)."""
     from narani.phone import tts
-
-    if not tts.MacVoice.available():
-        return 0
     rows = {r["name"]: r["root"] for r in _rows()}
     jobs = []
     for e in sync.read_index(store)["papers"]:
@@ -378,10 +398,10 @@ def _remake_stale_audio(store) -> int:  # noqa: ANN001
             continue
         root = rows[e["key"]]
         opts = (bool(a.get("captions")), bool(a.get("math")))   # 옛 음성은 둘 다 꺼진 채 만들었다
-        if voice.startswith("mac:"):
+        if voice.startswith(("mac:", "win:")) and (tts.WinVoice if voice.startswith("win:") else tts.MacVoice).available():
             name, _, rate = voice[4:].partition("@")
-            jobs.append((root, tts.MacVoice(name, int(rate) if rate else None), a.get("include"), opts))
-        elif voice.startswith("qwen:") and tts.qwen_ready():
+            jobs.append((root, _system_voice(voice[:3], name, int(rate) if rate else None), a.get("include"), opts))
+        elif voice.startswith("qwen:") and tts.QwenVoice.available():
             _, size, speaker, tag = (voice.split(":") + ["", "", ""])[:4]
             style = qwen_style() if tag else None   # 말투 지시는 지문만 남으니 지금 저장된 지시가 그 지문일 때만
             if tag and tts.qwen_style_tag(style) != tag:

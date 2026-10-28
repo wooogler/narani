@@ -274,3 +274,13 @@ def test_phone_reader_zooms_figures_fullscreen():
     assert "function mediaTap" in js and "function openZoom" in js and "function zoomBy" in js   # 확대·축소 단추
     assert "mediaTap(media)" in js.split("doc.addEventListener('click'", 1)[1]   # 문장 누르기보다 먼저 가로챈다
     assert "#zv .zv-box" in html
+
+
+def test_phone_reader_speaks_with_builtin_voice_when_no_desktop_audio():
+    # 데스크톱 음성이 없으면(또는 고르면) 폰 내장 음성 — <audio> 흉내(SA)로 같은 재생 막대를 쓴다
+    files = web.site_files(local=True)
+    js, html = files["app.js"][0].decode(), files["index.html"][0].decode()
+    assert "function SpeechAudio" in js and "function webTl" in js and "function voiceSheet" in js
+    assert "AU.web = !!sp && (!a || lsGet('narani:aeng', 'file') === 'web')" in js   # 데스크톱 음성이 먼저
+    assert 'id="pl-voice"' in html
+    assert "SS.cancel()" in js and ".unlock()" in js                                   # iOS: 문장마다·누르기로 길 열기

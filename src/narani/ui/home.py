@@ -1126,7 +1126,8 @@ def build_home(state: dict) -> None:
         return None
 
     async def make_mobile_audio(roots: list[Path]) -> None:
-        """모바일에서 들을 음성 — 무료 Mac 목소리, 무료 로컬 Qwen3(Apple Silicon), Gemini(유료, 내 키)로 만들어 Drive에 올린다.
+        """모바일에서 들을 음성 — 무료 내장 목소리(Mac·Windows), 무료 로컬 Qwen3(Apple Silicon), Gemini(유료, 내 키)로
+        만들어 Drive에 올린다. 이 컴퓨터에서 되는 엔진만 고를 수 있다.
 
         논문 하나면 넣을 섹션을 고른다. Gemini는 길이로 어림한 비용을 먼저 보여 준다."""
         from narani.phone import tts
@@ -1136,19 +1137,26 @@ def build_home(state: dict) -> None:
             ui.notify(t("음성을 만들 논문이 없습니다."), type="warning")
             return
         if not phone_service.audio_available():
-            ui.notify(t("음성 만들기는 지금 macOS에서만 됩니다 (Mac 내장 목소리)."), type="warning")
+            ui.notify(t("음성 파일을 만들 인코더(PyAV)가 없습니다 — 앱을 업데이트(다시 설치)하세요."), type="warning")
             return
         langs = sorted({await run.io_bound(phone_service.paper_lang, r) for r in roots})
-        names = await run.io_bound(phone_service.voices, langs[0]) if len(langs) == 1 else []
+        kind = await run.io_bound(phone_service.system_kind)      # 무료 내장 목소리: mac · win · 없음
+        names = await run.io_bound(phone_service.voices, langs[0], kind) if (kind and len(langs) == 1) else []
         gem_ok = await run.io_bound(phone_service.gemini_ready)
-        if len(langs) == 1 and not names and not gem_ok:
+        qs = await run.io_bound(phone_service.qwen_status)
+        if not kind and not gem_ok and not qs["supported"]:
+            ui.notify(t("이 컴퓨터에서 쓸 수 있는 목소리가 없습니다 — 설정 → AI에서 Gemini 키를 넣으면 Gemini 목소리로 만들 수 있습니다."),
+                      type="warning")
+            return
+        if kind and len(langs) == 1 and not names and not gem_ok and not qs["ready"]:
             ui.notify(t("이 Mac에 '{lang}' 목소리가 없습니다 — 시스템 설정 → 손쉬운 사용 → 읽기 및 말하기에서 받으세요.",
-                        lang=langs[0]), type="warning")
+                        lang=langs[0]) if kind == "mac" else
+                      t("이 PC에 '{lang}' 목소리가 없습니다 — Windows 설정 → 시간 및 언어 → 음성에서 그 언어의 음성을 "
+                        "추가하세요(추가한 뒤 앱을 다시 켜야 보일 수 있습니다).", lang=langs[0]), type="warning")
             return
         per = [await run.io_bound(phone_service.sections, r) for r in roots]
         secs = per[0] if len(roots) == 1 else []
         gc = phone_service.gemini_choice()
-        qs = await run.io_bound(phone_service.qwen_status)
         st = await run.io_bound(phone_service.speech_terms, roots[0]) if len(roots) == 1 else {"terms": {}, "found": []}
         term_inputs: dict = {}
 
@@ -1164,12 +1172,16 @@ def build_home(state: dict) -> None:
         sample = next((sec["first"] for sec in (per[0] if per else []) if sec.get("first")), "") or "Narani"
 
         async def preview() -> None:
+            import shutil
             import subprocess
+            import sys
             import tempfile
 
             spoken = tts.speak_text(sample, cur_terms())
             if eng.value == "mac":
                 subprocess.Popen(["say", "-v", voice.value, "--", spoken])
+                return
+            if eng.value == "win" and not voice.value:
                 return
             if eng.value == "qwen" and not qs["ready"]:
                 ui.notify(t("먼저 Qwen3를 설치하세요."), type="warning")
@@ -1179,6 +1191,8 @@ def build_home(state: dict) -> None:
                 if eng.value == "qwen":
                     wav = await run.io_bound(phone_service.voice_preview, "qwen", qvoice.value, langs[0], spoken,
                                              None, qstyle.value or "")
+                elif eng.value == "win":
+                    wav = await run.io_bound(phone_service.voice_preview, "win", voice.value, langs[0], spoken)
                 else:
                     wav = await run.io_bound(phone_service.gemini_preview, gvoice.value, gmodel.value, spoken)
             except Exception as e:  # noqa: BLE001
@@ -1190,25 +1204,34 @@ def build_home(state: dict) -> None:
                 n.dismiss()
             f = Path(tempfile.gettempdir()) / "narani-voice-preview.wav"
             f.write_bytes(wav)
-            subprocess.Popen(["afplay", str(f)])
+            if sys.platform == "win32":
+                import winsound
+
+                winsound.PlaySound(str(f), winsound.SND_FILENAME | winsound.SND_ASYNC)
+            elif shutil.which("afplay"):
+                subprocess.Popen(["afplay", str(f)])
+            elif shutil.which("aplay"):
+                subprocess.Popen(["aplay", "-q", str(f)])
 
         with host, ui.dialog() as dlg, ui.card().classes("gap-2").style("width:540px;max-height:92vh;overflow-y:auto"):
             ui.label(t("모바일에서 들을 음성 만들기")).classes("font-bold")
             ui.label(t("번역 본문을 읽은 음성을 만들어 Drive의 Narani 폴더에 올립니다(시간당 약 15MB). 그림·표·인용 "
                        "표기·참고문헌은 건너뛰고, 섹션 제목은 알립니다. 캡션·수식은 아래에서 고릅니다.")).classes("text-xs text-gray-500")
-            opts = {"mac": t("무료 — Mac 목소리")}
+            opts = {kind: t("무료 — Mac 목소리") if kind == "mac" else t("무료 — Windows 목소리")} if kind else {}
             if qs["supported"]:
                 opts["qwen"] = t("Qwen3 — 무료·로컬, 자연스러움")
             if gem_ok:
                 opts["gemini"] = t("Gemini — 더 자연스러움 (유료)")
-            eng = ui.toggle(opts, value="gemini" if (gem_ok and len(langs) == 1 and not names) else "mac") \
+            first = "gemini" if gem_ok and (not kind or (len(langs) == 1 and not names)) else (kind or next(iter(opts)))
+            eng = ui.toggle(opts, value=first) \
                 .props("dense no-caps")
             if not gem_ok:
                 ui.label(t("설정 → AI에서 Gemini 키를 넣으면 더 자연스러운 Gemini 목소리도 고를 수 있습니다.")) \
                     .classes("text-xs text-gray-500")
             with ui.row().classes("items-center gap-2 w-full no-wrap") as mac_row:
                 # 'Yuna (Korean (South Korea))' → 'Yuna' 로 보이게 (값은 say에 줄 전체 이름)
-                shown = {n: re.sub(r"\s+\([^()]*\([^()]*\)\)$", "", n) for n in names}
+                # Windows: 'Microsoft Heami Desktop' → 'Heami'
+                shown = {n: re.sub(r"^Microsoft\s+|\s+Desktop$", "", re.sub(r"\s+\([^()]*\([^()]*\)\)$", "", n)) for n in names}
                 voice = ui.select(shown, value=names[0] if names else None, label=t("목소리")) \
                     .props("dense outlined").classes("grow")
                 if not names:
@@ -1266,7 +1289,7 @@ def build_home(state: dict) -> None:
                 chosen = ([sec for c, sec in zip(own, secs) if c] if secs
                           else [sec for p in per for sec in p])
                 m = sum(sec["minutes"] for sec in chosen)
-                mac_row.set_visibility(eng.value == "mac")
+                mac_row.set_visibility(eng.value in ("mac", "win"))
                 gem_row.set_visibility(eng.value == "gemini")
                 qwen_col.set_visibility(eng.value == "qwen")
                 qwen_inst.set_visibility(not qs["ready"])
