@@ -284,3 +284,11 @@ def test_phone_reader_speaks_with_builtin_voice_when_no_desktop_audio():
     assert "AU.web = !!sp && (!a || lsGet('narani:aeng', 'file') === 'web')" in js   # 데스크톱 음성이 먼저
     assert 'id="pl-voice"' in html
     assert "SS.cancel()" in js and ".unlock()" in js                                   # iOS: 문장마다·누르기로 길 열기
+
+
+def test_phone_reconnects_drive_silently():
+    # 한 시간짜리 토큰이 끝나면 prompt=none으로 화면 없이 다시 받는다 — 10분에 한 번, 듣는 중엔 하지 않는다
+    js = web.site_files(local=True)["app.js"][0].decode()
+    assert "function gSilent" in js and "o.prompt = 'none'" in js and "o.login_hint = hint" in js
+    assert "narani:gsilent" in js and "600000" in js
+    assert "else if (!saved.silent) authError" in js
