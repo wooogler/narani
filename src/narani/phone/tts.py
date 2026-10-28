@@ -59,6 +59,7 @@ _MATH_MAX = 12               # 이보다 짧은 인라인 수식(N=8, p<.05)은 
 # 지문 → LaTeX 표는 이 프로세스 안에서만 쓴다(같은 수식은 늘 같은 지문). 표식 글자는 수식 자리에 걸쳐 놓아
 # 듣기 하이라이트가 수식을 가리킨다.
 _MATH_TEX: dict[str, str] = {}
+_MATH_RAW: dict[str, str] = {}     # 짧고 단순한 수식(N=8)의 글자 — AI 말이 없을 때 예전처럼 그대로 읽는다
 _MATH_TOKEN = re.compile(r"⟦M([0-9a-f]{10})⟧")
 _MATH_STRUCT = {"msub", "msup", "msubsup", "mfrac", "msqrt", "mroot", "munder", "mover", "munderover", "mtable"}
 
@@ -160,14 +161,15 @@ class _Cells(HTMLParser):
                 self._skip -= 1
             if t == "math" and self._math is not None:
                 txt = "".join(c for c, _ in self._math).strip()
-                if 0 < len(txt) <= _MATH_MAX and not self._math_hard:
-                    self._chars += self._math
-                elif self._math and self._math_tex:
+                simple = 0 < len(txt) <= _MATH_MAX and not self._math_hard
+                if self._math and self._math_tex:   # 모든 수식을 표식으로 — 앞뒤 공백은 원문 그대로(조사가 붙게)
                     h = hashlib.sha256(self._math_tex.encode()).hexdigest()[:10]
-                    _MATH_TEX[h] = self._math_tex
-                    tok = f" ⟦M{h}⟧ "
+                    _MATH_TEX[h], _MATH_RAW[h] = self._math_tex, txt if simple else ""
+                    tok = f"⟦M{h}⟧"
                     first, last = self._math[0][1], self._math[-1][1]
                     self._chars += [(c, first) for c in tok[:-1]] + [(tok[-1], last)]
+                elif simple:                         # LaTeX를 모르는 옛 번들 — 짧은 것만 그대로
+                    self._chars += self._math
                 self._math = None
             if t == tag:
                 break
@@ -387,7 +389,21 @@ def suggest_readings(terms: list[str], lang: str, provider=None) -> dict[str, st
 
 # ---- 수식을 말로 — LaTeX를 그 언어 낭독자가 읽을 말로(번역에 쓰는 AI). 논문마다 speech_math.json에 {LaTeX: 말} ----
 def strip_math(text: str) -> str:
-    return re.sub(r"\s{2,}", " ", _MATH_TOKEN.sub(" ", text)).strip()
+    """표식을 뺀 글 — 짧은 수식은 그 글자로(화면 표시·용어 찾기용)."""
+    return re.sub(r"\s{2,}", " ", _MATH_TOKEN.sub(lambda m: _MATH_RAW.get(m.group(1), "") or " ", text)).strip()
+
+
+def math_contexts(sections: list[Section]) -> dict[str, str]:
+    """수식 LaTeX → 처음 나온 문장(그 수식 자리는 ⟪⟫, 다른 수식은 $LaTeX$) — AI가 문장 속에서 어떻게 읽을지 정하게."""
+    out: dict[str, str] = {}
+    for s in sections:
+        for u in s.units:
+            for m in _MATH_TOKEN.finditer(u.text):
+                tex = _MATH_TEX.get(m.group(1))
+                if tex and tex not in out:
+                    ctx = u.text[:m.start()] + "⟪⟫" + u.text[m.end():]
+                    out[tex] = _MATH_TOKEN.sub(lambda k: "$" + _MATH_TEX.get(k.group(1), "") + "$", ctx)[:400]
+    return out
 
 
 def math_in(sections: list[Section]) -> list[str]:
@@ -406,8 +422,8 @@ def apply_math(sections: list[Section], spoken: dict[str, str] | None) -> list[S
     spoken = spoken or {}
 
     def say(m: re.Match) -> str:
-        w = spoken.get(_MATH_TEX.get(m.group(1), ""), "").strip()
-        return f" {w} " if w else " "
+        w = spoken.get(_MATH_TEX.get(m.group(1), ""), "").strip() or _MATH_RAW.get(m.group(1), "")
+        return w or " "
     out = []
     for s in sections:
         units = []
@@ -439,8 +455,10 @@ def save_math(root: Path, spoken: dict[str, str]) -> None:
     math_path(root).write_text(json.dumps(spoken, ensure_ascii=False, indent=1), encoding="utf-8")
 
 
-def speak_math(texes: list[str], lang: str, provider=None) -> dict[str, str]:  # noqa: ANN001
-    """LaTeX 수식들 → 그 언어 낭독자가 소리 내어 읽을 말. 번역에 쓰는 AI로 한 번에(수식 수십 개에 몇 원)."""
+def speak_math(texes: list[str], lang: str, provider=None,  # noqa: ANN001
+               contexts: dict[str, str] | None = None) -> dict[str, str]:
+    """LaTeX 수식들 → 그 언어 낭독자가 소리 내어 읽을 말. 번역에 쓰는 AI로 한 번에(수식 수십 개에 몇 원).
+    contexts(수식 → 그 수식이 든 문장, 자리는 ⟪⟫)를 주면 문장 속에서 자연스럽게 읽는다."""
     from pydantic import BaseModel
 
     from narani import config, langs
@@ -463,9 +481,15 @@ def speak_math(texes: list[str], lang: str, provider=None) -> dict[str, str]:  #
               "Latin letters (x, R lcs, LCS); named quantities by name (\\text{ROUGE-N} → ROUGE-N); font commands "
               "(\\mathcal, \\mathbf) are not read; Greek letters by name; fractions, sums, sub/superscripts, conditionals "
               f"(p(y | x)) and comparisons in the usual {name} wording. For long formulas say the gist rather than every "
-              "symbol. Return one item per input with the same index.")
+              "symbol. When the sentence is given, the formula sits at ⟪⟫ — make the phrase fit that spot (the words "
+              "right after ⟪⟫, such as particles, stay in the sentence; do not repeat them) and read symbols the way that "
+              "sentence uses them, ending with a word the following particle attaches to naturally. Ellipses (\\dots, "
+              "\\ldots, \\cdots) mean a range — read them as 'through' / 'up to' in that language (Korean: d 원부터 "
+              "d 엔까지), never the word 'dot'. Return one item per input with the same index.")
     prov = provider or config.build_provider()
-    out = prov.parse(system, "\n".join(f"{i}: {t}" for i, t in enumerate(texes)), SpokenAll, max_tokens=8192)
+    ctx = contexts or {}
+    lines = [f"{i}: {t}" + (f"\n   sentence: {ctx[t]}" if ctx.get(t) else "") for i, t in enumerate(texes)]
+    out = prov.parse(system, "\n".join(lines), SpokenAll, max_tokens=16384)
     return {texes[it.index]: it.speech.strip() for it in out.items if 0 <= it.index < len(texes) and it.speech.strip()}
 
 

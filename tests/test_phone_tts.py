@@ -114,7 +114,7 @@ def test_plan_reads_body_and_skips_meta_citations_figures_refs(tmp_path):
     assert "교수자는 봇을 만든다." in texts                                    # 인용을 뺀 자리에 공백이 남지 않는다
     for gone in ("ann@uni.edu", "인간 중심", "Lee, M.", "Figure 1", "[1", "https://", "∑"):
         assert gone not in joined
-    assert "N=8" in joined.replace(" ", "")                                   # 짧은 인라인 수식은 읽는다
+    assert "N=8" in tts.strip_math(joined).replace(" ", "")                   # 짧은 인라인 수식은 (AI 말이 없으면) 그 글자로
     assert secs[1].units[0].head and secs[1].units[0].text == "1 서론"
     # 셀 안 위치가 리더의 textContent와 맞는다 — 그 구간에 읽을 글자가 차례로 다 있다
     cells = _CellText()
@@ -477,6 +477,7 @@ def test_pronunciation_terms_change_only_spoken_text(tmp_path):
         == "래그 큐에이와 RAGAS를 쓴다. 엘엘엠."                                   # 긴 용어 먼저, 낱말 경계만
     tts.save_terms(wd.root, {"N": "엔", "  ": "x", "빈": ""})
     assert tts.load_terms(wd.root) == {"N": "엔"}
+    secs = tts.apply_math(secs, None)                                           # 수식 표식 → 짧은 수식은 그 글자로
     after = tts.apply_terms(secs, {"N": "엔"})
     a = [u for s in after for u in s.units]
     o = [u for s in secs for u in s.units]
@@ -503,11 +504,13 @@ def test_long_formula_becomes_token_spoken_by_ai_or_dropped(tmp_path):
     b = bundle.build_paper(_wd(tmp_path).root)
     _, secs = tts.plan(b)
     texes = tts.math_in(secs)
-    assert texes == ["\\sum_{i=1}^{n} w_i x_i + b"]
+    assert texes == ["N=8", "\\sum_{i=1}^{n} w_i x_i + b"]                       # 모든 수식 — 짧은 것도 AI가 읽게
     plain = [u.text for s in tts.apply_math(secs, None) for u in s.units]
-    assert "모델은 이다." in plain and not any("⟦" in t for t in plain)
-    said = [u.text for s in tts.apply_math(secs, {texes[0]: "시그마 i는 1부터 n까지 w i x i 더하기 b"}) for u in s.units]
+    assert "모델은 이다." in plain and "우리는 N=8 명과 연구했다." in plain and not any("⟦" in t for t in plain)
+    said = [u.text for s in tts.apply_math(secs, {texes[1]: "시그마 i는 1부터 n까지 w i x i 더하기 b"}) for u in s.units]
     assert "모델은 시그마 i는 1부터 n까지 w i x i 더하기 b 이다." in said
+    ctx = tts.math_contexts(secs)                                                 # AI에게 주는 문장 — 그 자리는 ⟪⟫
+    assert ctx[texes[1]] == "모델은 ⟪⟫ 이다." and ctx["N=8"] == "우리는 ⟪⟫ 명과 연구했다."
     tts.save_math(_wd(tmp_path).root, {texes[0]: "말"})
     assert tts.load_math(_wd(tmp_path).root) == {texes[0]: "말"}
 

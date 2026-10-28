@@ -346,7 +346,8 @@ def prepare_math(root: Path, captions: bool = True) -> int:
     if not need or not ai_ready():
         return 0
     try:
-        got = tts.speak_math(need, paper_lang(root))
+        ctx = tts.math_contexts(secs)
+        got = tts.speak_math(need, paper_lang(root), contexts={t: ctx.get(t, "") for t in need})
     except Exception as e:  # noqa: BLE001 — 수식 읽기 때문에 음성 전체가 실패하지 않게
         logging.getLogger(__name__).warning("수식 읽는 말을 만들지 못함: %s", e)
         return 0
