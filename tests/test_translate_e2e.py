@@ -953,3 +953,65 @@ def test_migrate_cache_write_failure_keeps_original(long_paper, monkeypatch, cap
     assert "캐시 이행 실패" in caplog.text
     assert [e.term for e in glossary.load(wd).entries][-1] == "inputs"  # 저장은 됐다
     assert wd.cache_json.read_bytes() == before
+
+
+def test_settings_change_is_reported_and_counts_full_retranslation(long_paper):
+    """번역 탭에서 문체·섹션 제목·참고문헌 설정을 바꾸면 다음 실행은 캐시를 통째로 못 쓴다 — 화면이 그것을
+    알아야 한다. 예전엔 v3 캐시의 키를 안 봐서 '최신'·'재번역 0'이라고 하고는 실행하면 전부 다시 번역했다."""
+    from narani.review import manifest as manifest_io
+    from narani.translate import apply
+
+    wd, _pid = long_paper
+    calls, fake = _counting()
+    pipeline.run_translate(wd, fake)
+    m = manifest_io.load(wd)
+    assert not apply.settings_changed(wd, m)
+    for field, value in (("korean_style", "합니다체"), ("translate_headers", False), ("translate_references", True)):
+        m = manifest_io.load(wd)
+        setattr(m, field, value)
+        manifest_io.save(m, wd)
+        assert apply.settings_changed(wd, m), field
+        units, full = apply.retranslate_units(wd, m)
+        assert full and len(units) == 3, field
+        before = calls["n"]
+        pipeline.run_translate(wd, fake)
+        assert calls["n"] == before + 3, field  # 실제로도 전부 다시 돈다
+        assert not apply.settings_changed(wd, manifest_io.load(wd)), field
+        assert apply.retranslate_units(wd, manifest_io.load(wd)) == ([], False), field
+
+
+def test_title_switch_takes_effect_on_rerun(long_paper):
+    """'논문 제목도 번역'을 끄면 다시 실행할 때 영어 원제로 돌아간다(LLM 호출 없이) — 예전엔 체크를 푼 섹션처럼
+    보관된 번역을 남겨 제목이 번역된 채였다. 다시 켜면 보관된 번역으로 되돌아온다. 그 사이 '대기' 표시."""
+    from narani.review import manifest as manifest_io
+    from narani.translate import apply
+
+    wd, _pid = long_paper
+
+    def tagged(system: str, user: str) -> str:  # 헤더만 표식을 붙이는 가짜 번역 — 제목이 번역됐는지 보이게
+        return "\n".join(ln.replace("# ", "# KO ", 1) if ln.startswith("# ") else ln for ln in _body(user).split("\n"))
+
+    fake = FakeProvider(complete_fn=tagged, parse_fn=lambda s, u, sc: FAKE_GLOSSARY, model="gpt-5.6-luna")
+    pipeline.run_translate(wd, fake)
+
+    def ko_title() -> str:
+        return next(ln for ln in wd.ko_md.read_text(encoding="utf-8").splitlines() if ln.startswith("# "))
+
+    def set_title(on: bool):
+        m = manifest_io.load(wd)
+        next(s for s in m.sections if s.is_title).translate = on
+        manifest_io.save(m, wd)
+        return m
+
+    assert ko_title() == "# KO A Long Study"
+    m = set_title(False)
+    assert apply.title_pending(wd, m) and not apply.settings_changed(wd, m)
+    assert apply.unticked_without_cache(wd, m) == set()  # 일부러 끈 것 — '영어가 됩니다' 경고에 넣지 않는다
+    pipeline.run_translate(wd, fake)
+    assert ko_title() == "# A Long Study"
+    assert not apply.title_pending(wd, manifest_io.load(wd))
+    m = set_title(True)
+    assert apply.title_pending(wd, m)
+    pipeline.run_translate(wd, fake)
+    assert ko_title() == "# KO A Long Study"
+    assert not apply.title_pending(wd, manifest_io.load(wd))

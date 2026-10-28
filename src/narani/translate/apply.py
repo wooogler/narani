@@ -387,8 +387,10 @@ def _model_style_or_default(wd: WorkDir, manifest: Manifest) -> tuple[str, str]:
 def _stored_cache(wd: WorkDir, manifest: Manifest, gloss: GlossaryList | None) -> _Cache | None:
     """프로바이더 없이(stale·unticked 판정) 저장된 캐시를 읽는다. 쓸 수 없는 캐시면 None.
 
-    모델을 모르니 v3 키는 다시 만들 수 없다 — cache.json의 `scheme` 표식으로 알아보고, v3면 키(모델·
-    문체)는 따지지 않는다(예전부터 이 판정은 키를 안 봤다: 모델을 바꾸면 어차피 전부 다시 번역된다).
+    v3는 cache.json의 `scheme` 표식으로 알아본다. 지난 번역의 모델을 알면(`_last_model_style`) 그 모델과
+    **지금 설정**(문체·섹션 제목·참고문헌 번역 여부)으로 v3 키를 다시 만들어 맞춰 본다 — 번역 탭에서 설정을
+    바꾸면 다음 실행은 캐시를 통째로 못 쓰고 전부 다시 번역하는데, 예전엔 키를 안 봐서 화면이 '최신'·
+    '재번역 0'이라고 했다(`settings_changed`). 모델을 모르면 예전처럼 키는 따지지 않는다.
     표식이 없는 옛 파일은 지난 번역의 문체·모델(`_last_model_style` — 명시 기록, 없으면 input_hash로
     되찾은 것)로 옛 키(v2·v1, `_legacy_keys`)를 다시 만들어 맞춰 보고, 맞으면 옛 모드, 안 맞으면
     None(다음 실행이 캐시를 못 쓴다). 그것도 모르면 `migrate_cache`와 같은 대체값(전역 기본 모델 +
@@ -402,12 +404,66 @@ def _stored_cache(wd: WorkDir, manifest: Manifest, gloss: GlossaryList | None) -
     eff = gloss if gloss is not None else glossary.effective(wd)[0]
     chunks = stored.get("chunks") or {}
     if stored.get("scheme") == _SCHEME:
-        return _Cache(chunks, eff)
+        return None if _settings_changed(wd, manifest, stored) else _Cache(chunks, eff)
     paper = _paper_glossary(wd)
     model, style = _model_style_or_default(wd, manifest)
     if stored.get("key") not in _legacy_keys(wd, manifest, style, paper, model):
         return None
     return _Cache(chunks, eff, legacy=paper)
+
+
+def _settings_changed(wd: WorkDir, manifest: Manifest, stored: dict) -> bool:
+    """저장된 v3 키가 지난 모델 + 지금 설정으로 만든 키와 다른가 — 그러면 다음 실행이 캐시를 못 쓴다.
+
+    문체는 `pipeline.run_translate`처럼 그 언어에 맞춘 값(`langs.fit_style`)으로. 지난 모델을 모르면 False."""
+    from narani import langs
+
+    last = _last_model_style(wd, manifest)
+    if last is None:
+        return False
+    style = langs.fit_style(wd.lang, manifest.korean_style, config.resolve_style(wd.lang))
+    return stored.get("key") != _cache_keys(style, _paper_glossary(wd), last[0], manifest, wd.lang)[0]
+
+
+def settings_changed(wd: WorkDir, manifest: Manifest) -> bool:
+    """번역 설정(문체·섹션 제목·참고문헌)을 지난 번역과 다르게 바꿔, 다시 번역해야 반영되는가.
+
+    번역 탭의 '설정이 바뀌었습니다' 배너·헤더 칩이 쓴다. 다음 실행은 전부 다시 번역한다(`retranslate_units`)."""
+    if not (wd.ko_md.exists() and wd.en_md.exists()):
+        return False
+    stored = _read_stored(wd)
+    return bool(stored and stored.get("scheme") == _SCHEME and _settings_changed(wd, manifest, stored))
+
+
+def title_pending(wd: WorkDir, manifest: Manifest) -> bool:
+    """'논문 제목도 번역' 스위치와 번역문의 제목 줄이 어긋나 다시 실행해야 맞는가.
+
+    제목은 두 문서의 첫 `# ` 줄이다(조립이 문서 맨 위에 둔다). 끈 경우: 번역문 제목이 아직 원문과 다르면
+    (다시 실행하면 영어 원제로 — LLM 호출 없음). 켠 경우: 번역문 제목이 원문 그대로인데 보관된(또는 새로
+    만들) 번역이 다르면 — 제목이 원래 번역해도 같은 낱말이면(약어 하나 등) 끝없이 '대기'로 남지 않게 본다."""
+    title = next((s for s in manifest.sections if s.is_title), None)
+    if title is None or not (wd.ko_md.exists() and wd.en_md.exists()):
+        return False
+
+    def first_h1(text: str) -> str | None:
+        return next((ln.strip() for ln in text.splitlines() if ln.startswith("# ")), None)
+
+    en_text = wd.en_md.read_text(encoding="utf-8")
+    en, ko = first_h1(en_text), first_h1(wd.ko_md.read_text(encoding="utf-8"))
+    if en is None or ko is None:
+        return False
+    if not title.translate:
+        return en != ko
+    if en != ko:
+        return False
+    cache = _stored_cache(wd, manifest, None)
+    if cache is None:
+        return False  # 설정이 바뀌어 전부 다시 번역한다 — 그 배너가 알린다
+    unit = next((u for u in _build_units(wd, manifest, en_text.splitlines()) if title.id in u["sids"]), None)
+    if unit is None:
+        return False
+    hit = _cached_translation(cache, unit)
+    return hit is None or first_h1(hit) not in (None, en)
 
 
 def migrate_cache(wd: WorkDir, manifest: Manifest | None = None) -> bool:
@@ -519,7 +575,8 @@ def unticked_without_cache(wd: WorkDir, manifest: Manifest) -> set[str]:
     cache = _stored_cache(wd, manifest, eff) or _Cache({}, eff)
     # 참고문헌은 설정(translate_references)으로 빠지는 것이라 체크와 무관 — 원래도 영어였으니 잃을 게 없다
     ref_ids = set() if manifest.translate_references else section_ids_by_text(manifest, _REF_KEYWORDS)
-    unticked = {s.id for s in manifest.sections if not s.translate} - ref_ids
+    # 제목은 '논문 제목도 번역' 스위치로 끈 것 — 영어로 돌아가는 게 의도라 경고하지 않는다
+    unticked = {s.id for s in manifest.sections if not s.translate and not s.is_title} - ref_ids
     out: set[str] = set()
     for u in _build_units(wd, manifest, wd.en_md.read_text(encoding="utf-8").splitlines()):
         if u["translatable"] or not u["sids"]:
@@ -581,9 +638,13 @@ def run_translate(
         if on_progress is not None:
             on_progress(done[0], total, dict(status))
 
+    # 체크를 푼 섹션은 보관된 번역을 남기지만, 제목은 다르다 — '논문 제목도 번역'을 끄면 영어 원제를 둔다는 뜻이다
+    title_ids = {s.id for s in manifest.sections if s.is_title}
+
     def work(u: dict) -> str:
         if not u["translatable"]:
-            kept = _cached_translation(cache, u) if (keep_cached and u["sids"]) else None
+            keep = keep_cached and u["sids"] and not title_ids.intersection(u["sids"])
+            kept = _cached_translation(cache, u) if keep else None
             if kept is not None:  # 체크를 풀었어도 보관된 번역이 있으면 그대로 둔다
                 with lock:
                     counts["kept"] += 1

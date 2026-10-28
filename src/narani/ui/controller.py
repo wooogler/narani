@@ -940,6 +940,20 @@ class UIController:
 
         return unticked_without_cache(self.wd, self.manifest)
 
+    def settings_pending(self) -> dict | None:
+        """번역 설정을 바꿔 다시 번역해야 반영되는가 — {"full": 전부 다시 번역, "sections": 다시 번역할 섹션 수}.
+
+        full: 문체·섹션 제목·참고문헌 설정이 지난 번역과 달라 캐시를 통째로 못 쓴다. 아니면 '논문 제목도 번역'
+        스위치만 번역문과 어긋난 것(다시 실행하면 제목만 바뀐다). 둘 다 아니면 None."""
+        from narani.translate import apply
+
+        if apply.settings_changed(self.wd, self.manifest):
+            units, _full = apply.retranslate_units(self.wd, self.manifest)
+            return {"full": True, "sections": len({sid for u in units for sid in u["sids"]})}
+        if apply.title_pending(self.wd, self.manifest):
+            return {"full": False, "sections": 0}
+        return None
+
     def stale_sections(self) -> set[str]:
         """원문이 바뀌어 다음 번역 실행 때 다시 번역될 섹션 id (번역 패널의 '원문 바뀜' 표시)."""
         from narani.translate.apply import stale_section_ids

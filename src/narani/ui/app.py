@@ -12,6 +12,7 @@ import json
 import re
 import sys
 import time
+from collections.abc import Callable
 from html import escape
 from pathlib import Path
 
@@ -24,7 +25,7 @@ from narani.ui import (
     jump_back, live_preview, md_keys, split_view, mdrender, pdf_zoom, reanchor,
     scroll_memory, sentpair, spa, tabstore, term_examples, translate_job, update_banner, wordcount_view,
 )
-from narani.ui.controller import LEVEL_OPTIONS, RUNIN_LEVEL_OPTIONS, UIController
+from narani.ui.controller import UIController
 from narani.workdir import WorkDir, left_panel, paper_title, set_left_panel, set_project
 
 # 설명이 붙은 옵션 (값 → 사람이 이해하기 쉬운 라벨)
@@ -99,11 +100,6 @@ _LEVEL_LABEL = {
 }
 
 
-def _level_opts(runin: bool) -> dict:
-    """레벨 선택 옵션 {값: 한국어 라벨}. 값은 controller의 정본 목록을 그대로 쓴다."""
-    src = RUNIN_LEVEL_OPTIONS if runin else LEVEL_OPTIONS
-    return {v: t(_LEVEL_LABEL[v]) if v in _LEVEL_LABEL else str(v) for v in src}
-
 # Notion 느낌의 프리뷰 스타일
 _PREVIEW_CSS = """
 .md-preview { max-width: 820px; margin: 0 auto; padding: 8px 16px 64px;
@@ -166,14 +162,6 @@ _PREVIEW_CSS = """
   margin-right: 6px; top: 50%; transform: translateY(-50%); font-size: 10.5px; line-height: 1.4;
   background: rgba(0,0,0,.72); color: #fff; padding: 1px 6px; border-radius: 4px; white-space: nowrap; }
 @media (prefers-color-scheme: dark) { #md-cite-tip a.md-cite-doi { color: #2c62b8; } }
-/* 섹션 제목: 기본은 …로 잘리고, 행을 호버하면 전체가 여러 줄로 펼쳐짐 (버튼·배지는 오른쪽 유지) */
-/* 레벨 드롭다운을 더 낮게 (섹션 트리·일괄 조정) */
-.md4-lvl.q-field--dense .q-field__control, .md4-lvl.q-field--dense .q-field__marginal {
-  min-height: 30px; height: 30px; }
-.md4-lvl .q-field__native { min-height: 30px; padding: 0; font-size: 13px; }
-.md4-lvl .q-field__append { height: 30px; }
-/* 일괄 레벨 조정: 그룹을 펼쳤을 때 개별 섹션 들여쓰기를 줄인다 (그룹 셀렉트 폭만큼 왼쪽으로 당김) */
-.md4-batch-exp .q-expansion-item__content { padding-left: 0; margin-left: -100px; }
 /* 보기 전환 세그먼트(편집 대상 원문/번역 등) — 둥근 테두리 + 넉넉한 패딩 (촘촘하지 않게) */
 .conv-viewtoggle { border: 1px solid rgba(0,0,0,.14); border-radius: 9px; overflow: hidden; }
 .conv-viewtoggle .q-btn { padding: 4px 16px; min-height: 32px; font-weight: 500; }
@@ -201,8 +189,6 @@ sup.md-fn a:hover { text-decoration: underline; }
 /* 섹션 트리 행 하이라이트 — 점프 시 잠깐 반짝 */
 @keyframes sectreeflash { 0%, 35% { background: rgba(35,131,226,.30); } 100% { background: transparent; } }
 .sectree-flash { animation: sectreeflash 1.6s ease-out; border-radius: 6px; }
-.section-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.group:hover .section-title { white-space: normal; overflow: visible; text-overflow: clip; }
 /* 번역 중 섹션 아이콘(primary 색 autorenew)만 회전 — 체크박스·완료·실패 아이콘은 정지.
    .q-tree__icon는 노드 아이콘 전용 클래스라 tick 체크박스와 겹치지 않는다. */
 @keyframes md4spin { to { transform: rotate(360deg); } }
@@ -225,6 +211,40 @@ sup.md-fn a:hover { text-decoration: underline; }
 .vtoc-l1 { font-size: 13px; color: #5b5851; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vtoc-l2 { font-size: 11.5px; color: #9a968e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vtoc-item:hover .vtoc-l1 { color: #37352f; }
+/* 구조 탭 섹션 트리 — 목차(.vtoc-item)와 같은 행. 왼쪽 레벨 칩을 누르면 메뉴 */
+.md4-secrow { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 6px;
+  line-height: 1.4; min-width: 0; }
+.md4-secrow:hover { background: #ececec; }
+.md4-sect { font-size: 13px; color: #5b5851; flex: 0 1 auto; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.md4-secrow:hover .md4-sect { color: #37352f; }
+.md4-sect.jump { cursor: pointer; }
+.md4-sect.title { font-weight: 600; color: #37352f; }
+.md4-sect.off { color: #a8a49c; }
+.md4-sect.it { font-style: italic; }
+.md4-sect.gone { color: #b5b1a9; text-decoration: line-through; }
+.md4-secchip { flex: none; min-width: 32px; padding: 1px 5px; border-radius: 5px; text-align: center; cursor: pointer;
+  font-size: 10.5px; font-weight: 600; line-height: 1.5; color: #2383e2; background: rgba(35,131,226,.10);
+  user-select: none; }
+.md4-secchip:hover { background: rgba(35,131,226,.20); }
+.md4-secchip.plain { color: #8a867e; background: #efeeeb; }
+.md4-secchip.plain:hover { background: #e4e2de; }
+.md4-secchip.del { color: #c4382d; background: rgba(196,56,45,.08); }
+.md4-secbdg { flex: none; font-size: 10px; line-height: 1.5; color: #9a968e; border: 1px solid #dcdad5;
+  border-radius: 4px; padding: 0 4px; }
+.md4-secbdg.title { color: #7b3fbf; border-color: rgba(123,63,191,.35); }
+.md4-secbdg.kept { color: #2e8b57; border-color: rgba(46,139,87,.35); }
+.md4-secbdg.warn { color: #c47a12; border-color: #efcf9f; }
+.md4-secmenu { padding: 8px; min-width: 240px; }
+.md4-secmenu .conv-viewtoggle { display: flex; margin-bottom: 4px; }
+.md4-secmenu .conv-viewtoggle .q-btn { flex: 1; padding: 2px 0; min-height: 28px; font-size: 12px; }
+.md4-secmenu .q-separator { margin: 4px 0; }
+.md4-secmenu-item { min-height: 0; padding: 5px 8px; border-radius: 6px; font-size: 13px;
+  flex-direction: row; align-items: baseline; gap: 8px; }
+.md4-secmenu-item.on { color: #2383e2; font-weight: 600; }
+.md4-secmenu-item.del { color: #c4382d; }
+.md4-secmenu-hint { font-size: 11px; font-weight: 400; color: #9a968e; }
+.md4-secmenu-bulk { font-size: 12px; color: #5b5851; padding: 4px 2px 0; }
 .vmain { flex: 1 1 auto; min-width: 0; height: 100%; }
 .vwrap { position: relative; height: 100%; min-width: 0; }        /* 정렬 그리드 + 컬럼 드래그 핸들 */
 /* 원문 | PDF 나란히 — splitter 패널은 flex-column이라 그 안 상자가 내용 폭으로 줄어든다. 그러면 본문이
@@ -331,6 +351,15 @@ sup.md-fn a:hover { text-decoration: underline; }
   .vtoc-l1 { color: #b8b8b8; }
   .vtoc-item:hover { background: #2c2c2c; }
   .vtoc-item:hover .vtoc-l1 { color: #e0e0e0; }
+  .md4-secrow:hover { background: #2c2c2c; }
+  .md4-sect { color: #b8b8b8; }
+  .md4-secrow:hover .md4-sect, .md4-sect.title { color: #e0e0e0; }
+  .md4-sect.off, .md4-sect.gone { color: #7a7a7a; }
+  .md4-secchip { color: #7bb7ff; background: rgba(90,150,230,.18); }
+  .md4-secchip.plain { color: #a8a8a8; background: #2f2f2f; }
+  .md4-secchip.del { color: #ff8a80; background: rgba(255,138,128,.12); }
+  .md4-secbdg { border-color: #444; color: #8e8e8e; }
+  .md4-secmenu-bulk { color: #c8c8c8; }
   .vcol-handle::after { background: #3a3a3a; }
   .vbody-handle::after { background: #3a3a3a; }
   .vpdf { background: #151515; }
@@ -2261,6 +2290,35 @@ body.ag-open .md4-agentbtn { background: #fff; color: #2383e2; }
 .md4-railbtn.on { background: rgba(35,131,226,.13); color: #2383e2; }
 .md4-panel { height: 100%; width: 100%; overflow-y: auto; padding: 12px 12px 14px; gap: 12px; flex-wrap: nowrap; }
 .md4-panel-title { font-size: 11px; font-weight: 700; letter-spacing: .05em; color: #9a968e; }
+/* 패널 안 작은 소제목(번역할 섹션 등) · 개수 · 글자 단추 — 대문자·테두리 단추 대신 */
+.md4-subhead { font-size: 12.5px; font-weight: 600; color: #37352f; }
+.md4-subcount { font-size: 11px; color: #9a968e; }
+.md4-linkbtn.q-btn { min-height: 22px; padding: 0 5px; font-size: 11.5px; font-weight: 500; }
+/* 번역할 섹션 트리 — 목차·구조 행과 같은 글자 크기·색 */
+.md4-ttree { font-size: 13px; color: #5b5851; }
+.md4-ttree .q-tree__node-header { padding-top: 2px; padding-bottom: 2px; border-radius: 6px; margin-top: 0; }
+.md4-ttree .q-tree__node-header:hover { color: #37352f; }
+.md4-subexp { border-top: 1px solid #ecebe8; margin-top: 6px; }
+.md4-subexp .q-item { padding-left: 2px; font-size: 12.5px; font-weight: 600; color: #37352f; }
+/* 작업 패널은 .md4-panel 하나만 스크롤한다 — 스플리터 칸(q-splitter__before, 기본 overflow:auto)이 소수점
+   높이로 같이 스크롤바를 내면 오른쪽 끝에 스크롤바가 둘 겹친다. 끝까지 굴려도 문서 전체로 넘기지 않는다
+   (WKWebView의 탄성 스크롤이 레일 그림을 번지게 남기는 것을 막으려는 뜻도 있다). */
+/* 용어집 시트 — 표처럼: 원어 | 번역어 | 처리 방식 | 단추. 칸은 테두리 없이, 올리거나 고칠 때만 바탕 */
+.md4-gl-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 248px 64px; gap: 6px;
+  align-items: center; width: 100%; padding: 1px 4px; border-bottom: 1px solid #f0efec; border-radius: 6px; }
+.md4-gl-row:hover { background: #f7f6f4; }
+.md4-gl-head { border-bottom-color: #e6e4e0; font-size: 11px; font-weight: 700; letter-spacing: .04em; color: #9a968e;
+  padding-top: 0; padding-bottom: 3px; }
+.md4-gl-head:hover { background: none; }
+.md4-gl-head > div { padding-left: 8px; }
+.md4-gl-cell .q-field__control { padding: 0 8px; border-radius: 6px; min-height: 32px; }
+.md4-gl-cell .q-field__native { font-size: 13.5px; min-height: 32px; }
+.md4-gl-cell.q-field--focused .q-field__control, .md4-gl-cell .q-field__control:hover { background: #efeeeb; }
+.md4-gl-del { opacity: 0; transition: opacity .12s; }
+.md4-gl-row:hover .md4-gl-del { opacity: 1; }
+.md4-split > .q-splitter__before { overflow: hidden; }
+.md4-panel { overscroll-behavior: contain; }
+.md4-rail { overflow: hidden; }
 /* 메모 패널 — 머리 한 줄 아래를 위지윅 편집기(Milkdown Crepe)가 꽉 채운다. 편집기 안 빈 곳을 눌러도
    글쓰기로 들어가게 .milkdown·.ProseMirror를 상자 높이까지 늘린다. 블록 핸들(⋮⋮ +)은 숨긴다 — 좁은
    패널에서 왼쪽 여백만 먹고 쓸 일이 없다. 표·체크박스 삽입은 '/' 메뉴로 그대로 된다.
@@ -2831,121 +2889,98 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         ui.notify(" ".join(parts), type="warning" if (r["conflicts"] or r["dropped"]) else "positive",
                   multi_line=len(parts) > 1, timeout=8000 if len(parts) > 1 else 4000)
 
-    def change_level(sid: str, value) -> None:  # noqa: ANN001
-        """레벨 변경 → 자동 저장 + 즉시 프리뷰·트리에 반영."""
+    async def change_level(sid: str, value, group: str | None = None) -> None:  # noqa: ANN001
+        """레벨 변경 → 자동 저장 + 즉시 프리뷰·트리에 반영. group(같은 모양 헤더 묶음 키)을 주면 그 묶음 전부를.
+        캔버스를 다시 지어도 읽던 자리는 그대로 — 예전엔 그리드를 통째로 다시 지어 본문이 맨 위로 튀었다."""
         def apply() -> None:
-            ctrl.set_level(sid, value)
+            if group:
+                n = ctrl.apply_group_level(group, value)
+                ui.notify(t("같은 모양 헤더 {n}개 → {level}", n=n, level=t(_LEVEL_LABEL.get(value, str(value)))),
+                          type="positive")
+            else:
+                ctrl.set_level(sid, value)
             commit()
             section_list.refresh()
             _refresh_translate_tree()
-            refresh_canvas()  # 그리드·목차(편집 중이면 에디터도) 새로 만들어진 en.md로
-        apply()
+        await refresh_canvas_keeping_place(apply)  # 그리드·목차(편집 중이면 에디터도) 새로 만들어진 en.md로
+
+    # 레벨 칩 — 목차처럼 한 줄짜리 행 왼쪽에 짧게. (예전엔 112px 드롭다운이라 'Heading…'으로 잘려 단계가 안 보였다)
+    _CHIP = {"italic": N_("기울임"), "skip": N_("문단"), "merge-up": N_("합침"), "drop": N_("지움")}
+    # 메뉴의 헤더 아닌 처리 — (값, 설명). 이름은 _LEVEL_LABEL
+    _LEVEL_HINT = [("skip", N_("제목 글은 문단으로 남김")), ("italic", N_("run-in 소제목을 기울임 문단으로")),
+                   ("merge-up", N_("제목 줄을 없애고 내용은 위 섹션에")), ("drop", N_("제목과 내용을 모두 지움"))]
+
+    def _level_menu(sec, group: dict | None) -> None:  # noqa: ANN001 — ManifestSection
+        """칩을 누르면 뜨는 메뉴 하나에 모든 처리를 — 제목 1~6 · 본문/기울임 · 위에 합침/삭제 · 같은 모양 모두.
+
+        '같은 모양 모두'는 옛 '일괄 레벨 조정' 칸을 대신한다 — 따로 그룹 목록을 보지 않아도, 고치려던 헤더에서
+        바로 같은 번호 모양(예: 2.1, 2.2 …) 전부를 바꾼다."""
+        bulk = {"on": False}
+
+        async def pick(value) -> None:  # noqa: ANN001
+            menu.close()
+            if value is None or (value == sec.level and not bulk["on"]):
+                return
+            await change_level(sec.id, value, group["key"] if bulk["on"] and group else None)
+
+        with ui.menu().props("anchor='bottom left' self='top left'").classes("md4-secmenu") as menu:
+            ui.toggle({n: f"H{n}" for n in range(1, 7)}, value=sec.level if isinstance(sec.level, int) else None,
+                      on_change=lambda e: pick(e.value)) \
+                .props("dense no-caps unelevated toggle-color=primary color=grey-3 text-color=grey-8") \
+                .classes("conv-viewtoggle").tooltip(t("헤더 단계"))
+            for i, (v, hint) in enumerate(_LEVEL_HINT):
+                if i == 2:
+                    ui.separator()
+                with ui.menu_item(on_click=lambda v=v: pick(v), auto_close=False) \
+                        .classes("md4-secmenu-item" + (" on" if sec.level == v else "") + (" del" if v == "drop" else "")):
+                    ui.label(t(_LEVEL_LABEL[v]))
+                    ui.label(t(hint)).classes("md4-secmenu-hint")
+            if group and group["count"] > 1:
+                ui.separator()
+                ui.checkbox(t("같은 모양 헤더 {n}개에 모두 적용", n=group["count"]),
+                            on_change=lambda e: bulk.__setitem__("on", e.value)) \
+                    .props("dense size=xs").classes("md4-secmenu-bulk") \
+                    .tooltip("\n".join(group["titles"][:12]) + ("\n…" if group["count"] > 12 else "")) \
+                    .style("white-space:pre-line")
 
     @ui.refreshable
     def section_list() -> None:
+        """섹션 트리 — 목차 탭과 같은 한 줄짜리 행. 왼쪽 칩이 레벨(누르면 메뉴), 제목을 누르면 캔버스 그 자리로."""
+        groups = {(g["scheme"], g["depth"]): g for g in ctrl.level_groups()}
+        last = 1  # 헤더가 아닌 행(본문·기울임·합침·삭제)은 바로 위 헤더보다 한 칸 안으로
         for sec in m.sections:
-            # 레벨 드롭다운은 왼쪽 고정 열로 정렬, 들여쓰기는 텍스트에만, 배지는 오른쪽 끝으로
-            indent = (int(sec.level) - 1) * 18 if str(sec.level).isdigit() else 0
-            opts = _level_opts(sec.runin)
-            # id=sectree-<sid>: 마크다운 프리뷰의 점프 버튼(⚙)이 이 행으로 스크롤+하이라이트한다
-            with ui.row().classes("group items-center w-full gap-2 no-wrap").props(f"id=sectree-{sec.id}"):
-                ui.select(
-                    opts,
-                    value=sec.level,
-                    on_change=lambda e, sid=sec.id: change_level(sid, e.value),
-                ).props("dense outlined").classes("w-28 shrink-0 md4-lvl")
-                text_cls = "text-sm font-semibold" if sec.is_title else "text-sm"
-                # 라벨 + 배지 + 이동 버튼을 한 덩어리로 묶어 섹션 텍스트 바로 옆에 붙인다
-                with ui.row().classes("items-center gap-1 min-w-0").style(f"margin-left:{indent}px"):
-                    lbl = ui.label(sec.text).classes(text_cls + " section-title")
-                    if isinstance(sec.level, int):  # 헤더로 남는 섹션 → 클릭 시 마크다운 그 위치로
-                        lbl.classes("cursor-pointer").on("click", lambda _, sid=sec.id: goto_md(sid))
-                    tip = (f"p.{sec.page}\n" if sec.page else "") + (sec.context or "")
-                    if isinstance(sec.level, int):
-                        tip = t("클릭하면 마크다운의 이 섹션으로 이동") + "\n" + tip
-                    if tip.strip():
-                        lbl.tooltip(tip.strip())
-                    # 배지 — 항상 보임 (제목/run-in/기억됨/확인)
-                    if sec.is_title:
-                        ui.badge(t("제목"), color="purple").props("outline")
-                    if sec.runin:
-                        ui.badge("run-in", color="blue-4").props("outline")
-                    if sec.auto_level is not None and sec.level != sec.auto_level:
-                        ui.badge(t("기억됨"), color="green").props("outline").tooltip(
-                            t("자동값 {auto} → 사용자 선택 {level} (이름으로 기억)",
-                              auto=t(_LEVEL_LABEL.get(sec.auto_level, str(sec.auto_level))),
-                              level=t(_LEVEL_LABEL.get(sec.level, str(sec.level)))))
-                    if sec.needs_review:
-                        ui.badge(t("확인"), color="orange").props("outline")
-                    # 섹션 라벨을 클릭하면 마크다운 그 위치로 이동(나란히 보기면 PDF도 따라옴).
-                    # 별도 PDF 이동 버튼은 두지 않는다.
-
-    _GROUP_NAME = {
-        ("title", 0): N_("제목"),
-        ("dotted-arabic", 1): N_("숫자 1단계"), ("dotted-arabic", 2): N_("숫자 2단계"),
-        ("dotted-arabic", 3): N_("숫자 3단계"), ("dotted-arabic", 4): N_("숫자 4단계"),
-        ("roman", 1): N_("로마 숫자"), ("letter", 1): N_("문자"), ("letter", 2): N_("문자 2단계"),
-        ("unnumbered", 1): N_("무번호"), ("none", 1): N_("번호 없음"), ("run-in", 0): N_("run-in 헤더"),
-    }
-
-    @ui.refreshable
-    def batch_level_panel() -> None:
-        """같은 모양의 헤더를 묶어 한 번에 조정 — 선택지는 섹션 트리와 동일."""
-        groups = ctrl.level_groups()
-        if not groups:
-            ui.label(t("조정할 헤더가 없습니다.")).classes("text-xs text-gray-400")
-            return
-        ui.label(t("같은 모양의 헤더를 한 번에 바꿉니다. 펼치면 그룹의 각 섹션을 개별 조정할 수 있어요.")) \
-            .classes("text-xs text-gray-500")
-
-        def apply_group(key: str, name: str, value) -> None:  # noqa: ANN001
-            if value is None:
-                return
-
-            def apply() -> None:
-                n = ctrl.apply_group_level(key, value)
-                commit()
-                section_list.refresh()
-                batch_level_panel.refresh()
-                _refresh_translate_tree()
-                refresh_canvas()
-                ui.notify(t("{name} {n}개 → {level}", name=name, n=n, level=t(_LEVEL_LABEL.get(value, str(value)))), type="positive")
-
-            apply()
-
-        def change_in_group(sid: str, value) -> None:  # noqa: ANN001
-            """그룹 내 개별 섹션 레벨 변경 → 프리뷰·섹션 트리·번역 트리 연동 (아코디언은 유지)."""
-            def apply() -> None:
-                ctrl.set_level(sid, value)
-                commit()
-                section_list.refresh()
-                _refresh_translate_tree()
-                refresh_canvas()
-
-            apply()
-
-        for g in groups:
-            gk = (g["scheme"], g["depth"])
-            name = t(_GROUP_NAME[gk]) if gk in _GROUP_NAME else t("{scheme} {depth}단계", scheme=g["scheme"], depth=g["depth"])
-            opts = _level_opts(g["scheme"] == "run-in")
-            group_secs = [s for s in m.sections if ctrl.group_key(s) == (g["scheme"], g["depth"])]
-            # 일괄 선택은 접힌 상태에서도 쓰도록 아코디언 헤더 옆(왼쪽)에 둔다. 펼치면 개별 섹션.
-            with ui.row().classes("items-start gap-2 w-full no-wrap"):
-                ui.select(
-                    opts, value=g["current"],
-                    on_change=lambda e, k=g["key"], nm=name: apply_group(k, nm, e.value),
-                ).props("dense outlined").classes("w-28 shrink-0 md4-lvl").tooltip(t("이 그룹 전체를 한 번에"))
-                with ui.expansion(f"{name} ×{g['count']}").classes("flex-grow md4-batch-exp").props("dense"):
-                    for s in group_secs:  # 개별 섹션 + 헤더 레벨 선택 (섹션 트리·마크다운과 연동)
-                        with ui.row().classes("items-center gap-2 w-full no-wrap"):
-                            ui.select(
-                                opts, value=s.level,
-                                on_change=lambda e, sid=s.id: change_in_group(sid, e.value),
-                            ).props("dense outlined").classes("w-28 shrink-0 md4-lvl")
-                            lbl = ui.label(s.text).classes("text-sm section-title").style("max-width:300px")
-                            if isinstance(s.level, int):  # 클릭 시 마크다운의 해당 섹션으로 이동
-                                lbl.classes("cursor-pointer").on("click", lambda _, sid=s.id: goto_md(sid)) \
-                                    .tooltip(t("클릭하면 마크다운의 이 섹션으로 이동"))
+            lv = sec.level
+            if isinstance(lv, int):
+                last, depth = lv, lv - 1
+            else:
+                depth = last
+            # id=sectree-<sid>: 마크다운 프리뷰의 점프 단추가 이 행으로 스크롤+하이라이트한다
+            with ui.element("div").classes("md4-secrow").props(f"id=sectree-{sec.id}") \
+                    .style(f"padding-left:{6 + depth * 14}px"):
+                kind = "" if isinstance(lv, int) else (" del" if lv == "drop" else " plain")
+                with ui.element("span").classes("md4-secchip" + kind):
+                    ui.label(f"H{lv}" if isinstance(lv, int) else t(_CHIP.get(lv, str(lv))))
+                    _level_menu(sec, groups.get(ctrl.group_key(sec)))
+                cls = ("title" if sec.is_title else "") + {"italic": " it off", "skip": " off", "merge-up": " off",
+                                                            "drop": " gone"}.get(str(lv), "")
+                lbl = ui.label(sec.text).classes("md4-sect " + cls)
+                tip = (f"p.{sec.page}\n" if sec.page else "") + (sec.context or "")
+                if isinstance(lv, int):  # 헤더로 남는 섹션 → 클릭 시 캔버스 그 위치로(나란히 보기면 PDF도)
+                    lbl.classes("jump").on("click", lambda _, sid=sec.id: goto_md(sid))
+                    tip = t("클릭하면 마크다운의 이 섹션으로 이동") + "\n" + tip
+                lbl.tooltip(sec.text + "\n" + tip.strip())
+                # 배지 — 제목/run-in/기억됨/확인
+                if sec.is_title:
+                    ui.label(t("제목")).classes("md4-secbdg title")
+                if sec.runin:
+                    ui.label("run-in").classes("md4-secbdg")
+                if sec.auto_level is not None and lv != sec.auto_level:
+                    ui.label(t("기억됨")).classes("md4-secbdg kept").tooltip(
+                        t("자동값 {auto} → 사용자 선택 {level} (이름으로 기억)",
+                          auto=t(_LEVEL_LABEL.get(sec.auto_level, str(sec.auto_level))),
+                          level=t(_LEVEL_LABEL.get(lv, str(lv)))))
+                if sec.needs_review:
+                    ui.label(t("확인")).classes("md4-secbdg warn")
 
     spa.add_css(i18n.html(_PREVIEW_CSS))
     spa.add_css(live_preview.CSS)  # 편집기 라이브 프리뷰(기호 숨기기·헤더·그림·표·수식)
@@ -3016,21 +3051,36 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     # 직접 스크롤하면 거기서 멈춘다).
     _KEEP_JS = """
     (function(){
+      // 헤더에 붙는 '섹션 구조' 점프 단추 글은 뺀다 — 본문으로 바꾼 뒤에도 같은 글이 되게
+      function tx(e){ var t = e.textContent, a = e.querySelector('.md-sec-jump');
+        if (a) t = t.replace(a.textContent, ''); return t.trim().slice(0, 80); }
+      var BLOCKS = 'p, li, h1, h2, h3, h4, h5, h6, pre, blockquote, table, figure';
       var g = document.querySelector('.sbs-grid') || document.querySelector('.vpane');
       if (!g) return null;
       g.dataset.md4old = '1';
       var top = g.getBoundingClientRect().top, cells = g.querySelectorAll('.sbs-cell[data-row]');
       for (var i = 0; i < cells.length; i++){
         var r = cells[i].getBoundingClientRect();
-        if (r.bottom > top + 1) return {row: cells[i].getAttribute('data-row'), off: r.top - top,
-                                         f: r.height > 0 ? Math.min(1, Math.max(0, (top - r.top) / r.height)) : 0,
-                                         ratio: g.scrollTop / Math.max(1, g.scrollHeight - g.clientHeight)};
+        if (r.bottom > top + 1){
+          // 행 안에서 화면 맨 위에 걸친 문단 — 그 글로 다시 찾으면 행이 합쳐지거나 높이가 바뀌어도 정확하다
+          var b = [].filter.call(cells[i].querySelectorAll(BLOCKS), function(e){
+            return e.getBoundingClientRect().bottom > top + 1 && tx(e); })[0];
+          return {row: cells[i].getAttribute('data-row'), off: r.top - top,
+                  f: r.height > 0 ? Math.min(1, Math.max(0, (top - r.top) / r.height)) : 0,
+                  txt: b ? tx(b) : null,
+                  toff: b ? b.getBoundingClientRect().top - top : 0,
+                  ratio: g.scrollTop / Math.max(1, g.scrollHeight - g.clientHeight)};
+        }
       }
       return {row: null, off: 0, ratio: g.scrollTop / Math.max(1, g.scrollHeight - g.clientHeight)};
     })()
     """
     _RESTORE_JS = """
     (function(p){
+      // 헤더에 붙는 '섹션 구조' 점프 단추 글은 뺀다 — 본문으로 바꾼 뒤에도 같은 글이 되게
+      function tx(e){ var t = e.textContent, a = e.querySelector('.md-sec-jump');
+        if (a) t = t.replace(a.textContent, ''); return t.trim().slice(0, 80); }
+      var BLOCKS = 'p, li, h1, h2, h3, h4, h5, h6, pre, blockquote, table, figure';
       var stop = false, n = 0, t0 = Date.now();
       function quit(){ stop = true; }
       ['wheel', 'touchmove', 'keydown', 'mousedown'].forEach(function(ev){
@@ -3040,7 +3090,16 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         var g = [].filter.call(document.querySelectorAll('.sbs-grid, .vpane'),
                                function(x){ return !x.dataset.md4old; })[0];
         var c = g && p.row !== null ? g.querySelector('.sbs-cell[data-row="' + p.row + '"]') : null;
-        if (g && c){
+        // 그 행에서, 없으면 바로 다음 두 행에서 찾는다 — 본문으로 바꿨던 헤더를 되살리면 보던 문단이 새 행으로 간다
+        var el = null;
+        for (var k = 0; g && p.txt && p.row !== null && !el && k < 3; k++){
+          var ck = g.querySelector('.sbs-cell[data-row="' + (+p.row + k) + '"]');
+          el = ck && [].filter.call(ck.querySelectorAll(BLOCKS), function(e){ return tx(e) === p.txt; })[0];
+        }
+        if (el){  // 보던 문단을 같은 높이로
+          var d = el.getBoundingClientRect().top - g.getBoundingClientRect().top - p.toff;
+          if (Math.abs(d) > 1){ g.scrollTop += d; g.dispatchEvent(new Event('scroll')); }
+        } else if (g && c){
           // f(행 안의 비율)가 있으면 그것으로 — 편집기에서 돌아올 때는 픽셀 차가 아니라 행 안 비율만 안다
           var cr = c.getBoundingClientRect(), off = p.f != null ? -p.f * cr.height : p.off;
           var d = cr.top - g.getBoundingClientRect().top - off;
@@ -3085,14 +3144,62 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     })(%d, %d, %s)
     """
 
-    async def refresh_canvas_keeping_place() -> None:
-        """캔버스를 다시 그리되 보던 자리(화면 맨 위의 행)를 지킨다 — 그림·수식 고치기 뒤에."""
+    def _remap_place(old: dict, row: int) -> tuple[int, str]:
+        """구조를 바꾸기 전의 행 → 바꾼 뒤의 행. ('same'|'tail'|'top')
+
+        헤더를 본문으로·위에 합침·통째 삭제로 바꾸면 그 뒤 행 번호가 모두 당겨진다 — 행 번호 대신 그 행이 속한
+        섹션 id로 옮긴다. 보던 섹션이 사라졌으면 합쳐진 위 섹션의 끝(tail)으로, 통째 지웠으면 다음 섹션 머리(top)로."""
+        hits = [k for k in old["row_sid"] if k <= row]
+        if not hits:  # 첫 헤더 앞(저자·초록 앞부분) — 위쪽 구조가 바뀌지 않으니 그대로
+            return row, "same"
+        k = max(hits)
+        _rows_memo.clear()  # 본문 글이 그대로여도 구조(섹션맵)는 바뀌었을 수 있다 — refresh_canvas와 같은 이유
+        sid, new = old["row_sid"][k], layout_rows()
+        if sid in new["sid_row"]:
+            return new["sid_row"][sid] + (row - k), "same"
+        ids = [e["id"] for e in old["smap"]]
+        i = ids.index(sid) if sid in ids else -1
+        sec = ctrl.section(sid)
+        if sec is not None and sec.level == "drop":
+            nxt = next((new["sid_row"][s] for s in ids[i + 1:] if s in new["sid_row"]), None)
+            if nxt is not None:
+                return nxt, "top"
+        prev = next((new["sid_row"][s] for s in reversed(ids[:max(i, 0)]) if s in new["sid_row"]), None)
+        return (prev, "tail") if prev is not None else (row, "same")
+
+    async def refresh_canvas_keeping_place(change: Callable[[], None] | None = None) -> None:
+        """캔버스를 다시 그리되 보던 자리(화면 맨 위의 행)를 지킨다 — 그림·수식 고치기, 구조(레벨) 바꾸기 뒤에.
+
+        change를 주면 자리를 잰 **뒤에** 그것(구조 바꾸기 + 재조립)을 부르고, 행 번호를 섹션 id로 옮겨 맞춘다
+        (§_remap_place). 편집 중이면 편집기의 줄을 행으로 바꿔 재고 새 편집기의 같은 행으로 옮긴다."""
+        editing = edit_state["on"] and edit_state.get("editor") is not None
+        if editing:
+            edit_flush()  # 편집기 글이 파일에 있어야 줄 → 행 계산이 맞는다
+        old = layout_rows() if change is not None else None
+        pos = None
         try:
-            pos = await ui.run_javascript(_KEEP_JS, timeout=2.0)
+            if editing:
+                at = await ui.run_javascript(_EDITOR_PLACE_JS % edit_state["editor"].id, timeout=2.0)
+                if isinstance(at, dict):
+                    pl = _line_to_place(int(at["line"]), float(at["f"]), edit_state["lang"])
+                    pos = {"row": pl[0], "f": pl[1]} if pl else None
+            else:
+                pos = await ui.run_javascript(_KEEP_JS, timeout=2.0)
         except Exception:  # noqa: BLE001 — 못 재면 그냥 다시 그린다
             pos = None
+        if change is not None:
+            change()
+            if isinstance(pos, dict) and pos.get("row") is not None:
+                row, how = _remap_place(old, int(pos["row"]))
+                pos["row"] = row
+                if how == "top":
+                    pos.update(f=0, off=0, txt=None)
+                elif how == "tail":  # 보던 문단은 합쳐진 위 행 안에 있다 — 글로 찾는다(편집기는 그 행의 끝으로)
+                    pos.update(f=1.0)
+        if editing and isinstance(pos, dict):
+            viewer_state["_place"] = (int(pos["row"]), float(pos.get("f") or 0))  # edit_view가 새 편집기를 그 자리로
         refresh_canvas()
-        if isinstance(pos, dict):
+        if not editing and isinstance(pos, dict):
             ui.run_javascript(_RESTORE_JS % json.dumps(pos))
 
     async def on_figure_recropped(e) -> None:  # noqa: ANN001 — 그림 파일은 이미 바뀌었다(서버 라우트)
@@ -4281,8 +4388,9 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     def refresh_staleness() -> None:
         """원문(en.md)이 바뀐 뒤 — 트리의 '원문 바뀜' 아이콘, 번역 패널 배너, 헤더 칩을 함께 갱신."""
         update_tree_status()
-        if _translate_refs.get("stale") is not None:
-            _translate_refs["stale"].refresh()
+        for key in ("stale", "pending"):
+            if _translate_refs.get(key) is not None:
+                _translate_refs[key].refresh()
         status_chip.refresh()
 
     # --- 용어집 편집 상태 (build 스코프 — 용어집 시트 편집 + '번역할 섹션'의 용어 추가가 공유) · 자동 저장 ---
@@ -4389,24 +4497,31 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         if not gloss_entries:
             ui.label(t("용어집이 비어 있습니다 — 변환 시 자동 생성됩니다. '행 추가'나 왼쪽 '용어 추가'로 채우세요.")) \
                 .classes("text-sm text-gray-400")
+        if gloss_entries:  # 열 머리 — 칸마다 설명 대신 한 번만
+            with ui.element("div").classes("md4-gl-row md4-gl-head"):
+                ui.label(t("원어"))
+                ui.label(t("번역어"))
+                ui.label(t("처리 방식"))
         for i, d in enumerate(gloss_entries):
             shadowed = bool(d["term"].strip()) and term_key(d["term"]) in over
             strike = ' input-style="text-decoration:line-through"' if shadowed else ""
-            row = ui.row().classes("items-center gap-2 w-full")
+            # 칸마다 테두리 상자를 두지 않는다 — 표처럼 행 사이 선만, 칸은 올려 두거나 고칠 때만 바탕이 생긴다
+            row = ui.element("div").classes("md4-gl-row")
             if shadowed:
                 row.style("opacity:.5").tooltip(t("컬렉션 용어집이 우선합니다"))
             with row:
                 ui.input(placeholder=t("원어"), value=d["term"]).bind_value(d, "term") \
-                    .on("blur", lambda: gloss_autosave()).props("dense outlined" + strike).classes("w-40")
-                ui.icon("arrow_forward").classes("text-gray-400")
+                    .on("blur", lambda: gloss_autosave()).props("dense borderless" + strike).classes("md4-gl-cell")
                 ui.input(placeholder=t("번역어"), value=d["korean"]).bind_value(d, "korean") \
-                    .on("blur", lambda: gloss_autosave()).props("dense outlined" + strike).classes("w-40")
+                    .on("blur", lambda: gloss_autosave()).props("dense borderless" + strike).classes("md4-gl-cell")
                 ui.select(_tr(_POLICY), value=d["policy"]).bind_value(d, "policy") \
-                    .on("update:model-value", lambda: gloss_autosave()).props("dense outlined").classes("w-44")
-                example_button(d["term"], gloss_rows)
-                ui.button(icon="delete", on_click=lambda _, idx=i: (
-                    gloss_entries.pop(idx), gloss_rows.refresh(), gloss_autosave())) \
-                    .props("flat dense round size=sm")
+                    .on("update:model-value", lambda: gloss_autosave()) \
+                    .props("dense borderless options-dense").classes("md4-gl-cell")
+                with ui.row().classes("no-wrap gap-0 items-center"):
+                    example_button(d["term"], gloss_rows)
+                    ui.button(icon="delete_outline", on_click=lambda _, idx=i: (
+                        gloss_entries.pop(idx), gloss_rows.refresh(), gloss_autosave())) \
+                        .props("flat dense round size=sm color=grey-6").classes("md4-gl-del").tooltip(t("삭제"))
             example_block(d["term"], d["korean"], d["policy"])
 
     def add_gloss_row() -> None:
@@ -4549,7 +4664,8 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             translate_state.update(status={}, done=0, total=0, failures={})
             failure_panel.refresh()
             translate_state["active"] = True
-            stale_panel.refresh()  # 도는 동안엔 '낡음' 표시를 치운다
+            stale_panel.refresh()  # 도는 동안엔 '낡음'·'설정 바뀜' 표시를 치운다
+            pending_panel.refresh()
             attach_translate(job)
             paper_tabs.refresh()  # 탭 아이콘이 '작업 중'으로 돈다
 
@@ -4602,6 +4718,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             update_tree_status()
             failure_panel.refresh()
             stale_panel.refresh()
+            pending_panel.refresh()
             status_chip.refresh()
             translate_btn.enable()
 
@@ -4629,6 +4746,29 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                     .classes("text-xs text-orange-800")
                 ui.label(t("PDF에서 다시 변환했거나 레이아웃을 고쳤거나 원문을 직접 편집한 섹션입니다. 트리에서도 "
                          "주황 ↻ 아이콘으로 표시됩니다.")).classes("text-xs text-gray-500")
+
+        @ui.refreshable
+        def pending_panel() -> None:
+            """번역 설정을 바꿨는데 번역문엔 아직 반영 안 됨 — 바꾸는 즉시 번역하지는 않는다(LLM 비용). 얼마나
+            다시 번역하는지 정직하게 알리고 그 자리에서 다시 번역한다."""
+            if translate_state["active"]:
+                return
+            p = ctrl.settings_pending()
+            if p is None:
+                return
+            with ui.column().classes("w-full gap-1 q-pa-sm").style(
+                    "background:#fff7ed; border:1px solid #fdba74; border-radius:8px"):
+                with ui.row().classes("items-center gap-2 w-full no-wrap"):
+                    ui.icon("tune", color="orange-7")
+                    ui.label(t("번역 설정이 바뀌었습니다 — 다시 번역해야 반영됩니다")) \
+                        .classes("text-sm font-medium text-orange-9 min-w-0")
+                    ui.space()
+                    ui.button(t("다시 번역"), icon="refresh", on_click=do_translate) \
+                        .props("dense no-caps color=orange").classes("shrink-0").style("white-space:nowrap")
+                ui.label(t("문체·섹션 제목·참고문헌 설정이 지난 번역과 달라, 다시 번역하면 {n}개 섹션 전체를 새로 번역합니다.",
+                           n=p["sections"]) if p["full"] else
+                         t("논문 제목 설정만 바뀌었습니다 — 다시 번역하면 제목 줄만 바뀝니다.")) \
+                    .classes("text-xs text-gray-600")
 
         @ui.refreshable
         def failure_panel() -> None:
@@ -4716,19 +4856,22 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         # 번역 전에 한 번 집중해서 보는 단계라 상시 탭보다 이 편이 맞다.
         with ui.dialog() as gloss_dialog, ui.card().classes("gap-2").style(
                 "width:760px; max-width:94vw; max-height:84vh"):
-            with ui.row().classes("items-center w-full no-wrap gap-2"):
-                ui.label(t("용어집")).classes("text-lg font-bold")
-                ui.space()
-                ui.button(t("행 추가"), icon="add", on_click=add_gloss_row).props("outline dense no-caps")
+            # 머리 한 줄 — 제목 · 글자 단추 둘 · ? 도움말 · 닫기. 긴 안내 두 문단은 ? 툴팁으로 옮겼다.
+            with ui.row().classes("items-center w-full no-wrap gap-1"):
+                ui.label(t("용어집")).classes("text-lg font-bold q-mr-sm")
+                ui.button(t("행 추가"), icon="add", on_click=add_gloss_row).props("flat dense no-caps color=primary")
                 ui.button(t("선택 섹션에서 용어 추가"), icon="playlist_add", on_click=add_terms_from_selected) \
-                    .props("outline dense no-caps").tooltip(t("번역할 섹션으로 체크한 섹션에서 새 용어를 뽑아 추가"))
+                    .props("flat dense no-caps color=primary").tooltip(t("번역할 섹션으로 체크한 섹션에서 새 용어를 뽑아 추가"))
+                ui.space()
+                with ui.icon("help_outline", size="18px").classes("text-grey-6 cursor-help q-mr-xs"):
+                    ui.tooltip(t("변환할 때 **Abstract·Introduction 본문과 모든 섹션 제목**에서 핵심 용어를 자동으로 뽑아 만듭니다. "
+                                 "번역 전에 번역어와 처리 방식(번역 / 음역 / 원문 유지 / 첫 등장 시 병기)을 검토·수정하세요. "
+                                 "고친 내용은 바로 저장됩니다.\n\n"
+                                 "컬렉션 용어집의 항목은 여기서 못 고칩니다 — 컬렉션 용어집에서 고치면 주 컬렉션이 그 컬렉션인 논문 전체에 적용됩니다.")
+                               .replace("**", "")).style("white-space:pre-line; max-width:360px")
                 ui.button(icon="close", on_click=gloss_dialog.close).props("flat dense round")
-            ui.markdown(
-                t("변환할 때 **Abstract·Introduction 본문과 모든 섹션 제목**에서 핵심 용어를 자동으로 뽑아 만듭니다. "
-                "번역 전에 번역어와 처리 방식(번역 / 음역 / 원문 유지 / 첫 등장 시 병기)을 검토·수정하세요. "
-                "고친 내용은 바로 저장됩니다.\n\n"
-                "컬렉션 용어집의 항목은 여기서 못 고칩니다 — 컬렉션 용어집에서 고치면 주 컬렉션이 그 컬렉션인 논문 전체에 적용됩니다.")
-            ).classes("text-xs text-gray-600")
+            ui.label(t("번역 전에 번역어와 처리 방식을 확인하세요 — 고친 내용은 바로 저장됩니다.")) \
+                .classes("text-xs text-gray-500").style("margin-top:-4px")
             with ui.column().classes("w-full gap-1 md4-scroll").style("overflow-y:auto; min-height:0"):
                 coll_rows()
                 gloss_rows()
@@ -4747,7 +4890,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         with ui.column().classes("w-full gap-2"):
             with ui.row().classes("items-center gap-2 w-full no-wrap"):
                 translate_btn = ui.button(t("번역 실행"), icon="translate", on_click=do_translate) \
-                    .props("color=secondary no-caps").tooltip(t("체크한 섹션을 아래 용어집·번역 방식으로 번역합니다"))
+                    .props("unelevated no-caps color=primary").tooltip(t("체크한 섹션을 아래 용어집·번역 방식으로 번역합니다"))
                 gloss_open_btn()
             model_pick = ui.select(ctrl.translate_model_options(), value=ctrl.translate_model(),
                                    label=t("번역 모델")).props("dense outlined options-dense").classes("w-full") \
@@ -4758,6 +4901,8 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             bar.visible = False
             prog_lbl = ui.label("").classes("text-sm text-gray-500")
             _translate_refs["stale"] = stale_panel  # 원문이 바뀌는 곳(편집 저장·레이아웃 수정)에서 갱신
+            _translate_refs["pending"] = pending_panel  # 번역 설정 스위치를 바꾸면 갱신
+            pending_panel()  # 번역 설정이 바뀌어 다시 번역해야 반영됨 (없으면 안 보임)
             stale_panel()    # 원문이 바뀐 섹션 + 재번역 버튼 (없으면 안 보임)
             failure_panel()  # 번역 실패 섹션 이유 + 재번역 버튼 (실패 없으면 안 보임)
         running = jobs.get(ctrl.wd.root, "translate")
@@ -5004,11 +5149,14 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                                     t("번역이 돌고 있습니다 — 진행은 번역 패널에서"))
         elif has_ko:
             stale = len(ctrl.stale_sections())
+            pending = ctrl.settings_pending() is not None
             text = (t("번역됨") + (t(" · 실패 {n}", n=fails) if fails else "")
-                    + (t(" · 원문 바뀜 {n}", n=stale) if stale else ""))
-            icon, cls = ("warning", "md4-chip warn") if (fails or stale) else ("check_circle", "md4-chip done")
+                    + (t(" · 원문 바뀜 {n}", n=stale) if stale else "")
+                    + (t(" · 설정 바뀜") if pending else ""))
+            icon, cls = ("warning", "md4-chip warn") if (fails or stale or pending) else ("check_circle", "md4-chip done")
             tip = (t("구조 검증에 실패해 영어로 남은 섹션이 있습니다 — 번역 패널에서 재번역") if fails
                    else t("원문이 바뀐 섹션이 있어 번역이 낡았습니다 — 번역 패널에서 바뀐 섹션만 재번역") if stale
+                   else t("번역 설정을 바꿨습니다 — 번역 패널에서 다시 번역해야 반영됩니다") if pending
                    else t("번역이 있습니다 — 다시 번역하거나 섹션을 바꾸려면 번역 패널로"))
         else:
             icon, text, cls, tip = ("translate", t("번역 안 됨 · 번역하기"), "md4-chip todo",
@@ -5177,37 +5325,58 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     def translate_settings() -> None:
         """번역 관련 설정 — 방식은 아코디언, 번역할 섹션이 주인공."""
         def set_tsetting(field: str, value) -> None:  # noqa: ANN001
-            """번역 설정 변경 → sections.yaml에 즉시 저장 (새로고침해도 유지)."""
+            """번역 설정 변경 → sections.yaml에 즉시 저장 (새로고침해도 유지). 번역문은 다시 번역할 때 바뀐다 —
+            그때까지 번역 패널 배너와 헤더 칩이 '설정 바뀜'을 알린다."""
             ctrl.set_setting(field, value)
             ctrl.save()
+            refresh_staleness()
 
         def translate_method_panel() -> None:
-            with ui.expansion(t("번역 방식 (문체·범위)"), icon="tune").classes("w-full").props("dense"):
+            with ui.expansion(t("번역 방식 (문체·범위)"), icon="tune").classes("w-full md4-subexp").props("dense"):
                 lang = ctrl.wd.lang
                 opts = langs.style_options(lang)
                 cur = langs.fit_style(lang, m.korean_style, config.resolve_style(lang))  # 다른 언어 문체가 남았으면
                 if cur not in opts:  # custom:"…" — 목록에 넣어 둬야 값이 지워지지 않는다
                     opts = {**opts, cur: cur}
+                # 설명은 한 줄씩 밑에 쌓지 않고 툴팁으로 — 패널이 설명문으로 길어지지 않게
                 ui.select(opts, value=cur, label=t("번역 문체 · {native}", native=langs.get(lang).native),
-                          on_change=lambda e: set_tsetting("korean_style", e.value)).props("dense outlined").classes("w-full")
-                cap(t("문장 끝맺음 말투. 논문은 보통 해라체(~한다)를 씁니다.") if lang == "ko" else
-                    t("번역 언어는 {native}입니다 — 설정 › 변환·번역에서 새 논문의 언어를 바꿉니다.", native=langs.get(lang).native))
+                          on_change=lambda e: set_tsetting("korean_style", e.value)).props("dense outlined") \
+                    .classes("w-full q-mb-xs").tooltip(
+                        t("문장 끝맺음 말투. 논문은 보통 해라체(~한다)를 씁니다.") if lang == "ko" else
+                        t("번역 언어는 {native}입니다 — 설정 › 변환·번역에서 새 논문의 언어를 바꿉니다.",
+                          native=langs.get(lang).native))
                 if ctrl.title_section() is not None:
                     ui.switch(t("논문 제목도 번역"), value=ctrl.translate_title(),
-                              on_change=lambda e: (ctrl.set_translate_title(e.value), ctrl.save()))
-                    cap(t("문서 맨 위 논문 제목 한 줄. 끄면 영어 원제를 그대로 둡니다."))
+                              on_change=lambda e: (ctrl.set_translate_title(e.value), ctrl.save(),
+                                                   refresh_staleness())).props("dense") \
+                        .tooltip(t("문서 맨 위 논문 제목 한 줄. 끄면 영어 원제를 그대로 둡니다."))
                 ui.switch(t("섹션 제목도 번역"), value=m.translate_headers,
-                          on_change=lambda e: set_tsetting("translate_headers", e.value))
-                cap(t("끄면 헤더(3.1 Method 등)는 영어 그대로 두고 본문만 번역합니다."))
+                          on_change=lambda e: set_tsetting("translate_headers", e.value)).props("dense") \
+                    .tooltip(t("끄면 헤더(3.1 Method 등)는 영어 그대로 두고 본문만 번역합니다."))
                 ui.switch(t("참고문헌 목록도 번역"), value=m.translate_references,
-                          on_change=lambda e: set_tsetting("translate_references", e.value))
-                cap(t("보통은 끄는 게 좋습니다 — 서지 정보(저자·제목)는 영어 원문이 정확합니다."))
-                cap(t("Section/Figure/Table 같은 상호참조는 항상 영어로 유지됩니다."))
+                          on_change=lambda e: set_tsetting("translate_references", e.value)).props("dense") \
+                    .tooltip(t("보통은 끄는 게 좋습니다 — 서지 정보(저자·제목)는 영어 원문이 정확합니다."))
 
-        # --- 번역할 섹션 고르기 (Tree Select) — 주 영역 ---
-        ui.label(t("번역할 섹션")).classes("font-semibold text-sm text-primary")
-        cap(t("체크한 섹션만 번역합니다 (LLM 비용·시간 절약). 체크를 풀어도 이미 번역해 둔 섹션은 그대로 남고, "
-            "번역한 적 없는 섹션만 영어로 남습니다. 섹션 단위로 병렬 번역됩니다. 제목을 누르면 캔버스의 그 섹션으로 갑니다."))
+        # --- 번역할 섹션 고르기 (Tree Select) — 주 영역. 머리 줄에 개수와 전체 선택·해제(작은 글자 단추) ---
+        @ui.refreshable
+        def count_label() -> None:
+            ui.label(f"{len(ctrl.ticked_ids())} / {len(ctrl.translatable_sections())}").classes("md4-subcount")
+
+        def set_all(on: bool) -> None:
+            ctrl.set_all_translate(on)
+            ctrl.save()
+            section_picker.refresh()
+
+        with ui.row().classes("items-center w-full no-wrap gap-1 q-mt-sm"):
+            ui.label(t("번역할 섹션")).classes("md4-subhead")
+            count_label()
+            ui.space()
+            ui.button(t("전체 선택"), on_click=lambda: set_all(True)).props("flat dense no-caps size=sm color=primary") \
+                .classes("md4-linkbtn")
+            ui.button(t("전체 해제"), on_click=lambda: set_all(False)).props("flat dense no-caps size=sm color=primary") \
+                .classes("md4-linkbtn")
+        ui.label(t("체크한 섹션만 번역합니다 · 제목을 누르면 그 자리로 갑니다.")) \
+            .classes("text-xs text-gray-500").style("margin:-6px 0 0 2px")
 
         @ui.refreshable
         def section_picker() -> None:
@@ -5231,29 +5400,18 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                     tree.update()
 
             tree = ui.tree(nodes, label_key="label", node_key="id", tick_strategy="strict",
-                           on_tick=on_tick, on_select=on_select)
+                           on_tick=on_tick, on_select=on_select).classes("md4-ttree")
             tree._props["ticked"] = ctrl.ticked_ids()
             # ui.tree는 nodes를 복사해 _props['nodes']에 넣는다 → 원본을 바꿔도 클라이언트에 안 나간다.
             # 실제 렌더되는 복사본을 가리켜 변형해야 tree.update()로 아이콘이 반영된다.
             tree_ref["tree"], tree_ref["nodes"] = tree, tree._props["nodes"]
             _apply_tree_status(tree._props["nodes"], translate_state["status"], _unticked_ids(),
                                set() if translate_state["active"] else ctrl.stale_sections())
+            count_label.refresh()
 
-            @ui.refreshable
-            def count_label() -> None:
-                counts = len(ctrl.translatable_sections())
-                ui.label(t("{n} / {counts} 섹션 선택됨", n=len(ctrl.ticked_ids()), counts=counts)).classes("text-xs text-gray-500")
-            count_label()
-
-        with ui.row().classes("gap-2 items-center"):
-            ui.button(t("전체 선택"), on_click=lambda: (ctrl.set_all_translate(True), ctrl.save(),
-                                                 section_picker.refresh())).props("outline dense")
-            ui.button(t("전체 해제"), on_click=lambda: (ctrl.set_all_translate(False), ctrl.save(),
-                                                 section_picker.refresh())).props("outline dense")
         _translate_refs["picker"] = section_picker  # 구조 패널에서 레벨을 바꾸면 갱신되도록 등록
         section_picker()  # 번역 중 진행 상태는 트리 아이템의 아이콘으로 직접 표시된다
 
-        ui.separator().classes("my-2")
         translate_method_panel()  # 번역 방식 설정은 섹션 선택 아래에 (덜 자주 만지므로 아코디언)
 
     async def download_en() -> None:
@@ -5329,7 +5487,6 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     def _after_relayout() -> None:
         """raw.md·구조가 통째로 바뀌었으므로 이 화면의 파생 뷰를 전부 다시 그린다."""
         section_list.refresh()
-        batch_level_panel.refresh()
         _refresh_translate_tree()
         refresh_canvas()
         viewer_toolbar.refresh()  # '수동 편집됨' 배지 등
@@ -5342,7 +5499,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             t("PDF에서 뽑은 마크다운을 **처음부터 끝까지 나눠 훑으며** AI가 레이아웃만 고칩니다 — "
             "쪼개진 헤더(`## 2` + `## Background` → `## 2 Background`), 깨진 수식(`x t` → `$x_t$`), "
             "끊긴 문단·목록·표 같은 것들. **글의 내용(단어)은 바꾸지 않습니다.**\n\n"
-            "고친 문서로 **섹션 트리와 일괄 레벨 조정도 다시 만들어집니다** "
+            "고친 문서로 **섹션 트리도 다시 만들어집니다** "
             "(지금 정해 둔 레벨·번역 여부·변환 설정은 그대로 이어받습니다).")
         ).classes("text-sm")
         fix_info = ui.label("").classes("text-xs text-gray-500")
@@ -6015,52 +6172,59 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                     panel_state["boxes"]["toc"] = box
 
                     # ---------- 구조 (옛 변환 탭 왼쪽 열) ----------
-                    with ui.column().classes("w-full gap-3") as box:
-                        ui.label(t("구조")).classes("md4-panel-title")
-                        ui.button(t("레이아웃 자동 수정"), icon="auto_fix_high", on_click=open_fix_dialog) \
-                            .props("outline no-caps color=primary").classes("w-full").tooltip(
-                                t("쪼개진 헤더·깨진 수식·끊긴 문단을 AI가 문서 전체에서 찾아 고칩니다"))
-                        cap(t("PDF 추출이 어그러뜨린 부분을 AI가 훑어 고치고, 섹션 트리를 다시 만듭니다."))
-                        # 수정이 도는 동안 대화상자를 숨겼거나 다른 탭에서 돌아왔을 때 진행을 보여 준다
+                    with ui.column().classes("w-full gap-1") as box:
+                        # 머리 줄 — 목차 탭처럼 작은 제목 + 오른쪽 아이콘 단추. 자동 수정·다시 변환은 가끔 쓰는
+                        # 큰 작업이라 맨 위를 차지하던 넓은 단추 대신 아이콘으로(누르면 지금처럼 확인 창이 뜬다).
+                        has_src = bool(ctrl.source_pdf())
+                        with ui.row().classes("items-center w-full no-wrap gap-0"):
+                            ui.label(t("구조")).classes("md4-panel-title")
+                            ui.space()
+                            ui.button(icon="auto_fix_high", on_click=open_fix_dialog) \
+                                .props("flat dense round size=sm color=grey-7").tooltip(
+                                    t("레이아웃 자동 수정") + " — "
+                                    + t("쪼개진 헤더·깨진 수식·끊긴 문단을 AI가 문서 전체에서 찾아 고칩니다"))
+                            rc_button = ui.button(icon="refresh", on_click=open_reconvert_dialog) \
+                                .props("flat dense round size=sm color=grey-7").tooltip(
+                                    t("PDF에서 다시 변환") + " — "
+                                    + (t("원본 PDF에서 추출부터 다시 — 추출기 개선(굵게·기울임, 띄어쓰기 등)을 반영합니다")
+                                       if has_src else t("원본 PDF가 없는 논문(마크다운으로 올림)은 다시 변환할 수 없습니다")))
+                            if not has_src:
+                                rc_button.disable()
+                            with ui.icon("help_outline", size="18px").classes("text-grey-6 q-ml-xs cursor-help"):
+                                ui.tooltip(t("추출이 잘못 잡은 헤더를 고치는 곳입니다. 칩을 누르면 단계(H1~H6)를 바꾸거나, "
+                                             "본문·기울임 문단으로 풀거나, 위 섹션에 합치거나 지울 수 있어요. "
+                                             "같은 번호 모양의 헤더를 한꺼번에 바꿀 수도 있습니다.") + "\n\n"
+                                           + t("제목을 클릭하면 캔버스의 해당 위치로 이동합니다 (PDF가 켜져 있으면 그 쪽으로도)."))\
+                                    .style("white-space:pre-line; max-width:300px")
+                        ui.label(t("칩을 눌러 헤더를 고치고, 제목을 누르면 그 자리로 갑니다.")) \
+                            .classes("text-xs text-gray-500 q-mb-xs").style("margin-left:2px")
+                        if has_src and ctrl.extract_outdated():
+                            cap(t("이전 버전 추출기로 변환된 논문입니다 — 다시 변환하면 개선 사항이 반영됩니다."))
+                        # 수정·변환이 도는 동안 대화상자를 숨겼거나 다른 탭에서 돌아왔을 때 진행을 보여 준다
                         fix_banner = ui.label("").classes("text-xs text-primary cursor-pointer")
                         fix_banner.on("click", open_fix_dialog)
                         fix_banner.set_visibility(False)
                         if jobs.is_running(ctrl.wd.root, "layout"):
                             attach_layout_fix(jobs.get(ctrl.wd.root, "layout"), own=False)
-
-                        has_src = bool(ctrl.source_pdf())
-                        rc_button = ui.button(t("PDF에서 다시 변환"), icon="refresh", on_click=open_reconvert_dialog) \
-                            .props("outline no-caps color=primary").classes("w-full").tooltip(
-                                t("원본 PDF에서 추출부터 다시 — 추출기 개선(굵게·기울임, 띄어쓰기 등)을 반영합니다")
-                                if has_src else t("원본 PDF가 없는 논문(마크다운으로 올림)은 다시 변환할 수 없습니다"))
-                        if not has_src:
-                            rc_button.disable()
-                        elif ctrl.extract_outdated():
-                            cap(t("이전 버전 추출기로 변환된 논문입니다 — 다시 변환하면 개선 사항이 반영됩니다."))
                         rc_banner = ui.label("").classes("text-xs text-primary")
                         rc_banner.set_visibility(False)
                         if jobs.is_running(ctrl.wd.root, "reconvert"):
                             attach_reconvert(jobs.get(ctrl.wd.root, "reconvert"))
-
-                        with ui.expansion(t("일괄 레벨 조정"), icon="format_list_numbered").classes("w-full"):
-                            batch_level_panel()
-
-                        ui.label(t("섹션 트리")).classes("font-semibold text-sm text-primary")
-                        ui.label(t("제목 1~6: 헤더 단계 · 본문으로: 헤더를 풀어 제목 텍스트를 일반 문단으로 남김")) \
-                            .classes("text-xs text-gray-500")
-                        ui.label(t("위에 합침: 제목 줄을 없애고 그 내용을 위 섹션에 합침 · 통째 삭제: 제목·본문 모두 제거")) \
-                            .classes("text-xs text-gray-500")
-                        ui.label(t("기울임: run-in 소제목을 기울임 문단으로 표기")).classes("text-xs text-gray-500")
-                        ui.label(t("제목을 클릭하면 캔버스의 해당 위치로 이동합니다 (PDF가 켜져 있으면 그 쪽으로도).")) \
-                            .classes("text-xs text-gray-500")
-                        section_list()
+                        with ui.element("div").classes("w-full").style("padding-bottom:24px"):
+                            section_list()
                     panel_state["boxes"]["structure"] = box
 
                     # ---------- 번역 (옛 번역 탭 왼쪽 열 + 용어집 머리) ----------
                     with ui.column().classes("w-full gap-3") as box:
-                        ui.label(t("번역")).classes("md4-panel-title")
+                        with ui.row().classes("items-center w-full no-wrap gap-0"):
+                            ui.label(t("번역")).classes("md4-panel-title")
+                            ui.space()
+                            with ui.icon("help_outline", size="18px").classes("text-grey-6 cursor-help"):
+                                ui.tooltip(t("체크한 섹션만 번역합니다 (LLM 비용·시간 절약). 체크를 풀어도 이미 번역해 둔 섹션은 그대로 남고, "
+                                             "번역한 적 없는 섹션만 영어로 남습니다. 섹션 단위로 병렬 번역됩니다. 제목을 누르면 캔버스의 그 섹션으로 갑니다.")
+                                           + "\n\n" + t("Section/Figure/Table 같은 상호참조는 항상 영어로 유지됩니다.")) \
+                                    .style("white-space:pre-line; max-width:300px")
                         translate_run_panel()
-                        ui.separator()
                         translate_settings()
                     panel_state["boxes"]["translate"] = box
 
