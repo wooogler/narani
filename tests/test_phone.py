@@ -263,3 +263,13 @@ def test_phone_reader_has_jumps_and_back_pill():
     assert 'id="tocd-t-fig"' in html and 'id="jback"' in html
     assert "function indexFigs" in js and "function linkFigRefs" in js and "function beforeJump" in js
     assert "beforeJump()" in js.split("function onLink", 1)[1].split("function ", 1)[0]   # 참조·인용 이동도 자리를 집는다
+
+
+def test_phone_reader_zooms_figures_fullscreen():
+    # 그림·표를 누르면 전체 화면 — 그 안에서만 핀치·끌기·두 번 누르기. 본문 확대는 막지 않는다
+    files = web.site_files(local=True)
+    js, html = files["app.js"][0].decode(), files["index.html"][0].decode()
+    assert "user-scalable" not in html and "maximum-scale" not in html
+    assert "function mediaTap" in js and "function openZoom" in js
+    assert "mediaTap(media)" in js.split("doc.addEventListener('click'", 1)[1]   # 문장 누르기보다 먼저 가로챈다
+    assert "#zv .zv-box" in html

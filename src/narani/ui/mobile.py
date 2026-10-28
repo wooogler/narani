@@ -593,6 +593,8 @@ CORE_JS = r"""
     var sel = window.getSelection && window.getSelection();
     if (sel && !sel.isCollapsed) return;               // 길게 눌러 고르는 중이면 건드리지 않는다
     var cell = e.target.closest('.row .cell.ko, .row .cell.en');
+    var media = e.target.closest('.row .cell img, .row .cell table');   // 그림만 있는 행은 .cell.same
+    if (media && typeof mediaTap === 'function' && mediaTap(media)){ clearSent(); closeSheet(); return; }  // 쓰는 쪽이 그림·표를 크게 연다(폰: 전체 화면)
     if (!cell || e.target.closest('img, table, math, pre')){ clearSent(); closeSheet(); return; }
     onSentence(e, cell);
   });
