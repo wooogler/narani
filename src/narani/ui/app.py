@@ -25,7 +25,7 @@ from narani.ui import (
     jump_back, live_preview, md_keys, split_view, mdrender, pdf_zoom, reanchor,
     scroll_memory, sentpair, spa, tabstore, term_examples, translate_job, update_banner, wordcount_view,
 )
-from narani.ui.controller import LEVEL_OPTIONS, RUNIN_LEVEL_OPTIONS, UIController
+from narani.ui.controller import UIController
 from narani.workdir import WorkDir, left_panel, paper_title, set_left_panel, set_project
 
 # 설명이 붙은 옵션 (값 → 사람이 이해하기 쉬운 라벨)
@@ -100,11 +100,6 @@ _LEVEL_LABEL = {
 }
 
 
-def _level_opts(runin: bool) -> dict:
-    """레벨 선택 옵션 {값: 한국어 라벨}. 값은 controller의 정본 목록을 그대로 쓴다."""
-    src = RUNIN_LEVEL_OPTIONS if runin else LEVEL_OPTIONS
-    return {v: t(_LEVEL_LABEL[v]) if v in _LEVEL_LABEL else str(v) for v in src}
-
 # Notion 느낌의 프리뷰 스타일
 _PREVIEW_CSS = """
 .md-preview { max-width: 820px; margin: 0 auto; padding: 8px 16px 64px;
@@ -167,14 +162,6 @@ _PREVIEW_CSS = """
   margin-right: 6px; top: 50%; transform: translateY(-50%); font-size: 10.5px; line-height: 1.4;
   background: rgba(0,0,0,.72); color: #fff; padding: 1px 6px; border-radius: 4px; white-space: nowrap; }
 @media (prefers-color-scheme: dark) { #md-cite-tip a.md-cite-doi { color: #2c62b8; } }
-/* 섹션 제목: 기본은 …로 잘리고, 행을 호버하면 전체가 여러 줄로 펼쳐짐 (버튼·배지는 오른쪽 유지) */
-/* 레벨 드롭다운을 더 낮게 (섹션 트리·일괄 조정) */
-.md4-lvl.q-field--dense .q-field__control, .md4-lvl.q-field--dense .q-field__marginal {
-  min-height: 30px; height: 30px; }
-.md4-lvl .q-field__native { min-height: 30px; padding: 0; font-size: 13px; }
-.md4-lvl .q-field__append { height: 30px; }
-/* 일괄 레벨 조정: 그룹을 펼쳤을 때 개별 섹션 들여쓰기를 줄인다 (그룹 셀렉트 폭만큼 왼쪽으로 당김) */
-.md4-batch-exp .q-expansion-item__content { padding-left: 0; margin-left: -100px; }
 /* 보기 전환 세그먼트(편집 대상 원문/번역 등) — 둥근 테두리 + 넉넉한 패딩 (촘촘하지 않게) */
 .conv-viewtoggle { border: 1px solid rgba(0,0,0,.14); border-radius: 9px; overflow: hidden; }
 .conv-viewtoggle .q-btn { padding: 4px 16px; min-height: 32px; font-weight: 500; }
@@ -202,8 +189,6 @@ sup.md-fn a:hover { text-decoration: underline; }
 /* 섹션 트리 행 하이라이트 — 점프 시 잠깐 반짝 */
 @keyframes sectreeflash { 0%, 35% { background: rgba(35,131,226,.30); } 100% { background: transparent; } }
 .sectree-flash { animation: sectreeflash 1.6s ease-out; border-radius: 6px; }
-.section-title { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.group:hover .section-title { white-space: normal; overflow: visible; text-overflow: clip; }
 /* 번역 중 섹션 아이콘(primary 색 autorenew)만 회전 — 체크박스·완료·실패 아이콘은 정지.
    .q-tree__icon는 노드 아이콘 전용 클래스라 tick 체크박스와 겹치지 않는다. */
 @keyframes md4spin { to { transform: rotate(360deg); } }
@@ -226,6 +211,40 @@ sup.md-fn a:hover { text-decoration: underline; }
 .vtoc-l1 { font-size: 13px; color: #5b5851; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vtoc-l2 { font-size: 11.5px; color: #9a968e; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .vtoc-item:hover .vtoc-l1 { color: #37352f; }
+/* 구조 탭 섹션 트리 — 목차(.vtoc-item)와 같은 행. 왼쪽 레벨 칩을 누르면 메뉴 */
+.md4-secrow { display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 6px;
+  line-height: 1.4; min-width: 0; }
+.md4-secrow:hover { background: #ececec; }
+.md4-sect { font-size: 13px; color: #5b5851; flex: 0 1 auto; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.md4-secrow:hover .md4-sect { color: #37352f; }
+.md4-sect.jump { cursor: pointer; }
+.md4-sect.title { font-weight: 600; color: #37352f; }
+.md4-sect.off { color: #a8a49c; }
+.md4-sect.it { font-style: italic; }
+.md4-sect.gone { color: #b5b1a9; text-decoration: line-through; }
+.md4-secchip { flex: none; min-width: 32px; padding: 1px 5px; border-radius: 5px; text-align: center; cursor: pointer;
+  font-size: 10.5px; font-weight: 600; line-height: 1.5; color: #2383e2; background: rgba(35,131,226,.10);
+  user-select: none; }
+.md4-secchip:hover { background: rgba(35,131,226,.20); }
+.md4-secchip.plain { color: #8a867e; background: #efeeeb; }
+.md4-secchip.plain:hover { background: #e4e2de; }
+.md4-secchip.del { color: #c4382d; background: rgba(196,56,45,.08); }
+.md4-secbdg { flex: none; font-size: 10px; line-height: 1.5; color: #9a968e; border: 1px solid #dcdad5;
+  border-radius: 4px; padding: 0 4px; }
+.md4-secbdg.title { color: #7b3fbf; border-color: rgba(123,63,191,.35); }
+.md4-secbdg.kept { color: #2e8b57; border-color: rgba(46,139,87,.35); }
+.md4-secbdg.warn { color: #c47a12; border-color: #efcf9f; }
+.md4-secmenu { padding: 8px; min-width: 240px; }
+.md4-secmenu .conv-viewtoggle { display: flex; margin-bottom: 4px; }
+.md4-secmenu .conv-viewtoggle .q-btn { flex: 1; padding: 2px 0; min-height: 28px; font-size: 12px; }
+.md4-secmenu .q-separator { margin: 4px 0; }
+.md4-secmenu-item { min-height: 0; padding: 5px 8px; border-radius: 6px; font-size: 13px;
+  flex-direction: row; align-items: baseline; gap: 8px; }
+.md4-secmenu-item.on { color: #2383e2; font-weight: 600; }
+.md4-secmenu-item.del { color: #c4382d; }
+.md4-secmenu-hint { font-size: 11px; font-weight: 400; color: #9a968e; }
+.md4-secmenu-bulk { font-size: 12px; color: #5b5851; padding: 4px 2px 0; }
 .vmain { flex: 1 1 auto; min-width: 0; height: 100%; }
 .vwrap { position: relative; height: 100%; min-width: 0; }        /* 정렬 그리드 + 컬럼 드래그 핸들 */
 /* 원문 | PDF 나란히 — splitter 패널은 flex-column이라 그 안 상자가 내용 폭으로 줄어든다. 그러면 본문이
@@ -332,6 +351,15 @@ sup.md-fn a:hover { text-decoration: underline; }
   .vtoc-l1 { color: #b8b8b8; }
   .vtoc-item:hover { background: #2c2c2c; }
   .vtoc-item:hover .vtoc-l1 { color: #e0e0e0; }
+  .md4-secrow:hover { background: #2c2c2c; }
+  .md4-sect { color: #b8b8b8; }
+  .md4-secrow:hover .md4-sect, .md4-sect.title { color: #e0e0e0; }
+  .md4-sect.off, .md4-sect.gone { color: #7a7a7a; }
+  .md4-secchip { color: #7bb7ff; background: rgba(90,150,230,.18); }
+  .md4-secchip.plain { color: #a8a8a8; background: #2f2f2f; }
+  .md4-secchip.del { color: #ff8a80; background: rgba(255,138,128,.12); }
+  .md4-secbdg { border-color: #444; color: #8e8e8e; }
+  .md4-secmenu-bulk { color: #c8c8c8; }
   .vcol-handle::after { background: #3a3a3a; }
   .vbody-handle::after { background: #3a3a3a; }
   .vpdf { background: #151515; }
@@ -2832,120 +2860,98 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         ui.notify(" ".join(parts), type="warning" if (r["conflicts"] or r["dropped"]) else "positive",
                   multi_line=len(parts) > 1, timeout=8000 if len(parts) > 1 else 4000)
 
-    async def change_level(sid: str, value) -> None:  # noqa: ANN001
-        """레벨 변경 → 자동 저장 + 즉시 프리뷰·트리에 반영. 캔버스를 다시 지어도 읽던 자리는 그대로 —
-        예전엔 그리드를 통째로 다시 지어 본문이 맨 위로 튀었다."""
+    async def change_level(sid: str, value, group: str | None = None) -> None:  # noqa: ANN001
+        """레벨 변경 → 자동 저장 + 즉시 프리뷰·트리에 반영. group(같은 모양 헤더 묶음 키)을 주면 그 묶음 전부를.
+        캔버스를 다시 지어도 읽던 자리는 그대로 — 예전엔 그리드를 통째로 다시 지어 본문이 맨 위로 튀었다."""
         def apply() -> None:
-            ctrl.set_level(sid, value)
+            if group:
+                n = ctrl.apply_group_level(group, value)
+                ui.notify(t("같은 모양 헤더 {n}개 → {level}", n=n, level=t(_LEVEL_LABEL.get(value, str(value)))),
+                          type="positive")
+            else:
+                ctrl.set_level(sid, value)
             commit()
             section_list.refresh()
-            batch_level_panel.refresh()
             _refresh_translate_tree()
         await refresh_canvas_keeping_place(apply)  # 그리드·목차(편집 중이면 에디터도) 새로 만들어진 en.md로
 
+    # 레벨 칩 — 목차처럼 한 줄짜리 행 왼쪽에 짧게. (예전엔 112px 드롭다운이라 'Heading…'으로 잘려 단계가 안 보였다)
+    _CHIP = {"italic": N_("기울임"), "skip": N_("문단"), "merge-up": N_("합침"), "drop": N_("지움")}
+    # 메뉴의 헤더 아닌 처리 — (값, 설명). 이름은 _LEVEL_LABEL
+    _LEVEL_HINT = [("skip", N_("제목 글은 문단으로 남김")), ("italic", N_("run-in 소제목을 기울임 문단으로")),
+                   ("merge-up", N_("제목 줄을 없애고 내용은 위 섹션에")), ("drop", N_("제목과 내용을 모두 지움"))]
+
+    def _level_menu(sec, group: dict | None) -> None:  # noqa: ANN001 — ManifestSection
+        """칩을 누르면 뜨는 메뉴 하나에 모든 처리를 — 제목 1~6 · 본문/기울임 · 위에 합침/삭제 · 같은 모양 모두.
+
+        '같은 모양 모두'는 옛 '일괄 레벨 조정' 칸을 대신한다 — 따로 그룹 목록을 보지 않아도, 고치려던 헤더에서
+        바로 같은 번호 모양(예: 2.1, 2.2 …) 전부를 바꾼다."""
+        bulk = {"on": False}
+
+        async def pick(value) -> None:  # noqa: ANN001
+            menu.close()
+            if value is None or (value == sec.level and not bulk["on"]):
+                return
+            await change_level(sec.id, value, group["key"] if bulk["on"] and group else None)
+
+        with ui.menu().props("anchor='bottom left' self='top left'").classes("md4-secmenu") as menu:
+            ui.toggle({n: f"H{n}" for n in range(1, 7)}, value=sec.level if isinstance(sec.level, int) else None,
+                      on_change=lambda e: pick(e.value)) \
+                .props("dense no-caps unelevated toggle-color=primary color=grey-3 text-color=grey-8") \
+                .classes("conv-viewtoggle").tooltip(t("헤더 단계"))
+            for i, (v, hint) in enumerate(_LEVEL_HINT):
+                if i == 2:
+                    ui.separator()
+                with ui.menu_item(on_click=lambda v=v: pick(v), auto_close=False) \
+                        .classes("md4-secmenu-item" + (" on" if sec.level == v else "") + (" del" if v == "drop" else "")):
+                    ui.label(t(_LEVEL_LABEL[v]))
+                    ui.label(t(hint)).classes("md4-secmenu-hint")
+            if group and group["count"] > 1:
+                ui.separator()
+                ui.checkbox(t("같은 모양 헤더 {n}개에 모두 적용", n=group["count"]),
+                            on_change=lambda e: bulk.__setitem__("on", e.value)) \
+                    .props("dense size=xs").classes("md4-secmenu-bulk") \
+                    .tooltip("\n".join(group["titles"][:12]) + ("\n…" if group["count"] > 12 else "")) \
+                    .style("white-space:pre-line")
+
     @ui.refreshable
     def section_list() -> None:
+        """섹션 트리 — 목차 탭과 같은 한 줄짜리 행. 왼쪽 칩이 레벨(누르면 메뉴), 제목을 누르면 캔버스 그 자리로."""
+        groups = {(g["scheme"], g["depth"]): g for g in ctrl.level_groups()}
+        last = 1  # 헤더가 아닌 행(본문·기울임·합침·삭제)은 바로 위 헤더보다 한 칸 안으로
         for sec in m.sections:
-            # 레벨 드롭다운은 왼쪽 고정 열로 정렬, 들여쓰기는 텍스트에만, 배지는 오른쪽 끝으로
-            indent = (int(sec.level) - 1) * 18 if str(sec.level).isdigit() else 0
-            opts = _level_opts(sec.runin)
-            # id=sectree-<sid>: 마크다운 프리뷰의 점프 버튼(⚙)이 이 행으로 스크롤+하이라이트한다
-            with ui.row().classes("group items-center w-full gap-2 no-wrap").props(f"id=sectree-{sec.id}"):
-                ui.select(
-                    opts,
-                    value=sec.level,
-                    on_change=lambda e, sid=sec.id: change_level(sid, e.value),
-                ).props("dense outlined").classes("w-28 shrink-0 md4-lvl")
-                text_cls = "text-sm font-semibold" if sec.is_title else "text-sm"
-                # 라벨 + 배지 + 이동 버튼을 한 덩어리로 묶어 섹션 텍스트 바로 옆에 붙인다
-                with ui.row().classes("items-center gap-1 min-w-0").style(f"margin-left:{indent}px"):
-                    lbl = ui.label(sec.text).classes(text_cls + " section-title")
-                    if isinstance(sec.level, int):  # 헤더로 남는 섹션 → 클릭 시 마크다운 그 위치로
-                        lbl.classes("cursor-pointer").on("click", lambda _, sid=sec.id: goto_md(sid))
-                    tip = (f"p.{sec.page}\n" if sec.page else "") + (sec.context or "")
-                    if isinstance(sec.level, int):
-                        tip = t("클릭하면 마크다운의 이 섹션으로 이동") + "\n" + tip
-                    if tip.strip():
-                        lbl.tooltip(tip.strip())
-                    # 배지 — 항상 보임 (제목/run-in/기억됨/확인)
-                    if sec.is_title:
-                        ui.badge(t("제목"), color="purple").props("outline")
-                    if sec.runin:
-                        ui.badge("run-in", color="blue-4").props("outline")
-                    if sec.auto_level is not None and sec.level != sec.auto_level:
-                        ui.badge(t("기억됨"), color="green").props("outline").tooltip(
-                            t("자동값 {auto} → 사용자 선택 {level} (이름으로 기억)",
-                              auto=t(_LEVEL_LABEL.get(sec.auto_level, str(sec.auto_level))),
-                              level=t(_LEVEL_LABEL.get(sec.level, str(sec.level)))))
-                    if sec.needs_review:
-                        ui.badge(t("확인"), color="orange").props("outline")
-                    # 섹션 라벨을 클릭하면 마크다운 그 위치로 이동(나란히 보기면 PDF도 따라옴).
-                    # 별도 PDF 이동 버튼은 두지 않는다.
-
-    _GROUP_NAME = {
-        ("title", 0): N_("제목"),
-        ("dotted-arabic", 1): N_("숫자 1단계"), ("dotted-arabic", 2): N_("숫자 2단계"),
-        ("dotted-arabic", 3): N_("숫자 3단계"), ("dotted-arabic", 4): N_("숫자 4단계"),
-        ("roman", 1): N_("로마 숫자"), ("letter", 1): N_("문자"), ("letter", 2): N_("문자 2단계"),
-        ("unnumbered", 1): N_("무번호"), ("none", 1): N_("번호 없음"), ("run-in", 0): N_("run-in 헤더"),
-    }
-
-    @ui.refreshable
-    def batch_level_panel() -> None:
-        """같은 모양의 헤더를 묶어 한 번에 조정 — 선택지는 섹션 트리와 동일."""
-        groups = ctrl.level_groups()
-        if not groups:
-            ui.label(t("조정할 헤더가 없습니다.")).classes("text-xs text-gray-400")
-            return
-        ui.label(t("같은 모양의 헤더를 한 번에 바꿉니다. 펼치면 그룹의 각 섹션을 개별 조정할 수 있어요.")) \
-            .classes("text-xs text-gray-500")
-
-        async def apply_group(key: str, name: str, value) -> None:  # noqa: ANN001
-            if value is None:
-                return
-
-            def apply() -> None:
-                n = ctrl.apply_group_level(key, value)
-                commit()
-                section_list.refresh()
-                batch_level_panel.refresh()
-                _refresh_translate_tree()
-                ui.notify(t("{name} {n}개 → {level}", name=name, n=n, level=t(_LEVEL_LABEL.get(value, str(value)))), type="positive")
-
-            await refresh_canvas_keeping_place(apply)
-
-        async def change_in_group(sid: str, value) -> None:  # noqa: ANN001
-            """그룹 내 개별 섹션 레벨 변경 → 프리뷰·섹션 트리·번역 트리 연동 (아코디언은 유지)."""
-            def apply() -> None:
-                ctrl.set_level(sid, value)
-                commit()
-                section_list.refresh()
-                _refresh_translate_tree()
-
-            await refresh_canvas_keeping_place(apply)
-
-        for g in groups:
-            gk = (g["scheme"], g["depth"])
-            name = t(_GROUP_NAME[gk]) if gk in _GROUP_NAME else t("{scheme} {depth}단계", scheme=g["scheme"], depth=g["depth"])
-            opts = _level_opts(g["scheme"] == "run-in")
-            group_secs = [s for s in m.sections if ctrl.group_key(s) == (g["scheme"], g["depth"])]
-            # 일괄 선택은 접힌 상태에서도 쓰도록 아코디언 헤더 옆(왼쪽)에 둔다. 펼치면 개별 섹션.
-            with ui.row().classes("items-start gap-2 w-full no-wrap"):
-                ui.select(
-                    opts, value=g["current"],
-                    on_change=lambda e, k=g["key"], nm=name: apply_group(k, nm, e.value),
-                ).props("dense outlined").classes("w-28 shrink-0 md4-lvl").tooltip(t("이 그룹 전체를 한 번에"))
-                with ui.expansion(f"{name} ×{g['count']}").classes("flex-grow md4-batch-exp").props("dense"):
-                    for s in group_secs:  # 개별 섹션 + 헤더 레벨 선택 (섹션 트리·마크다운과 연동)
-                        with ui.row().classes("items-center gap-2 w-full no-wrap"):
-                            ui.select(
-                                opts, value=s.level,
-                                on_change=lambda e, sid=s.id: change_in_group(sid, e.value),
-                            ).props("dense outlined").classes("w-28 shrink-0 md4-lvl")
-                            lbl = ui.label(s.text).classes("text-sm section-title").style("max-width:300px")
-                            if isinstance(s.level, int):  # 클릭 시 마크다운의 해당 섹션으로 이동
-                                lbl.classes("cursor-pointer").on("click", lambda _, sid=s.id: goto_md(sid)) \
-                                    .tooltip(t("클릭하면 마크다운의 이 섹션으로 이동"))
+            lv = sec.level
+            if isinstance(lv, int):
+                last, depth = lv, lv - 1
+            else:
+                depth = last
+            # id=sectree-<sid>: 마크다운 프리뷰의 점프 단추가 이 행으로 스크롤+하이라이트한다
+            with ui.element("div").classes("md4-secrow").props(f"id=sectree-{sec.id}") \
+                    .style(f"padding-left:{6 + depth * 14}px"):
+                kind = "" if isinstance(lv, int) else (" del" if lv == "drop" else " plain")
+                with ui.element("span").classes("md4-secchip" + kind):
+                    ui.label(f"H{lv}" if isinstance(lv, int) else t(_CHIP.get(lv, str(lv))))
+                    _level_menu(sec, groups.get(ctrl.group_key(sec)))
+                cls = ("title" if sec.is_title else "") + {"italic": " it off", "skip": " off", "merge-up": " off",
+                                                            "drop": " gone"}.get(str(lv), "")
+                lbl = ui.label(sec.text).classes("md4-sect " + cls)
+                tip = (f"p.{sec.page}\n" if sec.page else "") + (sec.context or "")
+                if isinstance(lv, int):  # 헤더로 남는 섹션 → 클릭 시 캔버스 그 위치로(나란히 보기면 PDF도)
+                    lbl.classes("jump").on("click", lambda _, sid=sec.id: goto_md(sid))
+                    tip = t("클릭하면 마크다운의 이 섹션으로 이동") + "\n" + tip
+                lbl.tooltip(sec.text + "\n" + tip.strip())
+                # 배지 — 제목/run-in/기억됨/확인
+                if sec.is_title:
+                    ui.label(t("제목")).classes("md4-secbdg title")
+                if sec.runin:
+                    ui.label("run-in").classes("md4-secbdg")
+                if sec.auto_level is not None and lv != sec.auto_level:
+                    ui.label(t("기억됨")).classes("md4-secbdg kept").tooltip(
+                        t("자동값 {auto} → 사용자 선택 {level} (이름으로 기억)",
+                          auto=t(_LEVEL_LABEL.get(sec.auto_level, str(sec.auto_level))),
+                          level=t(_LEVEL_LABEL.get(lv, str(lv)))))
+                if sec.needs_review:
+                    ui.label(t("확인")).classes("md4-secbdg warn")
 
     spa.add_css(i18n.html(_PREVIEW_CSS))
     spa.add_css(live_preview.CSS)  # 편집기 라이브 프리뷰(기호 숨기기·헤더·그림·표·수식)
@@ -5400,7 +5406,6 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     def _after_relayout() -> None:
         """raw.md·구조가 통째로 바뀌었으므로 이 화면의 파생 뷰를 전부 다시 그린다."""
         section_list.refresh()
-        batch_level_panel.refresh()
         _refresh_translate_tree()
         refresh_canvas()
         viewer_toolbar.refresh()  # '수동 편집됨' 배지 등
@@ -5413,7 +5418,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             t("PDF에서 뽑은 마크다운을 **처음부터 끝까지 나눠 훑으며** AI가 레이아웃만 고칩니다 — "
             "쪼개진 헤더(`## 2` + `## Background` → `## 2 Background`), 깨진 수식(`x t` → `$x_t$`), "
             "끊긴 문단·목록·표 같은 것들. **글의 내용(단어)은 바꾸지 않습니다.**\n\n"
-            "고친 문서로 **섹션 트리와 일괄 레벨 조정도 다시 만들어집니다** "
+            "고친 문서로 **섹션 트리도 다시 만들어집니다** "
             "(지금 정해 둔 레벨·번역 여부·변환 설정은 그대로 이어받습니다).")
         ).classes("text-sm")
         fix_info = ui.label("").classes("text-xs text-gray-500")
@@ -6086,45 +6091,46 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                     panel_state["boxes"]["toc"] = box
 
                     # ---------- 구조 (옛 변환 탭 왼쪽 열) ----------
-                    with ui.column().classes("w-full gap-3") as box:
-                        ui.label(t("구조")).classes("md4-panel-title")
-                        ui.button(t("레이아웃 자동 수정"), icon="auto_fix_high", on_click=open_fix_dialog) \
-                            .props("outline no-caps color=primary").classes("w-full").tooltip(
-                                t("쪼개진 헤더·깨진 수식·끊긴 문단을 AI가 문서 전체에서 찾아 고칩니다"))
-                        cap(t("PDF 추출이 어그러뜨린 부분을 AI가 훑어 고치고, 섹션 트리를 다시 만듭니다."))
-                        # 수정이 도는 동안 대화상자를 숨겼거나 다른 탭에서 돌아왔을 때 진행을 보여 준다
+                    with ui.column().classes("w-full gap-1") as box:
+                        # 머리 줄 — 목차 탭처럼 작은 제목 + 오른쪽 아이콘 단추. 자동 수정·다시 변환은 가끔 쓰는
+                        # 큰 작업이라 맨 위를 차지하던 넓은 단추 대신 아이콘으로(누르면 지금처럼 확인 창이 뜬다).
+                        has_src = bool(ctrl.source_pdf())
+                        with ui.row().classes("items-center w-full no-wrap gap-0"):
+                            ui.label(t("구조")).classes("md4-panel-title")
+                            ui.space()
+                            ui.button(icon="auto_fix_high", on_click=open_fix_dialog) \
+                                .props("flat dense round size=sm color=grey-7").tooltip(
+                                    t("레이아웃 자동 수정") + " — "
+                                    + t("쪼개진 헤더·깨진 수식·끊긴 문단을 AI가 문서 전체에서 찾아 고칩니다"))
+                            rc_button = ui.button(icon="refresh", on_click=open_reconvert_dialog) \
+                                .props("flat dense round size=sm color=grey-7").tooltip(
+                                    t("PDF에서 다시 변환") + " — "
+                                    + (t("원본 PDF에서 추출부터 다시 — 추출기 개선(굵게·기울임, 띄어쓰기 등)을 반영합니다")
+                                       if has_src else t("원본 PDF가 없는 논문(마크다운으로 올림)은 다시 변환할 수 없습니다")))
+                            if not has_src:
+                                rc_button.disable()
+                            with ui.icon("help_outline", size="18px").classes("text-grey-6 q-ml-xs cursor-help"):
+                                ui.tooltip(t("추출이 잘못 잡은 헤더를 고치는 곳입니다. 칩을 누르면 단계(H1~H6)를 바꾸거나, "
+                                             "본문·기울임 문단으로 풀거나, 위 섹션에 합치거나 지울 수 있어요. "
+                                             "같은 번호 모양의 헤더를 한꺼번에 바꿀 수도 있습니다.") + "\n\n"
+                                           + t("제목을 클릭하면 캔버스의 해당 위치로 이동합니다 (PDF가 켜져 있으면 그 쪽으로도)."))\
+                                    .style("white-space:pre-line; max-width:300px")
+                        ui.label(t("칩을 눌러 헤더를 고치고, 제목을 누르면 그 자리로 갑니다.")) \
+                            .classes("text-xs text-gray-500 q-mb-xs").style("margin-left:2px")
+                        if has_src and ctrl.extract_outdated():
+                            cap(t("이전 버전 추출기로 변환된 논문입니다 — 다시 변환하면 개선 사항이 반영됩니다."))
+                        # 수정·변환이 도는 동안 대화상자를 숨겼거나 다른 탭에서 돌아왔을 때 진행을 보여 준다
                         fix_banner = ui.label("").classes("text-xs text-primary cursor-pointer")
                         fix_banner.on("click", open_fix_dialog)
                         fix_banner.set_visibility(False)
                         if jobs.is_running(ctrl.wd.root, "layout"):
                             attach_layout_fix(jobs.get(ctrl.wd.root, "layout"), own=False)
-
-                        has_src = bool(ctrl.source_pdf())
-                        rc_button = ui.button(t("PDF에서 다시 변환"), icon="refresh", on_click=open_reconvert_dialog) \
-                            .props("outline no-caps color=primary").classes("w-full").tooltip(
-                                t("원본 PDF에서 추출부터 다시 — 추출기 개선(굵게·기울임, 띄어쓰기 등)을 반영합니다")
-                                if has_src else t("원본 PDF가 없는 논문(마크다운으로 올림)은 다시 변환할 수 없습니다"))
-                        if not has_src:
-                            rc_button.disable()
-                        elif ctrl.extract_outdated():
-                            cap(t("이전 버전 추출기로 변환된 논문입니다 — 다시 변환하면 개선 사항이 반영됩니다."))
                         rc_banner = ui.label("").classes("text-xs text-primary")
                         rc_banner.set_visibility(False)
                         if jobs.is_running(ctrl.wd.root, "reconvert"):
                             attach_reconvert(jobs.get(ctrl.wd.root, "reconvert"))
-
-                        with ui.expansion(t("일괄 레벨 조정"), icon="format_list_numbered").classes("w-full"):
-                            batch_level_panel()
-
-                        ui.label(t("섹션 트리")).classes("font-semibold text-sm text-primary")
-                        ui.label(t("제목 1~6: 헤더 단계 · 본문으로: 헤더를 풀어 제목 텍스트를 일반 문단으로 남김")) \
-                            .classes("text-xs text-gray-500")
-                        ui.label(t("위에 합침: 제목 줄을 없애고 그 내용을 위 섹션에 합침 · 통째 삭제: 제목·본문 모두 제거")) \
-                            .classes("text-xs text-gray-500")
-                        ui.label(t("기울임: run-in 소제목을 기울임 문단으로 표기")).classes("text-xs text-gray-500")
-                        ui.label(t("제목을 클릭하면 캔버스의 해당 위치로 이동합니다 (PDF가 켜져 있으면 그 쪽으로도).")) \
-                            .classes("text-xs text-gray-500")
-                        section_list()
+                        with ui.element("div").classes("w-full").style("padding-bottom:24px"):
+                            section_list()
                     panel_state["boxes"]["structure"] = box
 
                     # ---------- 번역 (옛 번역 탭 왼쪽 열 + 용어집 머리) ----------
