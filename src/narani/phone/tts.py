@@ -7,10 +7,12 @@
 읽는 것: 제목, 초록, 본문 섹션(제목은 알린다). 건너뛰는 것: 그림·표·코드·블록 수식·긴 인라인 수식,
 인용 표기 [12, Kim 2020], 각주 번호, URL, 저자 줄, CCS·키워드 같은 앞쪽 메타, 참고문헌·부록·감사의 글 이후.
 
-엔진: Mac 내장 목소리(`say`, 무료·오프라인), Qwen3-TTS(무료·로컬, Apple Silicon — 따로 설치한 작은 파이썬
+엔진: Mac 내장 목소리(`say`, 무료·오프라인), Windows 내장 목소리(SAPI — PowerShell의 System.Speech, 무료·오프라인),
+Qwen3-TTS(무료·로컬, Apple Silicon — 따로 설치한 작은 파이썬
 환경에서 mlx-audio로, 문장마다), Gemini TTS(유료, 사용자 키 — 섹션 안 여러 문단을 묶어 부르고 쉼으로 문장을 가른다). 섹션마다 합성 결과를 논문 작업
 폴더의 `audio/`에 캐시한다 — 다시 번역해 몇 섹션만 바뀌면 그 섹션만 다시 만든다. 캐시는 64kbps AAC로
-두고(작게), 합칠 때 한 번 풀어 32kbps 모노 m4a로 다시 묶는다(시간당 약 15MB).
+두고(작게), 합칠 때 한 번 풀어 32kbps 모노 m4a로 다시 묶는다(시간당 약 15MB). 인코딩·디코딩은 Mac이면 내장
+afconvert, 아니면 PyAV(FFmpeg를 품은 휠)로 한다(_encode_m4a·_decode_pcm).
 """
 
 from __future__ import annotations
@@ -512,7 +514,7 @@ class MacVoice:
 
     @staticmethod
     def available() -> bool:
-        return sys.platform == "darwin" and bool(shutil.which("say")) and bool(shutil.which("afconvert"))
+        return sys.platform == "darwin" and bool(shutil.which("say")) and codec_available()
 
     def _one(self, text: str, path: Path) -> bytes:
         cmd = ["say", "-v", self.voice, "-o", str(path), "--file-format=WAVE", f"--data-format=LEI16@{RATE}"]
@@ -553,6 +555,133 @@ def mac_voices(lang: str) -> list[str]:
         q = 0 if ("Premium" in n or "Enhanced" in n) else (1 if n.split(" (")[0] in good else 2)
         return (q, good.index(n.split(" (")[0]) if n.split(" (")[0] in good else 99)
     return sorted(names, key=rank)
+
+
+# ---- Windows 내장 목소리 (SAPI — 무료·오프라인) ----
+# PowerShell 5.1에 늘 있는 System.Speech로 문장마다 WAV를 쓴다. 문장마다 PowerShell을 띄우면 느려서(한 번에 0.5초쯤)
+# 문장 묶음을 JSON 파일로 넘기고 한 프로세스가 차례로 쓴다 — 한 문장 끝날 때마다 'ok' 한 줄(진행 표시).
+# 목소리는 Windows 설정 → 시간 및 언어 → 음성에서 언어별로 받는다. OneCore 전용 목소리(일부 새 목소리)는
+# System.Speech에 안 보인다.
+_WIN_LIST = r"""
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+Add-Type -AssemblyName System.Speech
+$s = New-Object System.Speech.Synthesis.SpeechSynthesizer
+foreach ($v in $s.GetInstalledVoices()) { if ($v.Enabled) { $i = $v.VoiceInfo; [Console]::Out.WriteLine($i.Name + "`t" + $i.Culture.Name) } }
+$s.Dispose()
+"""
+_WIN_SYNTH = r"""
+$ErrorActionPreference = 'Stop'
+[Console]::OutputEncoding = [Text.Encoding]::UTF8
+Add-Type -AssemblyName System.Speech
+$job = [IO.File]::ReadAllText($args[0], [Text.Encoding]::UTF8) | ConvertFrom-Json
+$s = New-Object System.Speech.Synthesis.SpeechSynthesizer
+$s.SelectVoice($job.voice)
+if ($job.rate -ne $null) { $s.Rate = [int]$job.rate }
+$fmt = New-Object System.Speech.AudioFormat.SpeechAudioFormatInfo([int]$job.hz, [System.Speech.AudioFormat.AudioBitsPerSample]::Sixteen, [System.Speech.AudioFormat.AudioChannel]::Mono)
+foreach ($it in $job.items) {
+  $s.SetOutputToWaveFile($it.out, $fmt)
+  $s.Speak([string]$it.text)
+  $s.SetOutputToNull()
+  [Console]::Out.WriteLine('ok')
+}
+$s.Dispose()
+"""
+
+
+def _powershell() -> str | None:
+    return shutil.which("powershell") or shutil.which("pwsh")
+
+
+def _ps_args(script: Path, *args: str) -> list[str]:
+    return [_powershell() or "powershell", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass",
+            "-File", str(script), *args]
+
+
+_NO_WINDOW = getattr(subprocess, "CREATE_NO_WINDOW", 0)   # 문장 묶음마다 콘솔 창이 번쩍이지 않게
+
+
+class WinVoice:
+    """Windows 내장 목소리 (SAPI) — 무료, 오프라인. MacVoice와 같은 꼴: 문장마다 합성해 PCM을 돌려준다.
+
+    rate는 SAPI의 -10~10 (0이 보통).
+    """
+
+    kind = "win"
+    workers = 3
+
+    def __init__(self, voice: str, rate: int | None = None) -> None:
+        self.voice, self.rate = voice, rate
+
+    @property
+    def id(self) -> str:
+        return f"win:{self.voice}" + (f"@{self.rate}" if self.rate is not None else "")
+
+    @staticmethod
+    def available() -> bool:
+        return sys.platform == "win32" and bool(_powershell()) and codec_available()
+
+    def _batch(self, items: list[tuple[str, Path]], td: Path, on_each: Callable[[], None] | None) -> list[bytes]:
+        script, job = td / "synth.ps1", td / f"job-{items[0][1].stem}.json"
+        if not script.exists():
+            script.write_text(_WIN_SYNTH, encoding="utf-8-sig")   # BOM — PowerShell 5.1이 UTF-8로 읽게
+        job.write_text(json.dumps({"voice": self.voice, "rate": self.rate, "hz": RATE,
+                                   "items": [{"text": t, "out": str(p)} for t, p in items]}, ensure_ascii=False),
+                       encoding="utf-8")
+        p = subprocess.Popen(_ps_args(script, str(job)), stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                             text=True, encoding="utf-8", errors="replace", creationflags=_NO_WINDOW)
+        for line in p.stdout:
+            if line.strip() == "ok" and on_each:
+                on_each()
+        err = p.stderr.read()
+        if p.wait():
+            raise RuntimeError(f"Windows 음성 합성 실패: {err.strip()[-300:]}")
+        out = []
+        for _t, path in items:
+            with wave.open(str(path)) as w:
+                out.append(w.readframes(w.getnframes()))
+        return out
+
+    def synth(self, texts: list[str], on_each: Callable[[], None] | None = None) -> list[bytes]:
+        if not texts:
+            return []
+        with tempfile.TemporaryDirectory() as td:
+            items = [(t, Path(td) / f"{i:05d}.wav") for i, t in enumerate(texts)]
+            n = max(1, -(-len(items) // self.workers))
+            chunks = [items[i:i + n] for i in range(0, len(items), n)]
+            (Path(td) / "synth.ps1").write_text(_WIN_SYNTH, encoding="utf-8-sig")
+            with ThreadPoolExecutor(len(chunks)) as ex:
+                parts = list(ex.map(lambda c: self._batch(c, Path(td), on_each), chunks))
+        return [pcm for part in parts for pcm in part]
+
+
+def win_voices(lang: str) -> list[str]:
+    """이 PC에 있는 그 언어의 Windows 목소리 이름들 (예: 'Microsoft Heami Desktop')."""
+    if not WinVoice.available():
+        return []
+    loc = (_LOCALE.get(lang) or _LOCALE.get(lang.split("-")[0], "")).replace("_", "-")
+    with tempfile.TemporaryDirectory() as td:
+        script = Path(td) / "list.ps1"
+        script.write_text(_WIN_LIST, encoding="utf-8-sig")
+        try:
+            out = subprocess.run(_ps_args(script), capture_output=True, text=True, encoding="utf-8", errors="replace",
+                                 check=True, creationflags=_NO_WINDOW).stdout
+        except (OSError, subprocess.CalledProcessError):
+            return []
+    names = []
+    for line in out.splitlines():
+        name, _, culture = line.strip().partition("\t")
+        if name and culture.lower() == loc.lower() and name not in names:
+            names.append(name)
+    return names
+
+
+def system_voice_kind() -> str | None:
+    """이 컴퓨터의 무료 내장 목소리 — 'mac' · 'win' · 없으면 None."""
+    if MacVoice.available():
+        return "mac"
+    if WinVoice.available():
+        return "win"
+    return None
 
 
 # ---- Gemini TTS (유료 — 사용자 키) ----
@@ -664,6 +793,11 @@ class GeminiVoice:
     def id(self) -> str:
         return f"gemini:{self.model}:{self.voice}"
 
+    @staticmethod
+    def available() -> bool:
+        """이 컴퓨터에서 만들 수 있는지 — 합성은 클라우드라 인코더만 있으면 된다(키는 따로: service.gemini_ready)."""
+        return codec_available()
+
     def _key(self) -> str:
         if self.key:
             return self.key
@@ -694,7 +828,7 @@ class GeminiVoice:
                 if (wait is not None and wait > 90) or "per day" in r.text.lower() or attempt == 4:
                     from narani.i18n import t
                     raise GeminiQuota(t("Gemini 요청 한도에 걸렸습니다{wait} — 무료 등급 키는 TTS가 하루 몇 번뿐이라 논문 한 편을 "
-                                        "만들기 어렵습니다. Google AI Studio에서 결제를 켠 키를 쓰거나 Mac 목소리로 만드세요. "
+                                        "만들기 어렵습니다. Google AI Studio에서 결제를 켠 키를 쓰거나 무료 내장 목소리로 만드세요. "
                                         "다 만든 섹션은 남아 있어 다시 하면 이어서 만듭니다.",
                                         wait=t(" (약 {h}시간 뒤에 풀림)", h=max(1, round(wait / 3600))) if wait and wait > 3600
                                         else ""))
@@ -857,7 +991,7 @@ class QwenVoice:
 
     @staticmethod
     def available() -> bool:
-        return qwen_ready() and bool(shutil.which("afconvert"))
+        return qwen_ready() and codec_available()
 
     def _read(self) -> dict:
         while True:
@@ -922,15 +1056,77 @@ class QwenVoice:
 
 
 # ---- 합치기 ----
+# m4a(AAC) 인코딩·디코딩 — Mac은 내장 afconvert(애플 AAC, 지금까지의 음성과 같은 소리), 그 밖은 PyAV(FFmpeg
+# 내장 AAC). NARANI_AUDIO_CODEC=av로 Mac에서도 PyAV 쪽을 쓴다(시험용).
+def _use_afconvert() -> bool:
+    import os
+
+    return os.environ.get("NARANI_AUDIO_CODEC") != "av" and bool(shutil.which("afconvert"))
+
+
+def codec_available() -> bool:
+    if _use_afconvert():
+        return True
+    import importlib.util
+
+    return importlib.util.find_spec("av") is not None
+
+
 def _afconvert(*args: str) -> None:
     subprocess.run(["afconvert", *args], check=True, capture_output=True)
 
 
-def _pcm_of(m4a: Path, tmp: Path) -> bytes:
-    wav = tmp / (m4a.stem + ".wav")
-    _afconvert("-f", "WAVE", "-d", f"LEI16@{RATE}", str(m4a), str(wav))
+def _encode_m4a(wav: Path, out: Path, bitrate: int) -> None:
+    """16비트 모노 WAV → AAC m4a (폰의 <audio>·잠금 화면·CarPlay가 그대로 튼다)."""
+    if _use_afconvert():
+        _afconvert("-f", "m4af", "-d", "aac", "-b", str(bitrate), str(wav), str(out))
+        return
+    from fractions import Fraction
+
+    import av
+
     with wave.open(str(wav)) as w:
-        return w.readframes(w.getnframes())
+        rate, pcm = w.getframerate(), w.readframes(w.getnframes())
+    with av.open(str(out), "w", format="ipod") as c:      # ipod = .m4a 꾸러미
+        st = c.add_stream("aac", rate=rate, layout="mono")
+        st.bit_rate = bitrate
+        step = rate * 2                                    # 1초씩 (16비트)
+        for i in range(0, len(pcm), step):
+            chunk = pcm[i:i + step]
+            f = av.AudioFrame(format="s16", layout="mono", samples=len(chunk) // 2)
+            f.planes[0].update(chunk)
+            f.sample_rate = rate
+            # 시각을 매겨야 인코더 앞머리(priming 1024표본)가 음수 시각이 되고, 꾸러미에 편집 목록이 붙어
+            # 푸는 쪽(폰 Safari·우리 _decode_pcm)이 그만큼 잘라 낸다 — 안 매기면 문장 시각이 46ms씩 밀린다
+            f.pts, f.time_base = i // 2, Fraction(1, rate)
+            for packet in st.encode(f):
+                c.mux(packet)
+        for packet in st.encode(None):
+            c.mux(packet)
+
+
+def _decode_pcm(m4a: Path, rate: int = RATE) -> bytes:
+    """m4a → 16비트 모노 PCM (rate로 다시 표본화 — Gemini·Qwen의 24kHz 캐시도 합칠 땐 RATE로)."""
+    if _use_afconvert():
+        with tempfile.TemporaryDirectory() as td:
+            wav = Path(td) / "x.wav"
+            _afconvert("-f", "WAVE", "-d", f"LEI16@{rate}", str(m4a), str(wav))
+            with wave.open(str(wav)) as w:
+                return w.readframes(w.getnframes())
+    import av
+
+    out = bytearray()
+    rs = av.AudioResampler(format="s16", layout="mono", rate=rate)
+    with av.open(str(m4a)) as c:
+        frames = [*c.decode(audio=0), None]
+        for fr in frames:
+            for f in rs.resample(fr):
+                out += bytes(f.planes[0])[: f.samples * 2]
+    return bytes(out)
+
+
+def _pcm_of(m4a: Path, tmp: Path) -> bytes:  # noqa: ARG001 — tmp는 옛 호출 꼴
+    return _decode_pcm(m4a)
 
 
 def _write_wav(path: Path, pcm: bytes, rate: int = RATE) -> None:
@@ -965,7 +1161,7 @@ def _make_section(engine, sec: Section, cache: Path, key: str, tmp: Path,  # noq
         t += dur + gap
     wav = tmp / f"{key}.wav"
     _write_wav(wav, bytes(pcm), rate)
-    _afconvert("-f", "m4af", "-d", "aac", "-b", str(CACHE_BITRATE), str(wav), str(cache / f"{key}.m4a"))
+    _encode_m4a(wav, cache / f"{key}.m4a", CACHE_BITRATE)
     (cache / f"{key}.json").write_text(json.dumps({"marks": marks, "voice": engine.id}), encoding="utf-8")
 
 
@@ -1019,7 +1215,7 @@ def _build(bundle, engine, cache, side, secs, keys, todo, total, on_progress):  
         wav = tmp / "all.wav"
         _write_wav(wav, bytes(pcm))
         out = tmp / "all.m4a"
-        _afconvert("-f", "m4af", "-d", "aac", "-b", str(BITRATE), str(wav), str(out))
+        _encode_m4a(wav, out, BITRATE)
         data = out.read_bytes()
     # 같은 목소리의 옛 섹션(본문이 바뀐 것)만 지운다 — 다른 목소리 캐시는 둔다: Qwen(느림)·Gemini(유료)로 만든 것을
     # 목소리를 바꿔 봤다가 돌아와도 다시 만들지 않게. 목소리 표시가 없는 옛 캐시는 예전처럼 지운다.

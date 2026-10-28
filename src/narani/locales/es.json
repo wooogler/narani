@@ -1325,5 +1325,10 @@
  "그림·표 설명도 읽기": "Leer también los pies de figuras y tablas",
  "수식도 읽기 (AI가 읽는 말을 만듦)": "Leer fórmulas (la IA escribe cómo decirlas)",
  "설정 → AI에서 키를 넣으면 수식도 말로 읽습니다 — 없으면 수식은 건너뜁니다.": "Añade una clave en Ajustes → IA para que se lean las fórmulas; sin ella, se omiten.",
- "번역 본문을 읽은 음성을 만들어 Drive의 Narani 폴더에 올립니다(시간당 약 15MB). 그림·표·인용 표기·참고문헌은 건너뛰고, 섹션 제목은 알립니다. 캡션·수식은 아래에서 고릅니다.": "Crea el audio de la traducción y lo sube a la carpeta Narani de tu Drive (unos 15 MB por hora). Se omiten figuras, tablas, marcas de cita y referencias; se anuncian los títulos de sección. Elige abajo si leer los pies de figura y las fórmulas."
+ "번역 본문을 읽은 음성을 만들어 Drive의 Narani 폴더에 올립니다(시간당 약 15MB). 그림·표·인용 표기·참고문헌은 건너뛰고, 섹션 제목은 알립니다. 캡션·수식은 아래에서 고릅니다.": "Crea el audio de la traducción y lo sube a la carpeta Narani de tu Drive (unos 15 MB por hora). Se omiten figuras, tablas, marcas de cita y referencias; se anuncian los títulos de sección. Elige abajo si leer los pies de figura y las fórmulas.",
+ "Gemini 요청 한도에 걸렸습니다{wait} — 무료 등급 키는 TTS가 하루 몇 번뿐이라 논문 한 편을 만들기 어렵습니다. Google AI Studio에서 결제를 켠 키를 쓰거나 무료 내장 목소리로 만드세요. 다 만든 섹션은 남아 있어 다시 하면 이어서 만듭니다.": "Se alcanzó el límite de solicitudes de Gemini{wait} — las claves del nivel gratuito solo permiten unas pocas solicitudes de TTS al día, lo que no basta para un artículo entero. Usa una clave con la facturación activada en Google AI Studio o una voz integrada gratuita. Las secciones terminadas se conservan, así que al reintentar continúa donde se quedó.",
+ "음성 파일을 만들 인코더(PyAV)가 없습니다 — 앱을 업데이트(다시 설치)하세요.": "Falta el codificador de audio (PyAV) — actualiza (reinstala) la aplicación.",
+ "이 컴퓨터에서 쓸 수 있는 목소리가 없습니다 — 설정 → AI에서 Gemini 키를 넣으면 Gemini 목소리로 만들 수 있습니다.": "No hay ninguna voz disponible en este equipo — añade una clave de Gemini en Ajustes → IA para crear el audio con voces de Gemini.",
+ "이 PC에 '{lang}' 목소리가 없습니다 — Windows 설정 → 시간 및 언어 → 음성에서 그 언어의 음성을 추가하세요(추가한 뒤 앱을 다시 켜야 보일 수 있습니다).": "Este PC no tiene una voz de '{lang}' — añade una voz para ese idioma en Configuración de Windows → Hora e idioma → Voz (puede que tengas que reiniciar la aplicación para verla).",
+ "무료 — Windows 목소리": "Gratis — voz de Windows"
 }
