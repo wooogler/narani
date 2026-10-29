@@ -67,6 +67,9 @@ class ManifestSection(BaseModel):
     # 본문 줄 안에 있던 run-in 헤더("4.1.3 제목. 본문…")면 True + 나머지 본문
     runin: bool = False
     runin_body: str | None = None
+    # 추출이 놓친 제목을 사용자가 편집기에서 `#`를 붙여 만든 섹션 — raw.md에도 헤더 줄로 써 두지만, 다시 변환하면
+    # raw.md를 새로 뽑으므로 이 표시로 같은 글의 줄을 찾아 다시 헤더로 세운다(§structure/edit_heads.promote)
+    added: bool = False
 
 
 

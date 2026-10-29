@@ -797,6 +797,99 @@ class UIController:
         status["manual_edit"] = True
         self.wd.save_status(status)
 
+    def follow_edit_headings(self, before: str) -> dict | None:
+        """편집기에서 저장한 en.md의 헤더 변화를 구조에 옮긴다 (§structure/edit_heads).
+
+        before는 이번 저장 전의 en.md다. 헤더 모양이 그대로면(본문만 고쳤으면) None — 자동 저장마다 부르므로
+        가볍게 끝낸다. 바뀌었으면 섹션 레벨을 고치고, 추출이 놓친 제목이면 raw.md의 그 줄을 헤더로 써서 새
+        섹션으로 등록한 뒤 편집을 살려 다시 조립한다. 반환 {"added", "levels", "orphans", "text"} — text는 다시
+        조립한 en.md가 저장한 글과 다를 때만 그 글(편집기에 다시 넣을 것), 아니면 None.
+        """
+        from narani import pipeline
+        from narani.structure import edit_heads
+
+        mine = self.en_markdown()
+        if not self.wd.raw_md.exists() or edit_heads.signature(before) == edit_heads.signature(mine):
+            return None
+        origins: list = []
+        base = pipeline.assembled_markdown(self.wd, manifest_io.load(self.wd), origins)
+        raw = self.wd.raw_md.read_text(encoding="utf-8")
+        plan = edit_heads.plan(base.splitlines(), origins, mine.splitlines(), self.manifest.sections,
+                               raw.splitlines())
+        out = {"added": 0, "levels": len(plan.levels), "orphans": plan.orphans, "text": None}
+        if not (plan.levels or plan.anchors):
+            return out
+        demoted = [s.text for s in self.manifest.sections
+                   if s.id in plan.levels and isinstance(s.level, int) and not isinstance(plan.levels[s.id], int)]
+        for sid, level in plan.levels.items():
+            self.set_level(sid, level)
+        if plan.anchors:
+            out["added"] = self._anchor_headings(raw, plan.anchors)
+        self._edit_base = base  # 바꾸기 전 조립본 — raw.md를 고친 뒤에는 다시 만들 수 없다
+        self.save_and_reassemble()
+        ko = self.ko_markdown()
+        if demoted and ko and not self.has_manual_edit_ko():
+            # 번역본도 같은 자리의 헤더를 문단으로 — 헤더 수가 어긋나면 나란히 보기가 섹션 짝을 잃는다
+            patched = demote_ko_headings(ko, before, demoted)
+            if patched is not None:
+                self._write_atomic(self.wd.ko_md, patched)
+        merged = self.en_markdown()
+        out["text"] = merged if merged != mine else None
+        return out
+
+    def _anchor_headings(self, raw: str, anchors: list) -> int:
+        """raw.md의 줄들을 헤더 줄로 고쳐 쓰고 새 섹션을 매니페스트·blocks.json에 넣는다. 반환: 새 섹션 수."""
+        from narani import relayout
+        from narani.ir import ManifestSection
+
+        lines = raw.splitlines()
+        for a in sorted(anchors, key=lambda a: a.line, reverse=True):
+            lines[a.line:a.line + 1] = a.lines()
+        new_raw = "\n".join(lines) + ("\n" if raw.endswith("\n") else "")
+        self._write_atomic(self.wd.raw_md, new_raw)
+
+        secs = self.manifest.sections
+        taken = {s.id for s in secs}
+        added: list = []
+        for a in anchors:
+            if a.sid is not None:  # 이미 섹션인 긴 제목을 다시 쪼갰다 — 글만 짧게
+                sec = self.section(a.sid)
+                if sec is not None:
+                    sec.text = a.text
+                continue
+            prev = next((s for s in reversed(secs) if s.line < a.line), None)
+            n = 1
+            while f"h_e{n:03d}" in taken:
+                n += 1
+            taken.add(f"h_e{n:03d}")
+            sec = ManifestSection(
+                id=f"h_e{n:03d}", text=a.text, line=a.line, page=prev.page if prev else None,
+                marker_level=a.level, level=a.level, auto_level=a.level,
+                translate=prev.translate if prev else True, added=True,
+                context=" ".join(a.body.split()[:10]) or None)
+            secs.insert(next((k for k, s in enumerate(secs) if s.line > a.line), len(secs)), sec)
+            added.append(sec)
+        self._sync_block_headings()
+        for a in sorted(anchors, key=lambda a: a.line, reverse=True):
+            # 쪼갠 줄 수만큼 아래 앵커를 민다 — 새 섹션도 위쪽 쪼개기만큼 함께 밀린다
+            self._shift_line_anchors(a.line, len(a.lines()) - 1, new_raw)
+        relayout._refresh_frontmatter_hash(self.wd, new_raw)  # 다음 변환이 앞부분을 다시 손대지 않게
+        return len(added)
+
+    def _sync_block_headings(self) -> None:
+        """blocks.json의 헤더 앵커를 매니페스트와 같게 — 다시 열 때 줄 번호를 이 파일에서 id로 읽는다."""
+        if not self.wd.blocks_json.exists():
+            return
+        try:
+            blocks = json.loads(self.wd.blocks_json.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        known = {h.get("id"): h for h in blocks.get("headings", [])}
+        blocks["headings"] = [
+            {**known.get(s.id, {}), "id": s.id, "line": s.line, "marker_level": s.marker_level, "text": s.text}
+            for s in self.manifest.sections]
+        self.wd.blocks_json.write_text(json.dumps(blocks, ensure_ascii=False, indent=2), encoding="utf-8")
+
     def save_ko_markdown(self, text: str) -> None:
         """뷰어에서 직접 고친 번역 마크다운을 저장하고 '번역 수동 편집됨'으로 표시.
 

@@ -1410,5 +1410,12 @@
  "함께 담을 메모 탭": "Pestañas de nota que incluir",
  "이 답(고른 부분이 있으면 그 부분)을 논문 메모 탭에 넣기": "Añadir esta respuesta (o la parte seleccionada) a una pestaña de nota del artículo",
  "저장하면 이 판으로 바뀌어요(옛 판은 휴지통에).": "Al guardar se reemplaza la nota por esta versión (la anterior va a la papelera).",
- "목차 칸 접기": "Contraer el panel de índice"
+ "목차 칸 접기": "Contraer el panel de índice",
+ "직접 추가": "Añadido por ti",
+ "마크다운 편집에서 제목으로 만든 줄입니다 — 다시 변환해도 같은 줄을 찾아 다시 세웁니다": "Convertiste esta línea en título en el editor de Markdown; al volver a convertir se busca la misma línea y se vuelve a hacer título",
+ "편집은 저장했지만 구조 탭에 반영하지 못했습니다: {ex}": "Tu edición se guardó, pero no se pudo actualizar la pestaña Estructura: {ex}",
+ "'{text}' 줄을 원문에서 찾지 못해 구조 탭에 넣지 못했습니다 — 편집은 그대로 남습니다.": "No se encontró la línea «{text}» en el original, así que no se añadió a la pestaña Estructura; tu edición se mantiene.",
+ "자동 저장됨 · 구조 탭에 반영": "Guardado automáticamente · Estructura actualizada",
+ "구조 탭에 섹션 {n}개를 더했습니다": "Se añadieron {n} sección(es) a la pestaña Estructura",
+ "목록에 없는 제목은 마크다운 편집에서 그 줄 앞에 ## 를 붙이면 여기에 섹션으로 더해집니다. #를 떼면 본문으로 돌아갑니다.": "¿Falta un título aquí? En el editor de Markdown, pon ## delante de su línea y se añadirá aquí como sección. Quita el # para devolverlo al texto normal."
 }

@@ -75,6 +75,8 @@ def to_yaml(manifest: Manifest) -> str:
         if s.runin:
             m["runin"] = True
             m["runin_body"] = s.runin_body or ""
+        if s.added:
+            m["added"] = True  # 편집기에서 사용자가 제목으로 만든 줄
         if s.detected is not None:
             m["scheme"] = s.detected.scheme.value
             if s.detected.number:
@@ -136,6 +138,7 @@ def load(wd: WorkDir) -> Manifest:
                 translate=bool(item.get("translate", True)),
                 runin=bool(item.get("runin", False)),
                 runin_body=item.get("runin_body"),
+                added=bool(item.get("added", False)),
             )
         )
 

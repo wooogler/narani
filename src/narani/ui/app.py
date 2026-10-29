@@ -2974,6 +2974,9 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                     ui.label(t("제목")).classes("md4-secbdg title")
                 if sec.runin:
                     ui.label("run-in").classes("md4-secbdg")
+                if sec.added:
+                    ui.label(t("직접 추가")).classes("md4-secbdg").tooltip(
+                        t("마크다운 편집에서 제목으로 만든 줄입니다 — 다시 변환해도 같은 줄을 찾아 다시 세웁니다"))
                 if sec.auto_level is not None and lv != sec.auto_level:
                     ui.label(t("기억됨")).classes("md4-secbdg kept").tooltip(
                         t("자동값 {auto} → 사용자 선택 {level} (이름으로 기억)",
@@ -3302,6 +3305,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         edit_state["pending"] = None
         lang, text = pending
         first = not (ctrl.has_manual_edit() if lang == "en" else ctrl.has_manual_edit_ko())
+        before = ctrl.en_markdown() if lang == "en" else None
         try:
             if lang == "en":
                 ctrl.save_en_markdown(text)
@@ -3311,6 +3315,8 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             _edit_status(t("저장 실패: {ex}", ex=ex))
             return
         _edit_status(t("자동 저장됨"))
+        if before is not None:
+            _follow_headings(before, text)
         if not edit_state["live"] and edit_state["on"]:
             preview_pane.refresh()   # 실시간 반영을 꺼 뒀으면 저장할 때 프리뷰를 맞춘다
         if lang == "en":
@@ -3319,6 +3325,34 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         toc_panel.refresh()      # 헤더를 고쳤을 수 있다
         if first:
             edit_toggle.refresh()  # '수동 편집됨' 배지
+
+    def _follow_headings(before: str, text: str) -> None:
+        """원문 편집기에서 헤더를 세우거나 떼거나 레벨을 바꿨으면 구조(구조 탭·목차·번역 섹션)도 따라가게."""
+        try:
+            res = ctrl.follow_edit_headings(before)
+        except Exception as ex:  # noqa: BLE001 — 구조 맞추기가 실패해도 편집은 이미 저장됐다
+            ui.notify(t("편집은 저장했지만 구조 탭에 반영하지 못했습니다: {ex}", ex=ex), type="warning")
+            return
+        if res is None:
+            return
+        seen = edit_state.setdefault("orphans", set())
+        fresh = [o for o in res["orphans"] if o not in seen]
+        if fresh:
+            seen.update(fresh)
+            ui.notify(t("'{text}' 줄을 원문에서 찾지 못해 구조 탭에 넣지 못했습니다 — 편집은 그대로 남습니다.",
+                        text=fresh[0]), type="warning")
+        if not (res["added"] or res["levels"]):
+            return
+        ed = edit_state.get("editor")
+        if res["text"] is not None and ed is not None and not ed.is_deleted and ed.value == text:
+            edit_state["pending"] = None
+            ed.value = res["text"]  # 다시 조립한 글 — 그 사이 더 친 글자가 없을 때만(바뀐 구간만 갈아 끼운다)
+        _edit_status(t("자동 저장됨 · 구조 탭에 반영"))
+        if res["added"]:
+            ui.notify(t("구조 탭에 섹션 {n}개를 더했습니다", n=res["added"]), type="positive")
+        section_list.refresh()
+        _refresh_translate_tree()
+        edit_toggle.refresh()  # 구조가 편집을 다 품었으면 '수동 편집됨'이 풀린다
 
     def _edit_status(text: str) -> None:
         lbl = edit_state.get("status")
@@ -6194,6 +6228,8 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                                 ui.tooltip(t("추출이 잘못 잡은 헤더를 고치는 곳입니다. 칩을 누르면 단계(H1~H6)를 바꾸거나, "
                                              "본문·기울임 문단으로 풀거나, 위 섹션에 합치거나 지울 수 있어요. "
                                              "같은 번호 모양의 헤더를 한꺼번에 바꿀 수도 있습니다.") + "\n\n"
+                                           + t("목록에 없는 제목은 마크다운 편집에서 그 줄 앞에 ## 를 붙이면 여기에 섹션으로 "
+                                               "더해집니다. #를 떼면 본문으로 돌아갑니다.") + "\n\n"
                                            + t("제목을 클릭하면 캔버스의 해당 위치로 이동합니다 (PDF가 켜져 있으면 그 쪽으로도)."))\
                                     .style("white-space:pre-line; max-width:300px")
                         ui.label(t("칩을 눌러 헤더를 고치고, 제목을 누르면 그 자리로 갑니다.")) \

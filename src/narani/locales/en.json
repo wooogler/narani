@@ -1410,5 +1410,12 @@
  "함께 담을 메모 탭": "Note tabs to include",
  "이 답(고른 부분이 있으면 그 부분)을 논문 메모 탭에 넣기": "Add this answer (or the part you selected) to a note tab of this paper",
  "저장하면 이 판으로 바뀌어요(옛 판은 휴지통에).": "Saving replaces the note with this version (the old one goes to the trash).",
- "목차 칸 접기": "Collapse contents panel"
+ "목차 칸 접기": "Collapse contents panel",
+ "직접 추가": "Added by you",
+ "마크다운 편집에서 제목으로 만든 줄입니다 — 다시 변환해도 같은 줄을 찾아 다시 세웁니다": "You made this line a heading in the Markdown editor — reconverting finds the same line and makes it a heading again",
+ "편집은 저장했지만 구조 탭에 반영하지 못했습니다: {ex}": "Your edit was saved, but the Structure tab could not be updated: {ex}",
+ "'{text}' 줄을 원문에서 찾지 못해 구조 탭에 넣지 못했습니다 — 편집은 그대로 남습니다.": "Couldn't find the line '{text}' in the source, so it wasn't added to the Structure tab — your edit stays as is.",
+ "자동 저장됨 · 구조 탭에 반영": "Saved automatically · Structure updated",
+ "구조 탭에 섹션 {n}개를 더했습니다": "Added {n} section(s) to the Structure tab",
+ "목록에 없는 제목은 마크다운 편집에서 그 줄 앞에 ## 를 붙이면 여기에 섹션으로 더해집니다. #를 떼면 본문으로 돌아갑니다.": "A heading that isn't listed here? In the Markdown editor, put ## in front of its line and it is added here as a section. Remove the # to turn it back into body text."
 }
