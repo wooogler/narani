@@ -23,6 +23,10 @@ Design goals. We aim to keep the editor simple and the structure honest.
 ## 2 Method
 
 Method body.
+
+## 3 Results and Discussion
+
+Results body.
 """
 
 
@@ -171,3 +175,29 @@ def test_split_prefix():
     assert edit_heads.split_prefix("3.2 Results", "3.2 Results") == ""
     assert edit_heads.split_prefix("Resultsy text", "Results") is None
     assert edit_heads.split_prefix("Other text", "Results") is None
+
+
+def test_renamed_heading_is_not_an_orphan(ctrl):
+    """제목 글만 고쳤다 — 구조는 그대로, 경고 없이 3-way 합치기가 고친 글을 살린다."""
+    raw = ctrl.wd.raw_md.read_text(encoding="utf-8")
+    texts = [s.text for s in ctrl.manifest.sections]
+    r, mine = _edit(ctrl, "# 2 Method", "# 2 Our Method")
+    assert r["orphans"] == [] and r["added"] == 0 and r["levels"] == 0
+    assert [s.text for s in ctrl.manifest.sections] == texts
+    assert ctrl.wd.raw_md.read_text(encoding="utf-8") == raw and ctrl.en_markdown() == mine
+
+
+def test_rename_with_level_change_applies_level(ctrl):
+    r, _ = _edit(ctrl, "# 2 Method", "## 2 Our Method")
+    assert r["orphans"] == [] and _sec(ctrl, "2 Method").level == 2
+    assert "## 2 Our Method" in ctrl.en_markdown()
+
+
+def test_shortened_heading_does_not_split_source(ctrl):
+    """'3 Results and Discussion' → '3 Results' — 앞머리 일치지만 본문으로 이어지지 않으니 쪼개지 않는다."""
+    raw = ctrl.wd.raw_md.read_text(encoding="utf-8")
+    n = len(ctrl.manifest.sections)
+    r, mine = _edit(ctrl, "# 3 Results and Discussion", "# 3 Results")
+    assert r["orphans"] == [] and r["added"] == 0
+    assert len(ctrl.manifest.sections) == n and ctrl.wd.raw_md.read_text(encoding="utf-8") == raw
+    assert ctrl.en_markdown() == mine  # 'and Discussion' 문단이 생기지 않았다

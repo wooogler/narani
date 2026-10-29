@@ -21,6 +21,7 @@ _LEGEND = (
     "# narani 섹션 매니페스트 — 편집 후 저장하세요.\n"
     "# level: 1-6(헤더 레벨) | skip(헤더 해제, 본문 유지) | merge-up(위에 흡수) | drop(섹션 통째 제거).\n"
     "# needs_review: true 는 번호 감지 실패로 marker 레벨을 그대로 쓴 항목 — 확인 필요.\n"
+    "# added: true 는 편집기에서 사용자가 제목으로 만든 줄(다시 변환해도 같은 줄을 찾아 다시 헤더로).\n"
     "# 각 text 옆 주석(↳)은 뒤따르는 본문 스니펫(참고용).\n"
     "# citation_parts: 조합 가능 목록 [number, authoryear, short] — 예: [number, short] → [1, Transformer]\n"
     "# reference_links: true|false  (참고문헌을 DOI/arXiv 링크로 — 바로 논문 접근)\n"

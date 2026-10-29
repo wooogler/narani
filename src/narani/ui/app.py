@@ -3348,6 +3348,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             edit_state["pending"] = None
             ed.value = res["text"]  # 다시 조립한 글 — 그 사이 더 친 글자가 없을 때만(바뀐 구간만 갈아 끼운다)
         _edit_status(t("자동 저장됨 · 구조 탭에 반영"))
+        _rows_memo.clear()  # 글이 같아도 섹션 맵이 바뀌었을 수 있다 (d2e61b3과 같은 이유)
         if res["added"]:
             ui.notify(t("구조 탭에 섹션 {n}개를 더했습니다", n=res["added"]), type="positive")
         section_list.refresh()

@@ -111,6 +111,17 @@ def _next_text_line(lines: list[str], j: int) -> int | None:
     return next((k for k in range(j + 1, min(len(lines), j + 4)) if lines[k].strip()), None)
 
 
+def _continues(mine: list[str], j: int, body: str | None) -> bool:
+    """j번째 제목 줄 다음 글 줄이 body(쪼개고 남을 본문)로 시작하나 — 첫 낱말로 본다."""
+    if not body:
+        return False
+    k = _next_text_line(mine, j)
+    if k is None:
+        return False
+    a, b = norm(mine[k]).split(), norm(body).split()
+    return bool(a and b) and a[0] == b[0]
+
+
 def plan(base: list[str], origins: list, mine: list[str], sections: list, raw: list[str]) -> Plan:
     """base(지금 구조의 조립본)·mine(고친 en.md)을 견주어 구조에 옮길 변경을 고른다. 아무것도 쓰지 않는다.
 
@@ -135,9 +146,18 @@ def plan(base: list[str], origins: list, mine: list[str], sections: list, raw: l
             lvl, text = mh[j]
             nt = norm(text)
             whole = [i for i in range(i1, i2) if i not in used_b and norm(base[i]) == nt]
+            # 문단 앞머리를 제목으로 뗐으면 나머지 본문이 다음 줄로 이어진다 — 안 이어지면 제목 글을 줄인 것뿐이다
             prefix = [] if whole else [i for i in range(i1, i2) if i not in used_b
-                                       and split_prefix(base[i], text)]
+                                       and _continues(mine, j, split_prefix(base[i], text))]
             if not (whole or prefix):
+                hb = next((i for i in range(i1, i2) if i in bh and i not in used_b), None)
+                if hb is not None:  # 제목 글만 고친 헤더 — 글은 3-way 합치기가 살리고, 여기선 레벨만 본다
+                    used_b.add(hb)
+                    used_m.add(j)
+                    sec = by_line.get(origin(hb))
+                    if sec is not None and sec.level != lvl:
+                        out.levels[sec.id] = lvl
+                    continue
                 _fallback(out, sections, text, lvl, origin(i1 - 1) if i1 else None)
                 continue
             i = (whole or prefix)[0]

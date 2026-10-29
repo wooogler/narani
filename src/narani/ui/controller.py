@@ -857,7 +857,7 @@ class UIController:
                 if sec is not None:
                     sec.text = a.text
                 continue
-            prev = next((s for s in reversed(secs) if s.line < a.line), None)
+            prev = next((s for s in reversed(secs) if 0 <= s.line < a.line), None)
             n = 1
             while f"h_e{n:03d}" in taken:
                 n += 1
