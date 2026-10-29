@@ -301,3 +301,13 @@ def test_phone_library_keeps_offline_by_default():
     assert "localStorage.getItem('narani:auto') !== '0'" in js and "localStorage.getItem('narani:autoaudio') !== '0'" in js
     assert 'id="lib-opts"' in html and "function onCellular" in js
     assert "md4T('번역') : md4T('원문만')" not in js
+
+
+def test_phone_reader_has_wide_screen_layout():
+    # 데스크톱 브라우저 — 목록 격자 · 목차 칸 · 메모 칸 · 나란히 · 키보드
+    files = web.site_files(local=True)
+    js, html = files["app.js"][0].decode(), files["index.html"][0].decode()
+    assert "@media (min-width: 1100px)" in html and "grid-template-columns: repeat(auto-fill, minmax(340px, 1fr))" in html
+    assert ".js.reading:has(#agent.open)" in html and "#m-both:checked ~ main .paper.has-ko:not(.noalign) .row { display: grid" in html
+    assert "function WIDE" in js and "function sideToc" in js and "function stepSection" in js
+    assert "(ko ? 'm-en' : en ? 'm-both' : 'm-ko')" in js       # 넓은 화면: 번역 → 원문 → 나란히

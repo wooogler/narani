@@ -1366,5 +1366,7 @@
  "받는 중 {n}/{m}": "Downloading {n}/{m}",
  "받아 둠 {n}/{m}편": "Saved {n}/{m}",
  "모든 논문을 이 기기에 받아 두기 (오프라인에서도)": "Keep all papers on this device (for offline)",
- "음성도 받아 두기 ({n}편 · {mb}MB)": "Keep audio too ({n} papers · {mb} MB)"
+ "음성도 받아 두기 ({n}편 · {mb}MB)": "Keep audio too ({n} papers · {mb} MB)",
+ "나란히": "Side by side",
+ "보기 바꾸기 (번역 · 원문 · 나란히)": "Change view (translation · original · side by side)"
 }

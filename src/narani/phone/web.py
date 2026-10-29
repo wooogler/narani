@@ -259,6 +259,58 @@ ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3p
   padding: 22px 16px calc(14px + env(safe-area-inset-bottom)); color: #eee; font-size: .88em; line-height: 1.5;
   background: linear-gradient(transparent, rgba(0,0,0,.7) 20px); transition: opacity .2s; }
 #zv.zoomed .zv-cap { opacity: 0; pointer-events: none; }
+
+/* ---- 넓은 화면(데스크톱 브라우저) — 늘인 폰 화면이 아니라 뷰어로: 목록은 카드 격자, 논문은 가운데 읽기 칸 +
+   왼쪽 목차 칸(늘 보임) + 오른쪽 메모·질문 칸(열면). 떠 있는 것들(재생 막대·시트·알약)은 읽기 칸 가운데에.
+   --sl·--sr: 양쪽 칸 너비 — 떠 있는 것들이 그만큼 비켜 선다. 데스크톱 앱 뷰어처럼 원문 | 번역을 나란히 볼 수 있다 */
+@media (min-width: 1100px) {
+  .js main { max-width: 1180px; padding: 0 32px 45vh; }
+  #lib h1 { font-size: 1.5em; margin: 28px 0 6px; }
+  #lib ol { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; }
+  #lib li a { margin: 0; height: 100%; padding: 16px 18px; transition: border-color .12s, box-shadow .12s; }
+  .lib-opts, .lib-foot { max-width: 560px; }
+  .lib-foot { text-align: left; }
+  .js.reading { --sl: 300px; --sr: 0px; padding-left: var(--sl); }
+  .js.reading:has(#agent.open) { --sr: 420px; padding-right: var(--sr); }
+  .js.reading main { max-width: 800px; padding-right: 88px; padding-left: 40px; }   /* 오른쪽은 떠 있는 💬·🎧 자리 */
+  .js.reading:has(#m-both:checked) main { max-width: 1320px; }
+  #scrim { display: none; }
+  .js.reading #tocd { width: var(--sl); transform: none; transition: none; box-shadow: none; }
+  .js.reading #tocd-x { display: none; }
+  .js.reading .top .top-title::after { content: none; }
+  #agent { left: auto; top: 0; right: 0; bottom: 0; width: 420px; height: auto; border-radius: 0; border-left: 1px solid var(--line);
+    box-shadow: none; transform: translateX(102%); }
+  #agent.open { transform: none; }
+  /* 떠 있는 것들 — 읽기 칸 가운데(양쪽 칸을 뺀 자리) */
+  #sheet { left: calc(var(--sl, 0px) + (100% - var(--sl, 0px) - var(--sr, 0px)) / 2); right: auto;
+    width: min(640px, calc(100% - var(--sl, 0px) - var(--sr, 0px) - 48px)); bottom: calc(20px + var(--kb, 0px));
+    border: 1px solid var(--line); border-radius: 16px; box-shadow: 0 12px 36px rgba(0,0,0,.16); transform: translate(-50%, calc(100% + 40px)); }
+  #sheet.open { transform: translate(-50%, 0); }
+  .js.reading.listening #sheet { bottom: 214px; }
+  #player { left: calc(var(--sl, 0px) + (100% - var(--sl, 0px) - var(--sr, 0px)) / 2); right: auto; transform: translateX(-50%);
+    width: min(680px, calc(100% - var(--sl, 0px) - var(--sr, 0px) - 48px)); bottom: 16px; border: 1px solid var(--line);
+    border-radius: 18px; box-shadow: 0 10px 30px rgba(0,0,0,.14); padding-bottom: 10px; }
+  #jback { left: calc(var(--sl, 0px) + (100% - var(--sl, 0px) - var(--sr, 0px)) / 2); }
+  #talkbar { left: calc(var(--sl, 0px) + 24px); right: calc(var(--sr, 0px) + 24px); max-width: 680px; margin: 0 auto; }
+  #fab { right: calc(var(--sr, 0px) + 28px); bottom: 28px; }
+  #lis { right: calc(var(--sr, 0px) + 32px); bottom: 92px; }
+  .js.reading.listening #fab.rd { bottom: 214px; }
+  /* 나란히 — 원문 | 번역 (데스크톱 앱 뷰어처럼 원문이 왼쪽). 한 행의 두 셀이 같은 줄이라 높이가 맞는다 */
+  .js #m-both:checked ~ main .paper.has-ko:not(.noalign) .row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    column-gap: 36px; }
+  .js #m-both:checked ~ main .paper.has-ko:not(.noalign) .row > .cell.en { order: 1; font-size: inherit; color: inherit;
+    border-left: 0; padding-left: 0; margin: 0; }
+  .js #m-both:checked ~ main .paper.has-ko:not(.noalign) .row > .cell.ko { order: 2; }
+  .js #m-both:checked ~ main .paper.has-ko:not(.noalign) .row > .cell.same { grid-column: 1 / -1; }
+  .js #m-both:checked ~ main .cell.en :is(h1, h2, h3, h4, h5, h6) { font-size: revert; margin-top: revert; }
+  #m-both:checked ~ main .cell.en img { display: block; }
+}
+@media (min-width: 1100px) and (hover: hover) {
+  #lib li a:hover { border-color: var(--accent); box-shadow: 0 6px 20px rgba(0,0,0,.08); }
+  .top button:hover, .lib-bar button:hover, .pl-top button:hover, .pl-ctl button:not(#pl-pp):hover, .dh button:hover { background: var(--hl2); }
+  #tocd li a:hover { background: var(--hl2); }
+  button, label, #tocd a { cursor: pointer; }
+}
 /* 오프라인 — 받아 두지 않은 논문은 흐리게 */
 #lib-list li.na a { opacity: .45; }
 .lib-bar label.auto { display: inline-flex; align-items: center; gap: 6px; color: var(--fg); }
@@ -741,7 +793,7 @@ _APP_JS = r"""
   function mount(b, target){
     main.insertAdjacentHTML('beforeend', b.html);
     cur = doc.getElementById(PID); cur.classList.add('on');
-    DATA[PID] = {key: b.key, title: b.title_ko || b.title, cites: b.cites || {}, fns: b.fns || {}};
+    DATA[PID] = {key: b.key, title: b.title_ko || b.title, cites: b.cites || {}, fns: b.fns || {}, has_ko: !!b.has_ko};
     readerOpened(b);
     var t = target ? doc.getElementById(target) : null, off = 0;
     if (!t){
@@ -1175,13 +1227,16 @@ _READER_JS = r"""
 
   // ---- 서랍 공통 ----
   var scrim = doc.getElementById('scrim'), tocd = doc.getElementById('tocd'), agent = doc.getElementById('agent');
-  function closeDrawers(){
+  function WIDE(){ return window.matchMedia && matchMedia('(min-width: 1100px)').matches; }
+  function closeDrawers(all){
+    // 넓은 화면에선 목차·메모 칸이 옆에 붙어 있다 — 목차를 눌러 이동해도 닫지 않는다(× 단추로만)
+    if (WIDE() && all !== true){ scrim.classList.remove('open'); return; }
     tocd.classList.remove('open'); agent.classList.remove('open'); scrim.classList.remove('open');
     try { doc.getElementById('ag-in').blur(); } catch (e) {}
   }
-  scrim.onclick = closeDrawers;
-  doc.getElementById('tocd-x').onclick = closeDrawers;
-  doc.getElementById('ag-x').onclick = closeDrawers;
+  scrim.onclick = function(){ closeDrawers(true); };
+  doc.getElementById('tocd-x').onclick = function(){ closeDrawers(true); };
+  doc.getElementById('ag-x').onclick = function(){ closeDrawers(true); };
   [tocd, agent].forEach(function(d){ d.addEventListener('click', function(e){ e.stopPropagation(); }); });
   function readerOpened(b){ JB.length = 0; jbShow(); body.classList.add('reading'); AG.key = b.key; AG.lang = b.lang || 'ko'; AG.title = b.title_ko || b.title; AG.msgs = null; }
   function readerClosed(){ JB.length = 0; jbShow(); FIGS = []; body.classList.remove('reading'); closeDrawers(); if (TK) talkEnd(md4T('논문을 닫음'), true); stopAudio(); }
@@ -1227,7 +1282,7 @@ _READER_JS = r"""
       item.appendChild(b); list.appendChild(item);
     });
     if (!FIGS.length) list.appendChild(el('li', 'empty', md4T('그림·표가 없는 논문이에요.')));
-    tocd.classList.add('open'); scrim.classList.add('open');
+    tocd.classList.add('open'); if (!WIDE()) scrim.classList.add('open');
   }
   function openToc(){
     if (!cur) return;
@@ -1237,13 +1292,13 @@ _READER_JS = r"""
     [].forEach.call(cur.querySelectorAll('.toc li'), function(li){
       var a = li.querySelector('a'); if (!a) return;
       var id = (a.getAttribute('href') || '').slice(1), item = el('li', li.className), b = el('a', '', a.textContent);
-      b.href = '#';
+      b.href = '#'; item.setAttribute('data-id', id);
       if (id === here) item.classList.add('here');
       b.onclick = function(ev){ ev.preventDefault(); closeDrawers(); flashRow(doc.getElementById(id)); };
       item.appendChild(b); list.appendChild(item);
     });
     if (!list.children.length) list.appendChild(el('li', 'empty', md4T('목차가 없는 논문이에요.')));
-    tocd.classList.add('open'); scrim.classList.add('open');
+    tocd.classList.add('open'); if (!WIDE()) scrim.classList.add('open');
     var h = list.querySelector('.here'); if (h) h.scrollIntoView({block: 'center'});
   }
   topTitle.onclick = function(e){
@@ -1327,7 +1382,29 @@ _READER_JS = r"""
       });
     });
   }
-  function navOpened(){ indexFigs(); linkFigRefs(); }
+  function navOpened(){
+    indexFigs(); linkFigRefs();
+    if (WIDE()) sideToc();
+  }
+  // 넓은 화면 — 목차 칸을 늘 띄워 두고, 읽는 자리에 따라 '지금 절'을 옮긴다
+  function sideToc(){ if (lsGet('narani:toctab', 'toc') === 'fig') openFigs(); else openToc(); }
+  var hereTick = false;
+  window.addEventListener('scroll', function(){
+    if (hereTick || !cur || !WIDE()) return;
+    hereTick = true;
+    setTimeout(function(){
+      hereTick = false;
+      var id = currentSection(), list = doc.getElementById('tocd-list');
+      [].forEach.call(list.querySelectorAll('li[data-id]'), function(li){ li.classList.toggle('here', li.getAttribute('data-id') === id); });
+    }, 150);
+  }, {passive: true});
+  if (window.matchMedia) matchMedia('(min-width: 1100px)').addEventListener('change', function(m){
+    if (m.matches){ scrim.classList.remove('open'); if (cur) sideToc(); }
+    else {
+      closeDrawers(true);
+      if (doc.getElementById('m-both').checked){ var r = doc.getElementById('m-ko'); r.checked = true; r.dispatchEvent(new Event('change')); langLabel(); }
+    }
+  });
   function goFig(id){
     var t = visibleTarget(id); if (!t) return;
     var row = t.classList.contains('row') ? t : t.closest('.row');
@@ -1371,16 +1448,20 @@ _READER_JS = r"""
   }, {passive: true});
 
   // ---- 번역 ⇄ 원문 토글 (대조는 화면에서 뺐다 — 문장을 누르면 짝 문장이 뜬다) ----
-  if (doc.getElementById('m-both').checked){ doc.getElementById('m-ko').checked = true; store('mode', 'ko'); }
+  // 넓은 화면에서는 세 번째로 '나란히'(원문 | 번역) — 폰에선 화면이 좁아 번역 ⇄ 원문만
+  if (doc.getElementById('m-both').checked && !WIDE()){ doc.getElementById('m-ko').checked = true; store('mode', 'ko'); }
   function langLabel(){
-    var en = doc.getElementById('m-en').checked;
-    setText('lang-btn', (en ? md4T('원문') : md4T('번역')) + ' ⇄');
-    doc.getElementById('lang-btn').setAttribute('aria-label', en ? md4T('번역으로 보기') : md4T('원문으로 보기'));
+    var en = doc.getElementById('m-en').checked, both = doc.getElementById('m-both').checked;
+    setText('lang-btn', (both ? md4T('나란히') : en ? md4T('원문') : md4T('번역')) + ' ⇄');
+    doc.getElementById('lang-btn').setAttribute('aria-label', WIDE() ? md4T('보기 바꾸기 (번역 · 원문 · 나란히)')
+                                                                      : en ? md4T('번역으로 보기') : md4T('원문으로 보기'));
   }
   doc.getElementById('lang-btn').onclick = function(e){
     e.stopPropagation();
     modeAnchor = topRow();   // 바꾸기 전 화면 맨 위 문단 — 바꾼 뒤 그 문단으로 (CORE_JS의 change 처리)
-    var to = doc.getElementById('m-en').checked ? 'm-ko' : 'm-en', r = doc.getElementById(to);
+    var ko = doc.getElementById('m-ko').checked, en = doc.getElementById('m-en').checked;
+    var to = WIDE() && (DATA[PID] || {}).has_ko ? (ko ? 'm-en' : en ? 'm-both' : 'm-ko') : (en ? 'm-ko' : 'm-en');
+    var r = doc.getElementById(to);
     r.checked = true; r.dispatchEvent(new Event('change'));
     langLabel();
   };
@@ -1514,7 +1595,8 @@ _READER_JS = r"""
     if (body.classList.contains('listening')){ talkStart(); return; }   // 듣는 중엔 말로 묻기 단추
     setText('ag-clear', '⟲'); doc.getElementById('ag-clear').setAttribute('aria-label', md4T('대화 지우기'));
     agIn.placeholder = md4T('이 논문에 대해 물어보세요');
-    agent.classList.add('open'); scrim.classList.add('open');
+    if (WIDE() && agent.classList.contains('open')){ closeDrawers(true); return; }   // 넓은 화면: 💬로 옆 칸 열고 닫기
+    agent.classList.add('open'); if (!WIDE()) scrim.classList.add('open');
     var tab = lsGet('narani:agtab', null) || (items().length ? 'notes' : 'chat');   // 지난번 탭 (처음엔 표시가 있으면 메모)
     if (tab === 'notes') showNotes(); else showChat();
   };
@@ -1629,6 +1711,37 @@ _READER_JS = r"""
   doc.getElementById('ag-form').addEventListener('submit', function(e){ e.preventDefault(); send(); });
   agIn.addEventListener('input', function(){ agIn.style.height = ''; agIn.style.height = Math.min(agIn.scrollHeight, 200) + 'px'; });
   agIn.addEventListener('keydown', function(e){ if (e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); send(); } });
+  // ---- 키보드·마우스 (넓은 화면) — ←/→ 이전·다음 절, Space 재생·일시정지(듣는 중), L 보기 바꾸기,
+  // / 질문하기, Esc 닫기. 글을 쓰는 칸에서는 건드리지 않는다. 단추에 마우스를 올리면 이름(aria-label)이 뜬다 ----
+  function stepSection(dir){
+    var secs = [].slice.call(cur.querySelectorAll('.row.sec')).filter(function(r){ return r.getClientRects().length; }), to = null, i;
+    if (!secs.length) return;
+    if (dir > 0){ for (i = 0; i < secs.length; i++) if (secs[i].getBoundingClientRect().top > 90){ to = secs[i]; break; } }
+    else { for (i = secs.length - 1; i >= 0; i--) if (secs[i].getBoundingClientRect().top < 40){ to = secs[i]; break; } }
+    if (to) to.scrollIntoView({block: 'start'}); else if (dir < 0) window.scrollTo(0, 0);
+  }
+  doc.addEventListener('keydown', function(e){
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
+    var t = e.target;
+    if (t && t.closest && t.closest('input, textarea, select, [contenteditable]')) return;
+    if (doc.getElementById('zv') || !cur) return;
+    var k = e.key;
+    if (k === 'ArrowRight' || k === 'ArrowLeft'){ e.preventDefault(); closeSheet(); stepSection(k === 'ArrowRight' ? 1 : -1); }
+    else if (k === ' ' && doc.body.classList.contains('listening')){ e.preventDefault(); doc.getElementById('pl-pp').click(); }
+    else if (k === 'l' || k === 'L'){ doc.getElementById('lang-btn').click(); }
+    else if (k === '/'){
+      e.preventDefault();
+      if (!agent.classList.contains('open')) doc.getElementById('fab').click();
+      if (agent.classList.contains('notes')) showChat();
+      setTimeout(function(){ try { agIn.focus(); } catch (x) {} }, 50);
+    }
+    else if (k === 'Escape' && !doc.getElementById('sheet').classList.contains('open')) closeDrawers(true);
+  });
+  doc.addEventListener('mouseover', function(e){
+    var b = e.target.closest && e.target.closest('button[aria-label]');
+    if (b && !b.title) b.title = b.getAttribute('aria-label');
+  });
+
   // ---- 그림·표 전체 화면 — 누르면 열고, 두 손가락으로 키우고, 끌어 옮기고, 두 번 눌러 확대·원래대로,
   // 원래 크기에서 위아래로 쓸거나 바깥을 누르면 닫는다. 본문 화면 확대는 막아 두었다(_PWA_CSS) ----
   var ZV = null;
@@ -1759,6 +1872,12 @@ _READER_JS = r"""
     }
     o.addEventListener('pointerup', up);
     o.addEventListener('pointercancel', up);
+    o.addEventListener('wheel', function(e){   // 마우스 휠·트랙패드 — 커서 자리를 기준으로
+      if (cb && cb.contains(e.target)) return;
+      e.preventDefault();
+      var ns = Math.max(Z.fit, Math.min(maxS(), Z.s * Math.exp(-e.deltaY * 0.0015))), px = (e.clientX - Z.x) / Z.s, py = (e.clientY - Z.y) / Z.s;
+      Z.s = ns; Z.x = e.clientX - px * ns; Z.y = e.clientY - py * ns; clampXY(); apply(false);
+    }, {passive: false});
     // iOS: 겹친 화면 위에서도 페이지 확대·스크롤이 일어나지 않게
     function stop(e){ if (!(cb && cb.contains(e.target))) e.preventDefault(); }
     o.addEventListener('touchmove', stop, {passive: false});
