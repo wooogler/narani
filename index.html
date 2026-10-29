@@ -184,7 +184,7 @@ details.memo .pend { margin-left: 8px; font-weight: 400; font-size: .8em; color:
   font-size: .92em; line-height: 1.45; }
 #tocd li a { display: block; padding: 8px 16px; color: var(--fg); text-decoration: none; }
 #tocd li.l3 a { padding-left: 30px; } #tocd li.l4 a { padding-left: 44px; }
-#tocd .tocd-tabs { padding: 8px 12px; }
+#tocd .tocd-tabs { padding: 0 8px 0 12px; }
 #tocd .tocd-tabs .ag-tabs { max-width: none; margin: 0; }
 #tocd ol.figs li a { display: flex; gap: 10px; align-items: flex-start; padding: 10px 16px; }
 #tocd ol.figs .th { flex: none; width: 64px; height: 48px; border-radius: 6px; border: 1px solid var(--line); background: #fff;
@@ -268,14 +268,17 @@ mark.anno.note-end::after { content: "✎"; font-size: .75em; margin-left: 2px; 
   border-radius: 8px; font-size: .9em; white-space: pre-wrap; }
 .anno-ta { width: 100%; font: inherit; font-size: 16px; color: var(--fg); background: var(--card);
   border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; resize: vertical; }
-/* 떠 있는 💬 단추의 창 — '메모'(이 논문의 내 하이라이트·메모) · '질문하기'(에이전트) 중 하나를 고르는 두 칸 스위치 */
-.ag-tabs { flex: 1; display: flex; min-width: 0; max-width: 300px; margin-right: auto; padding: 3px; border-radius: 11px; background: var(--line); }
+/* 옆 칸의 탭 — 목차 | 그림·표, 메모 | 질문하기. 칸 머리 밑줄에 붙은 밑줄 탭(고른 탭만 파란 밑줄)으로 두 칸이 같은 꼴 */
+.dh:has(.ag-tabs) { padding-top: 0; padding-bottom: 0; height: 48px; flex: none; }
+.ag-tabs { flex: 1; display: flex; align-self: stretch; min-width: 0; max-width: 320px; margin-right: auto; gap: 2px; }
 .dh .ag-tabs button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 5px; min-width: 0;
-  font-size: .9em; font-weight: 600; color: var(--muted); padding: 6px 8px; border-radius: 8px; white-space: nowrap; }
+  font-size: .9em; font-weight: 600; color: var(--muted); padding: 0 8px; border-radius: 0; white-space: nowrap;
+  border-bottom: 2px solid transparent; margin-bottom: -1px; }
+.dh .ag-tabs button:hover { color: var(--fg); }
 .dh .ag-tabs button svg { flex: none; }
 .dh .ag-tabs .cnt { flex: none; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: #fff;
   font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; }
-.dh .ag-tabs button.on { color: var(--fg); background: var(--sheet); box-shadow: 0 1px 3px rgba(0,0,0,.14); }
+.dh .ag-tabs button.on { color: var(--fg); border-bottom-color: var(--accent); }
 #agent.notes #ag-clear, #agent.notes #ag-set { display: none; }
 #fab-n { position: absolute; top: -3px; right: -3px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
   background: var(--fg); color: var(--bg); font-size: 12px; font-weight: 700; line-height: 20px; display: none; }
@@ -402,7 +405,7 @@ ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3p
   .js.reading.toc-off #tocd { transform: translateX(-102%); }
   /* 위 막대와 목차 칸 머리를 같은 높이(52px)로 — 두 밑줄이 한 줄로 이어진다 */
   .js.reading .top { height: 52px; padding-top: 0; padding-bottom: 0; }
-  .js.reading #tocd .tocd-tabs { height: 52px; flex: none; padding: 0 8px 0 12px; }
+  .js.reading #tocd .tocd-tabs, #agent > .dh { height: 52px; }   /* 위 막대와 같은 높이 */
   /* 논문 제목은 위 막대에 있다 — 제목·× 줄은 빼고, 목차|그림·표 칸 옆의 « 로 접는다 */
   .js.reading #tocd > .dh:first-child { display: none; }
   .js.reading #tocd-fold { display: grid; }
