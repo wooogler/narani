@@ -358,3 +358,9 @@ def test_phone_memo_tabs_and_chat_to_memo():
     assert "op: 'memo', tab: name, mode: 'append'" in js and "mode: 'replace', text: out, base: tab.stamp" in js
     assert "if (o.op !== 'put' || !o.item) return;" in js          # 하이라이트 목록은 메모 기록을 건너뛴다
     assert "memoNames.indexOf(m.name) >= 0" in js                   # 공유에는 고른 메모 탭만
+
+
+def test_wide_toc_panel_can_close():
+    files = web.site_files(local=True)
+    js, html = files["app.js"][0].decode(), files["index.html"][0].decode()
+    assert ".js.reading.toc-off #tocd { transform: translateX(-102%); }" in html and "function tocSide" in js

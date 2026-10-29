@@ -309,7 +309,9 @@ ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3p
   .js.reading { --sl: 300px; --sr: 0px; padding-left: var(--sl); }
   .js.reading:has(#agent.open) { --sr: 420px; padding-right: var(--sr); }
   .js.reading main { padding-right: 88px; padding-left: 40px; }   /* 오른쪽은 떠 있는 💬·🎧 자리 */
-  .js.reading .top .tb.tocb { display: none; }   /* 목차는 왼쪽 칸에 늘 있다 */
+  /* 목차 칸은 ☰·× 로 접고 편다(접은 채로 기억) */
+  .js.reading.toc-off { --sl: 0px; }
+  .js.reading.toc-off #tocd { transform: translateX(-102%); }
   .js.reading main { max-width: var(--rw1, 800px); }
   .js.reading:has(#m-both:checked) main { max-width: var(--rw2, 1320px); }
   /* 본문 너비 막대 — 읽기 칸 오른쪽 끝을 끌어 넓히고 좁힌다(두 번 누르면 처음 너비) */
@@ -317,7 +319,6 @@ ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3p
 
   #scrim { display: none; }
   .js.reading #tocd { width: var(--sl); transform: none; transition: none; box-shadow: none; }
-  .js.reading #tocd-x { display: none; }
   .js.reading .top .top-title::after { content: none; }
   #agent { left: auto; top: 0; right: 0; bottom: 0; width: 420px; height: auto; border-radius: 0; border-left: 1px solid var(--line);
     box-shadow: none; transform: translateX(102%); }
@@ -1364,7 +1365,7 @@ _READER_JS = r"""
     try { doc.getElementById('ag-in').blur(); } catch (e) {}
   }
   scrim.onclick = function(){ closeDrawers(true); };
-  doc.getElementById('tocd-x').onclick = function(){ closeDrawers(true); };
+  doc.getElementById('tocd-x').onclick = function(){ if (WIDE()) tocSide(true); else closeDrawers(true); };
   doc.getElementById('ag-x').onclick = function(){ closeDrawers(true); };
   [tocd, agent].forEach(function(d){ d.addEventListener('click', function(e){ e.stopPropagation(); }); });
   function readerOpened(b){ JB.length = 0; jbShow(); body.classList.add('reading'); AG.key = b.key; AG.lang = b.lang || 'ko'; AG.title = b.title_ko || b.title; AG.msgs = null; }
@@ -2034,7 +2035,17 @@ _READER_JS = r"""
   rwEl.addEventListener('dblclick', function(){ lsSet('narani:' + rwKey(), 0); rwApply(); });
   window.addEventListener('resize', rwPlace);
   [].forEach.call(doc.querySelectorAll('input.mode'), function(r){ r.addEventListener('change', function(){ setTimeout(rwPlace, 0); }); });
-  doc.getElementById('toc-btn').onclick = function(e){ e.stopPropagation(); if (lsGet('narani:toctab', 'toc') === 'fig') openFigs(); else openToc(); };
+  function tocSide(off){   // 넓은 화면 — 목차 칸 접기·펴기
+    doc.body.classList.toggle('toc-off', off); lsSet('narani:tocoff', off);
+    if (!off) sideToc();
+    setTimeout(rwPlace, 0);
+  }
+  if (lsGet('narani:tocoff', false)) doc.body.classList.add('toc-off');
+  doc.getElementById('toc-btn').onclick = function(e){
+    e.stopPropagation();
+    if (WIDE()){ tocSide(!doc.body.classList.contains('toc-off')); return; }
+    if (lsGet('narani:toctab', 'toc') === 'fig') openFigs(); else openToc();
+  };
 
   // ---- 키보드·마우스 (넓은 화면) — ←/→ 이전·다음 절, Space 재생·일시정지(듣는 중), L 보기 바꾸기,
   // / 질문하기, Esc 닫기. 글을 쓰는 칸에서는 건드리지 않는다. 단추에 마우스를 올리면 이름(aria-label)이 뜬다 ----
