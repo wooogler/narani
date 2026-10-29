@@ -33,11 +33,11 @@ _PWA_CSS = """
 /* 화면 전체 확대(핀치·두 번 누르기)는 막는다 — 글자는 '가' 단추로, 그림·표는 눌러서 전체 화면(#zv)에서 키운다 */
 html { touch-action: pan-x pan-y; }
 .top button { white-space: nowrap; }
-.top .back { font-size: 1.3em; line-height: 1; }
 /* 그림 단추(뒤로·목차·공유)는 34px 정사각형 — 뒤로·목차는 테두리 없이(이동 단추), 공유는 다른 단추들처럼 테두리 */
 .top .back, .top .tb.tocb, .top .tb.sh { width: 34px; height: 34px; min-height: 34px; padding: 0; flex: none; }
 .top .back, .top .tb.tocb { border-color: transparent; background: none; }
 .js.reading .top .back { display: grid; place-items: center; }
+.top button svg { display: block; }   /* 줄 높이 여백 없이 단추 한가운데 */
 .js.reading .top .tb.rd { display: inline-block; }
 .top .tb.rd, #fab.rd { display: none; }
 /* 제목 — 두 줄까지. 논문을 열었을 때는 누르면 목차(▾) */
@@ -1385,7 +1385,7 @@ _READER_JS = r"""
   doc.getElementById('ag-x').onclick = function(){ closeDrawers(true); };
   [tocd, agent].forEach(function(d){ d.addEventListener('click', function(e){ e.stopPropagation(); }); });
   function readerOpened(b){ JB.length = 0; jbShow(); body.classList.add('reading'); AG.key = b.key; AG.lang = b.lang || 'ko'; AG.title = b.title_ko || b.title; AG.msgs = null; }
-  function readerClosed(){ JB.length = 0; jbShow(); FIGS = []; body.classList.remove('reading'); closeDrawers(); if (TK) talkEnd(md4T('논문을 닫음'), true); stopAudio(); }
+  function readerClosed(){ JB.length = 0; jbShow(); FIGS = []; body.classList.remove('reading'); closeDrawers(true); if (TK) talkEnd(md4T('논문을 닫음'), true); stopAudio(); }
   function flashRow(row){
     if (!row) return;
     beforeJump();
@@ -3123,7 +3123,7 @@ def _index_html(cfg: dict) -> str:
         "<input type=\"radio\" name=\"mode\" id=\"m-en\" class=\"mode\">"
         "<input type=\"radio\" name=\"mode\" id=\"m-both\" class=\"mode\">"  # 읽기 동작이 찾는다 — 화면엔 번역/원문 토글만
         "<header class=\"top\">"
-        "<button class=\"only-js tb rd back\" id=\"back\">‹</button>"
+        "<button class=\"only-js tb rd back\" id=\"back\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M15.41 7.41 14 6l-6 6 6 6 1.41-1.41L10.83 12z\"/></svg></button>"
         "<button class=\"only-js tb rd tocb\" id=\"toc-btn\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M3 6h2v2H3zm4 0h14v2H7zM3 11h2v2H3zm4 0h14v2H7zm-4 5h2v2H3zm4 0h14v2H7z\"/></svg></button>"
         f"<button class=\"top-title\" id=\"top-title\">{APP_NAME}</button>"
         "<button class=\"only-js tb rd\" id=\"lang-btn\"></button>"
