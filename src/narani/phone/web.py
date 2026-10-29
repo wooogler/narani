@@ -40,15 +40,21 @@ html { touch-action: pan-x pan-y; }
 .top .top-title { border: 0; background: none; min-height: 0; padding: 2px 2px; text-align: left; color: var(--fg);
   font: inherit; font-weight: 600; font-size: .92em; line-height: 1.25; white-space: normal; display: -webkit-box;
   -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.js.reading .top .top-title { position: relative; padding-right: 16px; }
-.js.reading .top .top-title::after { content: "▾"; position: absolute; right: 2px; bottom: 2px; color: var(--muted);
-  font-weight: 400; font-size: .9em; }
+.js.reading .top .top-title { position: relative; }
+/* 목차 — 제목 왼쪽의 ☰ 단추(제목을 눌러도 열린다). 본문 머리의 접힌 목차는 이 서랍과 겹쳐 숨긴다(서랍이 그것을 읽어 그린다) */
+.top .tb.tocb { padding: 4px 6px; display: none; }
+.js.reading .top .tb.tocb { display: inline-grid; place-items: center; }
+.js .paper .toc { display: none; }
 .top #lang-btn { font-weight: 600; min-width: 64px; }
 /* 키보드가 올라오면 아래 시트·대화 창을 그 위로 (--kb: 키보드 높이, visualViewport로 잰다) */
 #sheet { bottom: var(--kb, 0px); max-height: min(55vh, calc(100vh - var(--kb, 0px) - 70px)); }
 .pop { position: absolute; right: 10px; top: calc(100% + 4px); display: none; gap: 6px; padding: 6px; z-index: 6;
   background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.12); }
 .pop.open { display: flex; }
+#rw { display: none; position: fixed; top: 50%; z-index: 7; width: 16px; height: 72px; margin-top: -36px; cursor: ew-resize; touch-action: none; }
+#rw::after { content: ""; position: absolute; left: 6px; top: 0; bottom: 0; width: 4px; border-radius: 2px; background: var(--line);
+  transition: background .12s; }
+#rw:hover::after, #rw.drag::after { background: var(--accent); }
 /* 공유 — 단추는 내 Drive에 연결됐을 때만, 공유받은 화면은 그 한 편만(목록·뒤로 없음) */
 .top .tb.sh { display: none !important; padding: 4px 8px; }
 .js.reading.can-share .top .tb.sh { display: inline-grid !important; place-items: center; }
@@ -288,8 +294,13 @@ ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3p
   .lib-foot { text-align: left; }
   .js.reading { --sl: 300px; --sr: 0px; padding-left: var(--sl); }
   .js.reading:has(#agent.open) { --sr: 420px; padding-right: var(--sr); }
-  .js.reading main { max-width: 800px; padding-right: 88px; padding-left: 40px; }   /* 오른쪽은 떠 있는 💬·🎧 자리 */
-  .js.reading:has(#m-both:checked) main { max-width: 1320px; }
+  .js.reading main { padding-right: 88px; padding-left: 40px; }   /* 오른쪽은 떠 있는 💬·🎧 자리 */
+  .js.reading .top .tb.tocb { display: none; }   /* 목차는 왼쪽 칸에 늘 있다 */
+  .js.reading main { max-width: var(--rw1, 800px); }
+  .js.reading:has(#m-both:checked) main { max-width: var(--rw2, 1320px); }
+  /* 본문 너비 막대 — 읽기 칸 오른쪽 끝을 끌어 넓히고 좁힌다(두 번 누르면 처음 너비) */
+  .js.reading #rw { display: block; }
+
   #scrim { display: none; }
   .js.reading #tocd { width: var(--sl); transform: none; transition: none; box-shadow: none; }
   .js.reading #tocd-x { display: none; }
@@ -382,6 +393,9 @@ _APP_JS = r"""
     setText('fs-dn', md4T('가') + '−'); setText('fs-up', md4T('가') + '+'); setText('fs-btn', md4T('가'));
     doc.getElementById('fs-btn').setAttribute('aria-label', md4T('글자 크기'));
     doc.getElementById('share-btn').setAttribute('aria-label', md4T('공유'));
+    doc.getElementById('toc-btn').setAttribute('aria-label', md4T('목차'));
+    doc.getElementById('rw').setAttribute('aria-label', md4T('본문 너비 — 끌어서 조절, 두 번 누르면 처음대로'));
+    doc.getElementById('rw').title = md4T('본문 너비 — 끌어서 조절, 두 번 누르면 처음대로');
     doc.getElementById('top-title').setAttribute('aria-label', md4T('목차'));
     doc.getElementById('fab').setAttribute('aria-label', md4T('메모') + ' · ' + md4T('질문하기'));
     setText('lnk-about', md4T('Narani 소개')); setText('lnk-privacy', md4T('개인정보처리방침'));
@@ -1470,7 +1484,7 @@ _READER_JS = r"""
     });
   }
   function navOpened(){
-    indexFigs(); linkFigRefs();
+    indexFigs(); linkFigRefs(); setTimeout(rwApply, 0);
     if (SHARE_ID && cur && !cur.querySelector('.share-note'))   // 공유받은 논문 — 읽기 전용이라는 것과 저작권
       cur.insertBefore(el('p', 'note share-note', md4T('공유받은 논문이에요 — 링크를 받은 사람만 볼 수 있어요. 하이라이트·메모는 이 기기에만 남고, 원문의 저작권은 저자·출판사에 있어요.')), cur.firstChild);
     if (WIDE()) sideToc();
@@ -1488,7 +1502,7 @@ _READER_JS = r"""
     }, 150);
   }, {passive: true});
   if (window.matchMedia) matchMedia('(min-width: 1100px)').addEventListener('change', function(m){
-    if (m.matches){ scrim.classList.remove('open'); if (cur) sideToc(); }
+    if (m.matches){ scrim.classList.remove('open'); if (cur){ sideToc(); rwApply(); } }
     else {
       closeDrawers(true);
       if (doc.getElementById('m-both').checked){ var r = doc.getElementById('m-ko'); r.checked = true; r.dispatchEvent(new Event('change')); langLabel(); }
@@ -1853,6 +1867,38 @@ _READER_JS = r"""
     openSheet(md4T('공유'), nodes, acts);
   }
   doc.getElementById('share-btn').onclick = function(e){ e.stopPropagation(); shareSheet(); };
+
+  // ---- 본문 너비 (넓은 화면) — 읽기 칸 오른쪽 끝의 막대를 끈다. 한 칸·나란히 따로 기억, 두 번 누르면 처음 너비 ----
+  var rwEl = doc.getElementById('rw');
+  function rwKey(){ return doc.getElementById('m-both').checked ? 'rw2' : 'rw1'; }
+  function rwApply(){
+    ['rw1', 'rw2'].forEach(function(k){ var v = lsGet('narani:' + k, 0); if (v) doc.body.style.setProperty('--' + k, v + 'px'); else doc.body.style.removeProperty('--' + k); });
+    rwPlace();
+  }
+  function rwPlace(){
+    if (!cur || !WIDE()) return;
+    var r = main.getBoundingClientRect();
+    rwEl.style.left = Math.round(r.right - 88 + 12) + 'px';   // 글 오른쪽 끝(떠 있는 단추 자리 앞)
+  }
+  rwEl.addEventListener('pointerdown', function(e){
+    e.preventDefault(); rwEl.setPointerCapture(e.pointerId); rwEl.classList.add('drag');
+    var x0 = e.clientX, w0 = main.getBoundingClientRect().width, k = rwKey(), anchor = topRow();
+    function mv(ev){
+      var w = Math.max(520, Math.min(window.innerWidth - 80, Math.round(w0 + (ev.clientX - x0) * 2)));   // 가운데 정렬이라 양쪽으로 — 두 배
+      doc.body.style.setProperty('--' + k, w + 'px'); rwPlace();
+    }
+    function up(ev){
+      rwEl.releasePointerCapture(ev.pointerId); rwEl.classList.remove('drag');
+      rwEl.removeEventListener('pointermove', mv); rwEl.removeEventListener('pointerup', up);
+      lsSet('narani:' + k, Math.round(main.getBoundingClientRect().width));
+      if (anchor) anchor.scrollIntoView({block: 'start'});
+    }
+    rwEl.addEventListener('pointermove', mv); rwEl.addEventListener('pointerup', up);
+  });
+  rwEl.addEventListener('dblclick', function(){ lsSet('narani:' + rwKey(), 0); rwApply(); });
+  window.addEventListener('resize', rwPlace);
+  [].forEach.call(doc.querySelectorAll('input.mode'), function(r){ r.addEventListener('change', function(){ setTimeout(rwPlace, 0); }); });
+  doc.getElementById('toc-btn').onclick = function(e){ e.stopPropagation(); if (lsGet('narani:toctab', 'toc') === 'fig') openFigs(); else openToc(); };
 
   // ---- 키보드·마우스 (넓은 화면) — ←/→ 이전·다음 절, Space 재생·일시정지(듣는 중), L 보기 바꾸기,
   // / 질문하기, Esc 닫기. 글을 쓰는 칸에서는 건드리지 않는다. 단추에 마우스를 올리면 이름(aria-label)이 뜬다 ----
@@ -2913,6 +2959,7 @@ def _index_html(cfg: dict) -> str:
         "<input type=\"radio\" name=\"mode\" id=\"m-both\" class=\"mode\">"  # 읽기 동작이 찾는다 — 화면엔 번역/원문 토글만
         "<header class=\"top\">"
         "<button class=\"only-js tb rd back\" id=\"back\">‹</button>"
+        "<button class=\"only-js tb rd tocb\" id=\"toc-btn\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M3 6h2v2H3zm4 0h14v2H7zM3 11h2v2H3zm4 0h14v2H7zm-4 5h2v2H3zm4 0h14v2H7z\"/></svg></button>"
         f"<button class=\"top-title\" id=\"top-title\">{APP_NAME}</button>"
         "<button class=\"only-js tb rd\" id=\"lang-btn\"></button>"
         "<button class=\"only-js tb rd sh\" id=\"share-btn\"><svg viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11A2.99 2.99 0 0 0 21 5a3 3 0 1 0-5.91.7L8.04 9.81A3 3 0 1 0 6 15c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65A2.92 2.92 0 1 0 18 16.08z\"/></svg></button>"
@@ -2958,6 +3005,7 @@ def _index_html(cfg: dict) -> str:
         # 말로 묻기 — 대화 중 상태 막대와 답 소리
         "<div id=\"talkbar\" role=\"status\"><span class=\"lv\"></span><span id=\"tk-st\"></span>"
         "<span id=\"tk-meta\"></span><button id=\"tk-end\"></button></div><audio id=\"tk-au\" autoplay playsinline></audio>"
+        "<div id=\"rw\" role=\"separator\" aria-orientation=\"vertical\"></div>"
         "<script src=\"app.js\"></script></body></html>"
     )
 

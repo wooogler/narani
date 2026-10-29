@@ -342,3 +342,10 @@ def test_phone_share_link(tmp_path):
     urllib.request.urlopen(urllib.request.Request(base + "share/abc.json", method="DELETE"))
     assert not (tmp_path / "share" / "abc.json").exists()
     srv.shutdown()
+
+
+def test_phone_toc_button_and_width_bar():
+    files = web.site_files(local=True)
+    js, html = files["app.js"][0].decode(), files["index.html"][0].decode()
+    assert 'id="toc-btn"' in html and ".js .paper .toc { display: none; }" in html   # ☰ 단추, 본문 위 목차는 숨김
+    assert 'id="rw"' in html and "function rwApply" in js and "narani:rw1" not in html   # 데스크톱 본문 너비 막대
