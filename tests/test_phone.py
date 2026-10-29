@@ -364,3 +364,4 @@ def test_wide_toc_panel_can_close():
     files = web.site_files(local=True)
     js, html = files["app.js"][0].decode(), files["index.html"][0].decode()
     assert ".js.reading.toc-off #tocd { transform: translateX(-102%); }" in html and "function tocSide" in js
+    assert ".js.reading #tocd { width: 300px;" in html   # 접어도(--sl=0) 칸 너비는 그대로 — 그래야 화면 밖으로 밀린다
