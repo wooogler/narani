@@ -1,8 +1,8 @@
-"""데스크톱 앱이 쓰는 모바일 리더 동작 — 홈의 '모바일로 보내기·빼기', 앱을 켤 때의 자동 갱신 (NiceGUI 무관).
+"""데스크톱 앱이 쓰는 웹 리더 동작 — 홈의 '웹 리더로 보내기·빼기', 앱을 켤 때의 자동 갱신 (NiceGUI 무관).
 
 저장소는 Google Drive(§phone.gdrive)다. 연결 전이거나 클라이언트 값이 없으면 아무것도 하지 않는다.
 
-모바일에 무엇이 있는지는 Drive의 목록(index.json)이 정답이다. 홈은 카드마다 Drive에 묻지 않도록 마지막으로
+웹 리더에 무엇이 있는지는 Drive의 목록(index.json)이 정답이다. 홈은 카드마다 Drive에 묻지 않도록 마지막으로
 본 목록을 `~/.config/narani/mobile.json`에 기억해 두고 그것을 읽는다 — 보내기·빼기·켤 때 갱신한 뒤 고쳐 쓴다.
 """
 
@@ -61,12 +61,12 @@ def _remember(index: dict | None = None, **kw: object) -> dict:
 
 
 def on_mobile() -> dict[str, dict]:
-    """모바일에 있는 논문 — 논문 키(작업 디렉토리 이름) → 목록 줄. 연결을 끊었으면 비어 있다."""
+    """웹 리더에 있는 논문 — 논문 키(작업 디렉토리 이름) → 목록 줄. 연결을 끊었으면 비어 있다."""
     return load_cache()["papers"] if connected() else {}
 
 
 def info() -> dict:
-    """사이드바 '모바일' 머리에 보일 것 — 연결 여부·계정·편수·용량·마지막 동기화 시각."""
+    """사이드바 '웹 리더' 머리에 보일 것 — 연결 여부·계정·편수·용량·마지막 동기화 시각."""
     c = load_cache()
     papers = c["papers"] if connected() else {}
     audio = [e["audio"] for e in papers.values() if e.get("audio")]
@@ -107,7 +107,7 @@ def _extra(rows: list[dict]) -> dict[str, dict]:
 
 
 def send(roots: list[Path]) -> dict:
-    """고른 논문들을 모바일로 — 더하거나 고치기만 한다(목록의 다른 논문은 그대로). 메모도 함께 오간다."""
+    """고른 논문들을 웹 리더로 — 더하거나 고치기만 한다(목록의 다른 논문은 그대로). 메모도 함께 오간다."""
     store = gdrive.open_store()
     out = sync.push(roots, store, prune=False, extra=_extra(_rows()))
     _remember(sync.read_index(store))
@@ -115,7 +115,7 @@ def send(roots: list[Path]) -> dict:
 
 
 def remove(roots: list[Path]) -> dict:
-    """고른 논문들을 모바일에서 뺀다 — 폰 메모는 먼저 데스크톱에 합친다."""
+    """고른 논문들을 웹 리더에서 뺀다 — 폰 메모는 먼저 데스크톱에 합친다."""
     store = gdrive.open_store()
     out = sync.remove(store, roots)
     _remember(sync.read_index(store))
@@ -414,7 +414,7 @@ def _remake_stale_audio(store) -> int:  # noqa: ANN001
 
 
 def refresh() -> dict:
-    """모바일에 있는 논문을 맞춘다 — 데스크톱에서 바뀐 논문은 다시 올리고, 폰 메모는 합치고 데스크톱 메모는
+    """웹 리더에 있는 논문을 맞춘다 — 데스크톱에서 바뀐 논문은 다시 올리고, 폰 메모는 합치고 데스크톱 메모는
     올린다(sync.push가 지문으로 바뀐 것만 다시 굽는다). 데스크톱에서 지운 논문은 목록에 그대로 둔다."""
     store = gdrive.open_store()
     keys = {e.get("key") for e in sync.read_index(store)["papers"] if isinstance(e, dict)}
@@ -442,9 +442,9 @@ def refresh_quietly() -> dict | None:
     try:
         out = refresh()
     except Exception as e:  # noqa: BLE001 — 켜는 길을 막지 않는다
-        log.info("모바일 동기화를 건너뜀: %s", e)
+        log.info("웹 리더 동기화를 건너뜀: %s", e)
         return None
     if out["uploaded"] or out["merged"] or out["notes"]:
-        log.info("모바일 동기화: 다시 올림 %d편, 폰 메모 %d개 합침, 메모 파일 %d개 올림",
+        log.info("웹 리더 동기화: 다시 올림 %d편, 폰 메모 %d개 합침, 메모 파일 %d개 올림",
                  out["uploaded"], out["merged"], out["notes"])
     return out

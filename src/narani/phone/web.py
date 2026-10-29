@@ -653,7 +653,7 @@ _APP_JS = r"""
       return {text: first ? md4T('Google Drive에 연결해 데스크톱에서 보낸 논문을 받아요.') : md4T('Google Drive 연결이 만료됐어요.'),
               button: first ? md4T('Google Drive 연결') : md4T('다시 연결'), act: function(){ gSignIn(); }};
     }
-    if (kind === 'nofolder') return {text: md4T('Drive에 Narani 폴더가 없어요. 데스크톱 앱에서 먼저 모바일로 보내 주세요.')};
+    if (kind === 'nofolder') return {text: md4T('Drive에 Narani 폴더가 없어요. 데스크톱 앱에서 먼저 웹 리더로 보내 주세요.')};
     return {text: md4T('목록을 불러오지 못했어요. 인터넷 연결을 확인하세요.')};
   }
 
@@ -688,7 +688,7 @@ _APP_JS = r"""
       });
     }).catch(function(){});
     for (k in m) if (!keep[k]) setHave(k, null);
-    // 데스크톱이 모바일에서 뺀 논문 — 그 논문의 폰 기록도 지운다(다시 올리면 Drive에 주인 없는 파일이 남는다).
+    // 데스크톱이 웹 리더에서 뺀 논문 — 그 논문의 폰 기록도 지운다(다시 올리면 Drive에 주인 없는 파일이 남는다).
     // 데스크톱은 빼기 전에 올라와 있던 폰 기록을 합쳐 두었다.
     try {
       var ok = JSON.parse(localStorage.getItem('narani:opskeys') || '{}') || {}, changed = false;
@@ -779,7 +779,7 @@ _APP_JS = r"""
       if (tags.childNodes.length) a.appendChild(tags);
       li.appendChild(a); libList.appendChild(li);
     });
-    if (INDEX && !INDEX.papers.length) libList.appendChild(el('li', 'empty', md4T('올린 논문이 없어요. 데스크톱 앱에서 모바일로 보내 주세요.')));
+    if (INDEX && !INDEX.papers.length) libList.appendChild(el('li', 'empty', md4T('올린 논문이 없어요. 데스크톱 앱에서 웹 리더로 보내 주세요.')));
     libBar.innerHTML = '';
     // 머리 한 줄 — 언제 올린 목록인지, 받는 중이면 진행, 덜 받았을 때만 몇 편 받았는지. 그리고 새로 고침(↻)
     var info = [];

@@ -65,7 +65,7 @@ class Job:
             raise Cancelled
 
     def cancel(self) -> None:
-        """멈춰 달라고 한다 — 진행 콜백을 부르는 작업만 실제로 멈춘다(지금은 모바일 음성)."""
+        """멈춰 달라고 한다 — 진행 콜백을 부르는 작업만 실제로 멈춘다(지금은 웹 리더 음성)."""
         self.stop = True
 
     def eta(self) -> tuple[float, float | None]:
@@ -112,7 +112,7 @@ def unseen_finished(root: Path | str) -> list[Job]:
 
 
 def finished_unseen(kind: str) -> list[Job]:
-    """그 종류의 끝났지만 아직 알리지 않은 작업 — 어느 논문이든 (홈에서 띄운 모바일 음성 등)."""
+    """그 종류의 끝났지만 아직 알리지 않은 작업 — 어느 논문이든 (홈에서 띄운 웹 리더 음성 등)."""
     return [j for j in _JOBS.values() if j.kind == kind and not j.running and not j.seen]
 
 

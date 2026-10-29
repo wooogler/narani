@@ -480,7 +480,7 @@ def _mmss(sec: float) -> str:
 
 
 def audio_label(a: dict) -> str:
-    """모바일 음성 한 줄 — 무엇으로(엔진·목소리) · 길이 · 언제. 예: 'Mac · Yuna · 68분 · 3시간 전'."""
+    """웹 리더 음성 한 줄 — 무엇으로(엔진·목소리) · 길이 · 언제. 예: 'Mac · Yuna · 68분 · 3시간 전'."""
     from narani.ui.app import _relative_time
 
     v = str(a.get("voice") or "")
@@ -1083,8 +1083,8 @@ def build_home(state: dict) -> None:
         refresh_views()
 
     async def connect_drive() -> bool:
-        """모바일용 Google Drive 연결 — 브라우저에서 로그인·허용을 마치면 True."""
-        n = ui.notification(t("브라우저에서 Google 로그인을 마치세요 — 모바일 리더가 쓸 Narani 폴더를 Drive에 만듭니다."),
+        """웹 리더용 Google Drive 연결 — 브라우저에서 로그인·허용을 마치면 True."""
+        n = ui.notification(t("브라우저에서 Google 로그인을 마치세요 — 웹 리더가 쓸 Narani 폴더를 Drive에 만듭니다."),
                             spinner=True, timeout=None)
         try:
             who = await run.io_bound(phone_service.connect)
@@ -1102,7 +1102,7 @@ def build_home(state: dict) -> None:
 
         progress가 있으면 fn이 그 안의 'msg'를 고쳐 쓰는 동안 알림 문구를 따라 바꾼다(음성 만들기처럼 긴 일)."""
         if not phone_service.configured():
-            ui.notify(t("모바일용 Google 클라이언트 설정이 없습니다 — README의 '모바일에서 읽기'를 보세요."),
+            ui.notify(t("웹 리더용 Google 클라이언트 설정이 없습니다 — README의 '웹 리더에서 읽기'를 보세요."),
                       type="warning")
             return None
         if not phone_service.connected() and not await connect_drive():
@@ -1117,7 +1117,7 @@ def build_home(state: dict) -> None:
                 if attempt or not await connect_drive():
                     return None
             except Exception as e:  # noqa: BLE001
-                ui.notify(t("모바일과 주고받지 못했습니다: {e}", e=e), type="negative")
+                ui.notify(t("웹 리더와 주고받지 못했습니다: {e}", e=e), type="negative")
                 return None
             finally:
                 if tick:
@@ -1126,7 +1126,7 @@ def build_home(state: dict) -> None:
         return None
 
     async def make_mobile_audio(roots: list[Path]) -> None:
-        """모바일에서 들을 음성 — 무료 내장 목소리(Mac·Windows), 무료 로컬 Qwen3(Apple Silicon), Gemini(유료, 내 키)로
+        """웹 리더에서 들을 음성 — 무료 내장 목소리(Mac·Windows), 무료 로컬 Qwen3(Apple Silicon), Gemini(유료, 내 키)로
         만들어 Drive에 올린다. 이 컴퓨터에서 되는 엔진만 고를 수 있다.
 
         논문 하나면 넣을 섹션을 고른다. Gemini는 길이로 어림한 비용을 먼저 보여 준다."""
@@ -1214,7 +1214,7 @@ def build_home(state: dict) -> None:
                 subprocess.Popen(["aplay", "-q", str(f)])
 
         with host, ui.dialog() as dlg, ui.card().classes("gap-2").style("width:540px;max-height:92vh;overflow-y:auto"):
-            ui.label(t("모바일에서 들을 음성 만들기")).classes("font-bold")
+            ui.label(t("웹 리더에서 들을 음성 만들기")).classes("font-bold")
             ui.label(t("번역 본문을 읽은 음성을 만들어 Drive의 Narani 폴더에 올립니다(시간당 약 15MB). 그림·표·인용 "
                        "표기·참고문헌은 건너뛰고, 섹션 제목은 알립니다. 캡션·수식은 아래에서 고릅니다.")).classes("text-xs text-gray-500")
             opts = {kind: t("무료 — Mac 목소리") if kind == "mac" else t("무료 — Windows 목소리")} if kind else {}
@@ -1427,7 +1427,7 @@ def build_home(state: dict) -> None:
         # 오래 걸리는 일이라 백그라운드 작업으로 — 논문마다 카드(진행 %)가 목록 위에 뜨고, 논문 탭을 열어도
         # 끝까지 돈다. 한 번에 한 편씩(합성이 이미 여러 스레드를 쓴다). Drive 연결은 여기서 먼저 확인한다.
         if not phone_service.configured():
-            ui.notify(t("모바일용 Google 클라이언트 설정이 없습니다 — README의 '모바일에서 읽기'를 보세요."), type="warning")
+            ui.notify(t("웹 리더용 Google 클라이언트 설정이 없습니다 — README의 '웹 리더에서 읽기'를 보세요."), type="warning")
             return
         if not phone_service.connected() and not await connect_drive():
             return
@@ -1451,10 +1451,10 @@ def build_home(state: dict) -> None:
                 job.message = t("음성 {m}분 · {mb:.0f}MB를 올렸습니다", m=round(s["seconds"] / 60), mb=s["bytes"] / 1e6)
                 return s
             row = data["by_root"].get(str(root)) or {}
-            if jobs.start(root, "mobile_audio", t("모바일 음성"), work, title=row.get("title", ""), gate=_AUDIO_GATE):
+            if jobs.start(root, "mobile_audio", t("웹 리더 음성"), work, title=row.get("title", ""), gate=_AUDIO_GATE):
                 started += 1
         if started:
-            ui.notify(t("모바일 음성 만들기를 시작했습니다 — {n}편 · 목록 위 '백그라운드 작업'에서 진행이 보입니다", n=started),
+            ui.notify(t("웹 리더 음성 만들기를 시작했습니다 — {n}편 · 목록 위 '백그라운드 작업'에서 진행이 보입니다", n=started),
                       type="info")
             show_jobs()
         if started < len(roots):
@@ -1464,56 +1464,56 @@ def build_home(state: dict) -> None:
         n = await mobile_call(phone_service.remove_audio, [Path(r) for r in roots], t("음성을 지우는 중…"))
         if n is None:
             return
-        ui.notify(t("모바일 음성 {n}편을 지웠습니다 — 논문은 모바일에 그대로", n=n), type="positive")
+        ui.notify(t("웹 리더 음성 {n}편을 지웠습니다 — 논문은 웹 리더에 그대로", n=n), type="positive")
         mobile_changed()
 
     async def send_to_mobile(roots: list[Path]) -> None:
-        """논문들을 모바일로 — Drive의 Narani 폴더에 올린다. 하이라이트·메모도 이때 오간다."""
+        """논문들을 웹 리더로 — Drive의 Narani 폴더에 올린다. 하이라이트·메모도 이때 오간다."""
         if not roots:
             ui.notify(t("보낼 논문이 없습니다."), type="warning")
             return
-        s = await mobile_call(phone_service.send, roots, t("모바일로 보내는 중… ({n}편)", n=len(roots)))
+        s = await mobile_call(phone_service.send, roots, t("웹 리더로 보내는 중… ({n}편)", n=len(roots)))
         if s is None:
             return
-        msg = t("모바일로 보냄 — 새로 {up}편 · 그대로 {same}편", up=s["uploaded"], same=s["skipped"])
+        msg = t("웹 리더로 보냄 — 새로 {up}편 · 그대로 {same}편", up=s["uploaded"], same=s["skipped"])
         if s["merged"]:
-            msg += t(" · 모바일에서 단 메모 {n}개를 합쳤습니다", n=s["merged"])
+            msg += t(" · 웹 리더에서 단 메모 {n}개를 합쳤습니다", n=s["merged"])
         ui.notify(msg, type="positive")
         mobile_changed()
 
     async def mobile_dropped(args) -> None:  # noqa: ANN001 — {paper, coll}
-        """논문 카드를 사이드바 '모바일'에 놓음 — 그 논문을 모바일로 보낸다(이미 있으면 새로 맞춘다)."""
+        """논문 카드를 사이드바 '웹 리더'에 놓음 — 그 논문을 웹 리더로 보낸다(이미 있으면 새로 맞춘다)."""
         root = str((args or {}).get("paper") or "") if isinstance(args, dict) else str(args or "")
         if root and root in data["by_root"]:
             await send_to_mobile([Path(root)])
 
     async def remove_from_mobile(roots: list[Path]) -> None:
-        """모바일에서 빼기 — 모바일에서 단 메모는 먼저 이 컴퓨터에 합친다. 논문 파일은 그대로."""
+        """웹 리더에서 빼기 — 웹 리더에서 단 메모는 먼저 이 컴퓨터에 합친다. 논문 파일은 그대로."""
         roots = [r for r in roots if Path(r).stem in data["mobile"]]
         if not roots:
-            ui.notify(t("모바일에 있는 논문이 아닙니다."), type="warning")
+            ui.notify(t("웹 리더에 있는 논문이 아닙니다."), type="warning")
             return
-        s = await mobile_call(phone_service.remove, roots, t("모바일에서 빼는 중… ({n}편)", n=len(roots)))
+        s = await mobile_call(phone_service.remove, roots, t("웹 리더에서 빼는 중… ({n}편)", n=len(roots)))
         if s is None:
             return
-        msg = t("모바일에서 {n}편을 뺐습니다", n=s["removed"])
+        msg = t("웹 리더에서 {n}편을 뺐습니다", n=s["removed"])
         if s["merged"]:
-            msg += t(" · 모바일에서 단 메모 {n}개를 합쳤습니다", n=s["merged"])
+            msg += t(" · 웹 리더에서 단 메모 {n}개를 합쳤습니다", n=s["merged"])
         ui.notify(msg, type="positive")
         mobile_changed()
 
     async def sync_mobile_now() -> None:
-        """모바일에 있는 논문 맞추기 — 바뀐 논문 다시 올리기, 메모 주고받기 (앱을 켤 때도 저절로 한다)."""
-        s = await mobile_call(lambda _: phone_service.refresh(), [], t("모바일과 동기화하는 중…"))
+        """웹 리더에 있는 논문 맞추기 — 바뀐 논문 다시 올리기, 메모 주고받기 (앱을 켤 때도 저절로 한다)."""
+        s = await mobile_call(lambda _: phone_service.refresh(), [], t("웹 리더와 동기화하는 중…"))
         if s is None:
             return
-        ui.notify(t("모바일과 동기화했습니다 — 다시 올림 {up}편 · 메모 {m}개 합침", up=s["uploaded"], m=s["merged"]),
+        ui.notify(t("웹 리더와 동기화했습니다 — 다시 올림 {up}편 · 메모 {m}개 합침", up=s["uploaded"], m=s["merged"]),
                   type="positive")
         mobile_changed()
 
     async def disconnect_drive() -> None:
         await run.io_bound(phone_service.disconnect)
-        ui.notify(t("모바일의 Google Drive 연결을 끊었습니다 (Drive의 파일은 그대로)."))
+        ui.notify(t("웹 리더의 Google Drive 연결을 끊었습니다 (Drive의 파일은 그대로)."))
         mobile_changed()
 
     async def save_to_library(roots: list[Path]) -> None:
@@ -1683,7 +1683,7 @@ def build_home(state: dict) -> None:
         n = counts()
         prow(projects.ALL, t("모든 논문"), n[projects.ALL], "library_books")
         # 모바일은 컬렉션이 아니라 '어디서 읽는가'로 거르는 보기 — 모든 논문 바로 아래, 컬렉션 머리글 위
-        prow(MOBILE, t("모바일"), n[MOBILE], "smartphone")
+        prow(MOBILE, t("웹 리더"), n[MOBILE], "smartphone")
         # '컬렉션' 캡 — 컬렉션 행을 여기에 놓으면 맨 위로 올라간다
         cap = ui.label(t("컬렉션")).classes("md4-panel-title md4-hcap")
         cap.on("dragover", js_handler=(
@@ -1721,11 +1721,11 @@ def build_home(state: dict) -> None:
     def scope_label() -> str:
         s = view["scope"]
         if s == MOBILE:
-            return t("모바일")
+            return t("웹 리더")
         return t("모든 논문") if s == projects.ALL else (t("미분류") if s == projects.NONE else name_of(s))
 
     def mobile_head() -> None:
-        """'모바일'을 고르면 머리에 — 연결 계정·편수·용량·마지막 동기화, 지금 맞추기·연결."""
+        """'웹 리더'을 고르면 머리에 — 연결 계정·편수·용량·마지막 동기화, 지금 맞추기·연결."""
         i = phone_service.info()
         with ui.row().classes("items-center gap-2 w-full md4-hpath"):
             ui.icon("cloud_done" if i["connected"] else "cloud_off", size="15px").classes("text-grey-5")
@@ -1743,7 +1743,7 @@ def build_home(state: dict) -> None:
                 ui.button(t("연결 끊기"), icon="link_off", color=None, on_click=disconnect_drive) \
                     .props("flat dense no-caps size=sm").classes("text-grey-7")
             else:
-                ui.label(t("Google Drive에 연결하지 않았습니다 — 연결하면 모바일 리더({site})에서 읽을 수 있습니다.",
+                ui.label(t("Google Drive에 연결하지 않았습니다 — 연결하면 웹 리더({site})에서 읽을 수 있습니다.",
                            site=pages.DOMAIN)).classes("truncate")
                 ui.button(t("Google Drive 연결"), icon="link", color=None, on_click=connect_drive) \
                     .props("flat dense no-caps size=sm").classes("text-primary")
@@ -1817,7 +1817,7 @@ def build_home(state: dict) -> None:
             ui.menu_item(t("이 목록의 논문을 폴더로 저장"),
                          on_click=lambda: save_to_library([r["root"] for r in visible_rows()])).props("dense")
             ui.separator()
-            ui.menu_item(t("이 목록의 번역한 논문을 모두 모바일로 보내기"),
+            ui.menu_item(t("이 목록의 번역한 논문을 모두 웹 리더로 보내기"),
                          on_click=lambda: send_to_mobile([r["root"] for r in visible_rows() if r["has_ko"]])) \
                 .props("dense")
 
@@ -2055,7 +2055,7 @@ def build_home(state: dict) -> None:
                     ui.label(t("미분류 논문이 없습니다 — 모든 논문이 컬렉션에 들어가 있습니다.")) \
                         .classes("text-xs text-gray-400")
                 elif s == MOBILE:
-                    ui.label(t("모바일에 보낸 논문이 없습니다 — 논문을 체크하고 '모바일로 보내기'를 누르세요.")) \
+                    ui.label(t("웹 리더에 보낸 논문이 없습니다 — 논문을 체크하고 '웹 리더로 보내기'를 누르세요.")) \
                         .classes("text-xs text-gray-400")
                 elif s:
                     ui.label(t("'{v}' 컬렉션에 아직 논문이 없습니다 — 여기서 올리거나, 다른 목록의 카드를 왼쪽 이 컬렉션 행으로 끌어 놓으세요.", v=name_of(s))).classes("text-xs text-gray-400")
@@ -2130,11 +2130,11 @@ def build_home(state: dict) -> None:
                         ui.label(_relative_time(r["mtime"])).classes("md4-pmeta")
                         if r["name"] in data["mobile"]:
                             ui.icon("smartphone", size="14px").classes("text-grey-6") \
-                                .tooltip(t("모바일에 있음 — 바뀌면 앱을 켤 때 다시 올립니다"))
+                                .tooltip(t("웹 리더에 있음 — 바뀌면 앱을 켤 때 다시 올립니다"))
                             a = (data["mobile"][r["name"]] or {}).get("audio")
                             if a:
                                 ui.icon("headphones", size="14px").classes("text-grey-6") \
-                                    .tooltip(t("모바일 음성 — {what}", what=audio_label(a)))
+                                    .tooltip(t("웹 리더 음성 — {what}", what=audio_label(a)))
                         # 소속 프로젝트 = 이 논문의 저장 폴더까지 정하는 값이라 카드에서 바로 바꾼다.
                         tags_box = ui.element("div").classes("md4-ptags")
                         paint_tags(tags_box, r)
@@ -2776,13 +2776,13 @@ def build_home(state: dict) -> None:
                         t("낡은 번역이 있으면 다시 번역합니다 — 띄우기 전에 편수·대략 비용을 확인합니다"))
 
             def mobile_part(first: bool) -> None:
-                ui.label(t("모바일")).classes("md4-act-h")
+                ui.label(t("웹 리더")).classes("md4-act-h")
                 if len(paths) == 1 and with_audio:   # 지금 있는 음성 — 무엇으로·언제 (다시 만들지 고를 때 보라고)
                     a = data["mobile"][paths[0].stem]["audio"]
                     ui.label("🎧 " + audio_label(a)).classes("md4-act-note")
-                send_tip = t("Google Drive를 거쳐 모바일 리더({site})에서 읽습니다 — 모바일에서 단 하이라이트·메모도 이때 합칩니다",
+                send_tip = t("Google Drive를 거쳐 웹 리더({site})에서 읽습니다 — 웹 리더에서 단 하이라이트·메모도 이때 합칩니다",
                              site=pages.DOMAIN)
-                audio_tip = t("번역 본문을 읽은 음성을 만들어 모바일에서 듣습니다 — 화면을 꺼도, CarPlay에서도")
+                audio_tip = t("번역 본문을 읽은 음성을 만들어 웹 리더에서 듣습니다 — 화면을 꺼도, CarPlay에서도")
                 all_there = bool(paths) and len(on_mobile) == len(paths)
                 if first:   # 모바일 보기 — 음성이 주 동작
                     remake = bool(with_audio) and len(with_audio) == len(paths)
@@ -2796,17 +2796,17 @@ def build_home(state: dict) -> None:
                     if first:
                         if with_audio:
                             act(t("음성 지우기"), "headset_off", lambda: remove_mobile_audio(with_audio),
-                                t("모바일 음성만 지웁니다 — 논문은 모바일에 그대로"))
-                        act(t("모바일에서 빼기"), "phonelink_erase", lambda: remove_from_mobile(on_mobile),
-                            t("모바일 목록에서 뺍니다 — 모바일에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 논문 파일은 그대로"))
+                                t("웹 리더 음성만 지웁니다 — 논문은 웹 리더에 그대로"))
+                        act(t("웹 리더에서 빼기"), "phonelink_erase", lambda: remove_from_mobile(on_mobile),
+                            t("웹 리더 목록에서 뺍니다 — 웹 리더에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 논문 파일은 그대로"))
                 if not first and on_mobile:
                     with ui.element("div").classes("md4-act-links"):
-                        ui.button(t("모바일에서 빼기"), on_click=lambda: remove_from_mobile(on_mobile), color=None) \
+                        ui.button(t("웹 리더에서 빼기"), on_click=lambda: remove_from_mobile(on_mobile), color=None) \
                             .props("flat dense no-caps") \
-                            .tooltip(t("모바일 목록에서 뺍니다 — 모바일에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 논문 파일은 그대로"))
+                            .tooltip(t("웹 리더 목록에서 뺍니다 — 웹 리더에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 논문 파일은 그대로"))
                         if with_audio:
                             ui.button(t("음성 지우기"), on_click=lambda: remove_mobile_audio(with_audio), color=None) \
-                                .props("flat dense no-caps").tooltip(t("모바일 음성만 지웁니다 — 논문은 모바일에 그대로"))
+                                .props("flat dense no-caps").tooltip(t("웹 리더 음성만 지웁니다 — 논문은 웹 리더에 그대로"))
 
             def export_part() -> None:
                 ui.label(t("내보내기")).classes("md4-act-h")
@@ -2983,7 +2983,7 @@ def build_home(state: dict) -> None:
                         .props('accept=".pdf,.md,.markdown"').classes("md4-upload") \
                         .tooltip(t("PDF·마크다운 고르기 — 창 위로 끌어다 놓아도 됩니다"))
                 with ui.button(icon="more_horiz", color=None).props("flat dense round").classes("text-grey-7") \
-                        .tooltip(t("숨긴 논문 · 내보내기 형식 · 이 목록 저장 · 모바일로 보내기")):
+                        .tooltip(t("숨긴 논문 · 내보내기 형식 · 이 목록 저장 · 웹 리더로 보내기")):
                     more_menu()
                 pv["btn"] = ui.button(icon="view_sidebar", color=None, on_click=toggle_preview) \
                     .props("flat dense round").classes("text-primary") \

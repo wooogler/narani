@@ -81,7 +81,7 @@ def read_index(store: Store) -> dict:
 
 
 def _agent_defaults() -> dict:
-    """모바일 에이전트가 처음 고를 서비스·모델 — 데스크톱 에이전트 창과 같게. 키는 싣지 않는다(모바일에서 따로 넣는다)."""
+    """웹 리더 에이전트가 처음 고를 서비스·모델 — 데스크톱 에이전트 창과 같게. 키는 싣지 않는다(웹 리더에서 따로 넣는다)."""
     from narani import config
 
     provider, model = config.resolve_chat_choice()
@@ -152,7 +152,7 @@ def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dic
 
 
 def remove(store: Store, roots: Iterable[Path]) -> dict:
-    """논문들을 모바일에서 뺀다 — 폰에서 단 메모를 먼저 데스크톱에 합치고(잃지 않게), 그 논문의 번들·메모
+    """논문들을 웹 리더에서 뺀다 — 폰에서 단 메모를 먼저 데스크톱에 합치고(잃지 않게), 그 논문의 번들·메모
     파일을 지우고 목록에서 뺀다. 폰은 다음에 목록을 받으면 받아 둔 사본도 지운다. 반환: {removed, merged}."""
     index = read_index(store)
     by_key = {Path(r).stem: Path(r) for r in roots}
@@ -185,7 +185,7 @@ def push_audio(store: Store, jobs: list[tuple[Path, object, list[int] | None]],
 
     captions면 그림·표 설명도, math면 수식도(논문의 speech_math.json에 읽는 말이 있는 것만) 읽는다.
 
-    논문이 이미 모바일 목록에 있어야 한다(번들을 먼저 올린 뒤). 섹션 캐시(§tts)가 있어 바뀐 섹션만 다시 만든다.
+    논문이 이미 웹 리더 목록에 있어야 한다(번들을 먼저 올린 뒤). 섹션 캐시(§tts)가 있어 바뀐 섹션만 다시 만든다.
     on_progress(논문 순번, 논문 수, 만든 문장, 만들 문장, 섹션 제목). 반환: {made, seconds, bytes, missing}.
     """
     from narani.phone import tts
@@ -226,7 +226,7 @@ def push_audio(store: Store, jobs: list[tuple[Path, object, list[int] | None]],
 
 
 def remove_audio(store: Store, keys: Iterable[str]) -> int:
-    """논문들의 듣기 음성만 지운다 (논문은 모바일에 그대로)."""
+    """논문들의 듣기 음성만 지운다 (논문은 웹 리더에 그대로)."""
     index = read_index(store)
     keys = set(keys)
     n = 0

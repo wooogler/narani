@@ -26,7 +26,7 @@ To contribute or use the command line, see the [developer guide](docs/DEVELOPMEN
 - [Translation](#translation)
 - [Fixing the structure](#fixing-the-structure)
 - [Agent panel](#agent-panel)
-- [Reading on mobile](#reading-on-mobile)
+- [Reading in the web reader](#reading-in-the-web-reader)
 - [Export and save locations](#export-and-save-locations)
 - [Cost](#cost)
 - [Troubleshooting](#troubleshooting)
@@ -137,14 +137,14 @@ In the preview, **click** the title, authors, year, venue, DOI, short title or a
 - Create groups with **New collection** on the left (a thesis survey, this semester's class…). Collections can have subcollections.
 - **A paper can belong to several collections.** Click the collection tag on a card to add or remove it, or drag the card onto a collection on the left to add it.
 - The **⋯** menu on a collection has new subcollection, rename, set folder, **Glossary…**, settings and delete. Deleting a collection keeps its papers and files.
-- **Mobile** on the left lists only the papers you sent to your phone (→ [Reading on mobile](#reading-on-mobile)).
+- **Web reader** on the left lists only the papers you sent to your phone (→ [Reading in the web reader](#reading-in-the-web-reader)).
 
 ### Many papers at once — batch translation
 
 Tick the checkboxes on the left of the cards and the preview turns into an **N selected** panel.
 
 - **Translate (N)** — translates the selected papers in one go. Before starting it shows a breakdown ("3 not translated · 1 with outdated sections · 2 up to date") and the **estimated cost**. You can include figure text translation.
-- **English zip · Translation zip**, **Send to mobile · Remove from mobile**, **Add to collection · Remove from collection**, **Save to folder**.
+- **English zip · Translation zip**, **Send to the web reader · Remove from the web reader**, **Add to collection · Remove from collection**, **Save to folder**.
 
 ### Tabs and windows
 
@@ -283,11 +283,11 @@ Open it with the **Agent** button at the top right. It takes a column on the rig
 
 ---
 
-## Reading on mobile
+## Reading in the web reader
 
 <p>
-<img src="docs/images/en/mobile-list.png" width="200" alt="Mobile paper list">
-<img src="docs/images/en/mobile-reader.png" width="200" alt="Mobile reader — highlights made on the desktop are visible">
+<img src="docs/images/en/mobile-list.png" width="200" alt="Web reader paper list">
+<img src="docs/images/en/mobile-reader.png" width="200" alt="Web reader — highlights made on the desktop are visible">
 <img src="docs/images/en/mobile-sheet.png" width="200" alt="Tapping a sentence slides up the source sentence with color and note buttons">
 <img src="docs/images/en/mobile-toc.png" width="200" alt="Table of contents drawer from the left">
 </p>
@@ -300,12 +300,12 @@ Read papers translated on the desktop on your phone or tablet, and exchange high
 
 ### 1. Send papers from the desktop
 
-1. On Home, tick the papers to send and click **Send to mobile**.
-2. The first time, a Google sign-in opens in your browser. Sign in and allow access; a `Narani` folder is created in your Drive and the papers are uploaded. (You can also connect first with **Mobile → Connect Google Drive** in the sidebar.)
-3. To send many at once, use **⋯ → Send all translated papers in this list to mobile** at the top right of the list.
-4. You can also drag a paper card onto **Mobile** in the left sidebar.
+1. On Home, tick the papers to send and click **Send to the web reader**.
+2. The first time, a Google sign-in opens in your browser. Sign in and allow access; a `Narani` folder is created in your Drive and the papers are uploaded. (You can also connect first with **Web reader → Connect Google Drive** in the sidebar.)
+3. To send many at once, use **⋯ → Send all translated papers in this list to the web reader** at the top right of the list.
+4. You can also drag a paper card onto **Web reader** in the left sidebar.
 
-Sent papers get a 📱 mark on their card and are listed under **Mobile** in the sidebar. Its header shows the connected account, paper count, size, last sync, **Sync now** and **Disconnect**.
+Sent papers get a 📱 mark on their card and are listed under **Web reader** in the sidebar. Its header shows the connected account, paper count, size, last sync, **Sync now** and **Disconnect**.
 
 ### 2. Install on your phone (add to home screen)
 
@@ -338,13 +338,13 @@ Sent papers get a 📱 mark on their card and are listed under **Mobile** in the
 ### 4. Highlights, notes and sync
 
 - Tap a sentence, then pick a **color** to highlight it or tap **Add note** to add a note. Both sentences of the pair are colored (just like a double-click on the desktop), and noted ones get a ✎.
-- **Phone → desktop**: highlights from the phone go to Drive and are merged into the desktop's highlights **when the desktop app starts** (or with **Mobile → Sync now** in the sidebar). Marks made offline wait on the phone and upload once you're connected.
+- **Phone → desktop**: highlights from the phone go to Drive and are merged into the desktop's highlights **when the desktop app starts** (or with **Web reader → Sync now** in the sidebar). Marks made offline wait on the phone and upload once you're connected.
 - **Desktop → phone**: when the desktop app starts it re-uploads papers you retranslated or edited, plus new notes. The phone picks them up when you open the app (or tap **Refresh**).
 - If the paper was open in the desktop viewer during a sync, reopen it to see the phone's notes.
 
 ### 5. Ask on the phone (optional)
 
-<img src="docs/images/en/mobile-agent.png" width="200" align="right" alt="Mobile agent — AI key stored on this device">
+<img src="docs/images/en/mobile-agent.png" width="200" align="right" alt="Web reader agent — AI key stored on this device">
 
 Pick **Ask** in the **💬** button at the bottom right to ask about the paper you're reading. Tap a source like [r12] in the answer to jump to that paragraph.
 
@@ -359,7 +359,7 @@ Pick **Ask** in the **💬** button at the bottom right to ask about the paper y
 
 Make audio of the translation read aloud on the desktop, then listen on the phone.
 
-- **Make it (desktop — macOS and Windows)** — on Home, tick papers and click **Make mobile audio**. Pick a voice (**Preview** to hear it) and, for a single paper, the sections to include. The audio goes to the `Narani` folder in your Drive (about 15 MB per hour), and papers with audio get a 🎧 on their card.
+- **Make it (desktop — macOS and Windows)** — on Home, tick papers and click **Make web reader audio**. Pick a voice (**Preview** to hear it) and, for a single paper, the sections to include. The audio goes to the `Narani` folder in your Drive (about 15 MB per hour), and papers with audio get a 🎧 on their card.
   - **Free — Mac voice**: made on this computer; an hour of audio takes a few minutes. Download **Yuna (Premium)** in System Settings → Accessibility → Spoken Content → System voice → Manage Voices for a much more natural voice; it's picked first when present.
   - **Free — Windows voice**: made on this computer with the speech voices built into Windows (SAPI). If the language has no voice, add one in Windows Settings → Time & language → Speech (e.g. Korean Heami). It sounds more robotic than the Mac voice.
   - **Qwen3 — free, local (Apple Silicon Mac)**: an open model (Qwen3-TTS 0.6B) far more natural than the Mac voice. Click **Install** in the dialog once to set up a small environment kept separate from the app (a few hundred MB); the model (about 2.5 GB) downloads the first time you make audio. It runs offline and free but takes about 50 minutes per hour of audio (M5 · 16 GB; more if memory is tight). It runs as a background job.
@@ -371,7 +371,7 @@ Make audio of the translation read aloud on the desktop, then listen on the phon
 - **Phone's built-in voice** — papers without desktop audio can still be heard with 🎧. The phone browser's own voice reads them (what gets read follows the same rules as desktop audio); pick the voice with 🗣 on the bar. Papers with desktop audio can switch to it with 🗣 too. It only plays **while the screen is on** (it stops when the screen turns off or you switch apps), and lock-screen and CarPlay buttons don't control it. Times are estimated from the text length.
 - **With the screen on**, the sentence being read is highlighted and the page follows along. **With the screen off** it keeps playing, and the lock screen, CarPlay and earbud buttons play/pause and move between sections. Your place is remembered and the paper opens there next time.
 - **Offline** — audio is saved the first time you play it. With **Offline mode** on, **Save audio too** downloads it all in advance (use Wi-Fi).
-- When you change a translation, the next desktop start remakes free-voice audio (Mac, Qwen3) for the changed sections only. Switching voices keeps the pieces made with the other voice, so switching back doesn't synthesize again. To delete audio, tick papers and click **Delete mobile audio**.
+- When you change a translation, the next desktop start remakes free-voice audio (Mac, Qwen3) for the changed sections only. Switching voices keeps the pieces made with the other voice, so switching back doesn't synthesize again. To delete audio, tick papers and click **Delete web reader audio**.
 
 ### 7. Getting a new version
 
@@ -386,8 +386,8 @@ Papers and notes you've downloaded stay.
 
 - Google sign-in on the phone may ask you to **Reconnect** after about an hour. Downloaded papers stay readable.
 - Papers whose source and translation have a different number of sections couldn't be aligned, so you can't add new highlights to them on the phone (desktop highlights still show).
-- To take a paper off the phone, tick it on the desktop and click **Remove from mobile**. Phone notes are merged into the desktop first; the paper's files stay.
-- To disconnect, use **Mobile → Disconnect** in the sidebar. Files already in Drive remain; delete the `Narani` folder in Drive if you don't need them.
+- To take a paper off the phone, tick it on the desktop and click **Remove from the web reader**. Phone notes are merged into the desktop first; the paper's files stay.
+- To disconnect, use **Web reader → Disconnect** in the sidebar. Files already in Drive remain; delete the `Narani` folder in Drive if you don't need them.
 - How Google data is used: [Privacy policy](https://narani.sangwooklee.info/privacy.html) · [About](https://narani.sangwooklee.info/about.html)
 
 ---
@@ -456,7 +456,7 @@ Each paper adds one entry to `references.bib` in the save location. Paste it int
 - **Papers I converted are missing from the list** — the working folder points somewhere else. Set **⚙ Settings → Save location → Working folder** back to the old folder.
 - **The first conversion is slow** — it's downloading the extraction model (about 1.1 GB). Later ones are faster.
 - **The extracted text looks wrong** — fix heading levels or run **Automatic layout fix** in the **Structure** panel, and compare with the PDF column. For scanned PDFs, turn on OCR in **⚙ Settings → Conversion & translation** and convert again.
-- **New papers don't show on the phone** — tap **Refresh** in the phone list. If they're still missing, click **Mobile → Sync now** in the desktop sidebar.
+- **New papers don't show on the phone** — tap **Refresh** in the phone list. If they're still missing, click **Web reader → Sync now** in the desktop sidebar.
 - **The phone web app looks old** — fully close the app and reopen it (→ [Getting a new version](#6-getting-a-new-version)).
 - **`libGL.so.1` error on Linux** — `sudo apt install -y libgl1 libglib2.0-0` (Debian/Ubuntu).
 
