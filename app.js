@@ -404,6 +404,7 @@
     doc.getElementById('fs-btn').setAttribute('aria-label', md4T('글자 크기'));
     doc.getElementById('share-btn').setAttribute('aria-label', md4T('공유'));
     doc.getElementById('toc-btn').setAttribute('aria-label', md4T('목차'));
+    doc.getElementById('tocd-fold').setAttribute('aria-label', md4T('목차 칸 접기'));
     doc.getElementById('rw').setAttribute('aria-label', md4T('본문 너비 — 끌어서 조절, 두 번 누르면 처음대로'));
     doc.getElementById('rw').title = md4T('본문 너비 — 끌어서 조절, 두 번 누르면 처음대로');
     doc.getElementById('top-title').setAttribute('aria-label', md4T('목차'));
@@ -1347,7 +1348,8 @@
     try { doc.getElementById('ag-in').blur(); } catch (e) {}
   }
   scrim.onclick = function(){ closeDrawers(true); };
-  doc.getElementById('tocd-x').onclick = function(){ closeDrawers(true); };
+  doc.getElementById('tocd-x').onclick = function(){ if (WIDE()) tocSide(true); else closeDrawers(true); };
+  doc.getElementById('tocd-fold').onclick = function(){ tocSide(true); };
   doc.getElementById('ag-x').onclick = function(){ closeDrawers(true); };
   [tocd, agent].forEach(function(d){ d.addEventListener('click', function(e){ e.stopPropagation(); }); });
   function readerOpened(b){ JB.length = 0; jbShow(); body.classList.add('reading'); AG.key = b.key; AG.lang = b.lang || 'ko'; AG.title = b.title_ko || b.title; AG.msgs = null; }
@@ -1401,8 +1403,10 @@
     var list = doc.getElementById('tocd-list'), here = currentSection();
     list.innerHTML = ''; list.className = ''; tocTabs('toc');
     doc.getElementById('tocd-title').textContent = (DATA[PID] || {}).title || md4T('목차');
-    [].forEach.call(cur.querySelectorAll('.toc li'), function(li){
+    var ptitle = ((DATA[PID] || {}).title || '').replace(/\s+/g, ' ').trim();
+    [].forEach.call(cur.querySelectorAll('.toc li'), function(li, k){
       var a = li.querySelector('a'); if (!a) return;
+      if ((k === 0 && li.classList.contains('l1')) || (ptitle && a.textContent.replace(/\s+/g, ' ').trim() === ptitle)) return;   // 논문 제목 줄(h1) — 위 막대에 이미 있다
       var id = (a.getAttribute('href') || '').slice(1), item = el('li', li.className), b = el('a', '', a.textContent);
       b.href = '#'; item.setAttribute('data-id', id);
       if (id === here) item.classList.add('here');
@@ -2017,7 +2021,17 @@
   rwEl.addEventListener('dblclick', function(){ lsSet('narani:' + rwKey(), 0); rwApply(); });
   window.addEventListener('resize', rwPlace);
   [].forEach.call(doc.querySelectorAll('input.mode'), function(r){ r.addEventListener('change', function(){ setTimeout(rwPlace, 0); }); });
-  doc.getElementById('toc-btn').onclick = function(e){ e.stopPropagation(); if (lsGet('narani:toctab', 'toc') === 'fig') openFigs(); else openToc(); };
+  function tocSide(off){   // 넓은 화면 — 목차 칸 접기·펴기
+    doc.body.classList.toggle('toc-off', off); lsSet('narani:tocoff', off);
+    if (!off) sideToc();
+    setTimeout(rwPlace, 0);
+  }
+  if (lsGet('narani:tocoff', false)) doc.body.classList.add('toc-off');
+  doc.getElementById('toc-btn').onclick = function(e){
+    e.stopPropagation();
+    if (WIDE()){ tocSide(!doc.body.classList.contains('toc-off')); return; }
+    if (lsGet('narani:toctab', 'toc') === 'fig') openFigs(); else openToc();
+  };
 
   // ---- 키보드·마우스 (넓은 화면) — ←/→ 이전·다음 절, Space 재생·일시정지(듣는 중), L 보기 바꾸기,
   // / 질문하기, Esc 닫기. 글을 쓰는 칸에서는 건드리지 않는다. 단추에 마우스를 올리면 이름(aria-label)이 뜬다 ----
