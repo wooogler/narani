@@ -312,6 +312,8 @@ ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3p
   /* 목차 칸은 ☰·× 로 접고 편다(접은 채로 기억) */
   .js.reading.toc-off { --sl: 0px; }
   .js.reading.toc-off #tocd { transform: translateX(-102%); }
+  /* 논문 제목은 위 막대에 있다 — 칸 머리에는 다시 쓰지 않고 × 만 */
+  .js.reading #tocd-title { visibility: hidden; }
   .js.reading main { max-width: var(--rw1, 800px); }
   .js.reading:has(#m-both:checked) main { max-width: var(--rw2, 1320px); }
   /* 본문 너비 막대 — 읽기 칸 오른쪽 끝을 끌어 넓히고 좁힌다(두 번 누르면 처음 너비) */
@@ -1419,8 +1421,10 @@ _READER_JS = r"""
     var list = doc.getElementById('tocd-list'), here = currentSection();
     list.innerHTML = ''; list.className = ''; tocTabs('toc');
     doc.getElementById('tocd-title').textContent = (DATA[PID] || {}).title || md4T('목차');
-    [].forEach.call(cur.querySelectorAll('.toc li'), function(li){
+    var ptitle = ((DATA[PID] || {}).title || '').replace(/\s+/g, ' ').trim();
+    [].forEach.call(cur.querySelectorAll('.toc li'), function(li, k){
       var a = li.querySelector('a'); if (!a) return;
+      if ((k === 0 && li.classList.contains('l1')) || (ptitle && a.textContent.replace(/\s+/g, ' ').trim() === ptitle)) return;   // 논문 제목 줄(h1) — 위 막대에 이미 있다
       var id = (a.getAttribute('href') || '').slice(1), item = el('li', li.className), b = el('a', '', a.textContent);
       b.href = '#'; item.setAttribute('data-id', id);
       if (id === here) item.classList.add('here');
