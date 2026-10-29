@@ -352,6 +352,10 @@ def inherit(new: Manifest, old: Manifest) -> None:
         if o is None:
             continue
         s.translate = o.translate
+        if o.added and not s.is_title:
+            # 편집기에서 세운 제목(§edit_heads) — 다시 세운 헤더에도 표시와 사용자가 고른 레벨을 잇는다
+            s.added, s.level, s.needs_review = True, o.level, False
+            continue
         if o.auto_level is not None and o.level != o.auto_level and not s.is_title:
             s.level = o.level
             s.needs_review = False
@@ -374,7 +378,14 @@ def rebuild(wd: WorkDir, old: Manifest | None = None, provider=None) -> Manifest
     """고친 raw.md로 구조(sections.yaml·blocks.json)를 다시 잡고 en.md를 재조립."""
     from narani import pipeline
 
+    from narani.structure import edit_heads
+
     raw = wd.raw_md.read_text(encoding="utf-8")
+    if old is not None:
+        # 편집기에서 사용자가 세운 제목 — 새로 뽑은 raw.md에서 같은 글의 줄을 찾아 다시 헤더로
+        raw, n = edit_heads.promote(raw, old.sections)
+        if n:
+            wd.raw_md.write_text(raw, encoding="utf-8")
     flavor = old.flavor if old is not None else Flavor(config.resolve_flavor())
     new = pipeline.run_structure(wd, flavor=flavor, force=True, provider=provider)
     if old is not None:

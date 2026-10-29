@@ -75,8 +75,12 @@ def _drop_ranges(manifest: Manifest, n_lines: int) -> set[int]:
     return drop
 
 
-def render_markdown(raw_md: str, manifest: Manifest) -> tuple[str, list[dict], dict[str, str]]:
-    """raw.md + manifest → (en_md 텍스트, sections.map 항목, 이미지 리네임 맵)."""
+def render_markdown(raw_md: str, manifest: Manifest,
+                    origins: list | None = None) -> tuple[str, list[dict], dict[str, str]]:
+    """raw.md + manifest → (en_md 텍스트, sections.map 항목, 이미지 리네임 맵).
+
+    origins(빈 목록)를 주면 출력 줄마다 그 줄을 낳은 raw.md 줄 번호(만들어 넣은 줄은 None)를 채운다 —
+    편집기에서 고친 헤더를 raw.md 줄로 되짚을 때 쓴다(§structure/edit_heads)."""
     lines = raw_md.splitlines()
     by_line = {s.line: s for s in manifest.sections}
 
@@ -90,6 +94,10 @@ def render_markdown(raw_md: str, manifest: Manifest) -> tuple[str, list[dict], d
     in_fence = False
 
     for i, line in enumerate(lines):
+        if origins is not None:
+            del origins[len(out_lines):]  # 앞 줄이 아무것도 안 냈으면 그 몫을 걷고
+            origins.extend([None] * (len(out_lines) - len(origins)))  # 덧붙인 줄(run-in 본문 …)은 None
+            origins.append(i)  # 이 줄이 낳는 첫 출력 줄
         # drop 섹션(헤더+본문)은 통째로 제거
         if i in drop_lines:
             continue
@@ -146,13 +154,31 @@ def render_markdown(raw_md: str, manifest: Manifest) -> tuple[str, list[dict], d
 
 
     # 흘려 쓴 참고문헌을 항목별 문단으로 분리 (span 앵커 제거) — cite 전에도 보기 좋게
+    before = out_lines
     out_lines, section_map = _reformat_references(out_lines, section_map)
+    if origins is not None:
+        del origins[len(before):]
+        origins.extend([None] * (len(before) - len(origins)))
+        origins[:] = carry_origins(origins, before, out_lines)
 
     text = "\n".join(out_lines) + "\n"
     # 짝 못 지어 베어 파일명으로 남은 이미지 링크를 images/ 로 접두 (파일은 out/images에 복사됨)
     text = _BARE_IMG_RE.sub(r"\1images/\2\3", text)
     text = _BARE_HTML_IMG_RE.sub(r"\1images/\2\3", text)
     return text, section_map, fig_plan.rename
+
+
+def carry_origins(origins: list, old: list[str], new: list[str]) -> list:
+    """줄 목록이 old → new로 바뀌었을 때 줄별 출처를 옮긴다. 같은 줄·같은 길이로 갈린 구간만 잇고 나머지는 None."""
+    if old is new or old == new:
+        return list(origins)
+    import difflib
+
+    out: list = [None] * len(new)
+    for tag, i1, i2, j1, j2 in difflib.SequenceMatcher(None, old, new, autojunk=False).get_opcodes():
+        if tag == "equal" or (tag == "replace" and i2 - i1 == j2 - j1):
+            out[j1:j2] = origins[i1:i2]
+    return out
 
 
 def assemble(raw_md: str, manifest: Manifest, wd: WorkDir) -> None:
