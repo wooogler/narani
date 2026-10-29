@@ -385,7 +385,9 @@
 
 
   var CFG = window.NARANI_CFG || {};
-  var PID = 'p0', DC = 'narani-data';
+  // 공유 링크로 연 경우(#share=<Drive 파일 id>) — 로그인 없이 그 한 편만 읽기 전용으로. 받아 둔 것도 따로 둔다
+  var SHARE_ID = (/^#share=([\w-]{10,})/.exec(location.hash) || [])[1] || null;
+  var PID = 'p0', DC = SHARE_ID ? 'narani-share' : 'narani-data';
   // iOS Safari는 viewport의 user-scalable=no를 무시한다 — 두 손가락 제스처를 직접 막는다(#zv 안은 그쪽이 따로 처리)
   doc.addEventListener('gesturestart', function(e){ e.preventDefault(); });
   var main = doc.querySelector('main'), libList = doc.getElementById('lib-list'),
@@ -400,11 +402,17 @@
     langLabel();
     setText('fs-dn', md4T('가') + '−'); setText('fs-up', md4T('가') + '+'); setText('fs-btn', md4T('가'));
     doc.getElementById('fs-btn').setAttribute('aria-label', md4T('글자 크기'));
+    doc.getElementById('share-btn').setAttribute('aria-label', md4T('공유'));
+    doc.getElementById('toc-btn').setAttribute('aria-label', md4T('목차'));
+    doc.getElementById('rw').setAttribute('aria-label', md4T('본문 너비 — 끌어서 조절, 두 번 누르면 처음대로'));
+    doc.getElementById('rw').title = md4T('본문 너비 — 끌어서 조절, 두 번 누르면 처음대로');
     doc.getElementById('top-title').setAttribute('aria-label', md4T('목차'));
     doc.getElementById('fab').setAttribute('aria-label', md4T('메모') + ' · ' + md4T('질문하기'));
     setText('lnk-about', md4T('Narani 소개')); setText('lnk-privacy', md4T('개인정보처리방침'));
     doc.getElementById('fs-dn').setAttribute('aria-label', md4T('글자 작게'));
     doc.getElementById('fs-up').setAttribute('aria-label', md4T('글자 크게'));
+    setText('ff-sans', md4T('고딕')); setText('ff-serif', md4T('명조'));
+    doc.getElementById('ff-sans').setAttribute('aria-label', md4T('고딕체로 읽기')); doc.getElementById('ff-serif').setAttribute('aria-label', md4T('명조체로 읽기'));
     doc.getElementById('back').setAttribute('aria-label', md4T('논문 목록'));
     audioLabels();
   }
@@ -424,12 +432,41 @@
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
       });
-    }, put: function(name, obj){   // 미리보기 서버는 mobile/ 아래만 받아 준다
+    }, put: function(name, obj){   // 미리보기 서버는 mobile/·share/ 아래만 받아 준다
       return fetch('data/' + name, {method: 'PUT', headers: {'Content-Type': 'application/json'},
                                     body: JSON.stringify(obj)}).then(function(r){
         if (!r.ok) throw new Error('HTTP ' + r.status);
+        return name.replace(/^share\//, '').replace(/\.json$/, '');   // 미리보기에선 이름이 곧 공유 id
       });
-    }};
+    }, del: function(name){
+      return fetch('data/' + name, {method: 'DELETE'}).then(function(r){ if (!r.ok && r.status !== 404) throw new Error('HTTP ' + r.status); });
+    }, makePublic: function(){ return Promise.resolve(); }};
+  }
+  // 공유받은 논문 — 보낸 사람 Drive의 공유 파일(링크가 있는 사람 누구나 보기) 하나를 API 키로 받는다(로그인 없음).
+  // 파일 하나에 목록 한 줄·번들·하이라이트·메모·(있으면) 읽을 목록이 다 들어 있다 — 그걸 저장소처럼 내준다
+  function shareSource(id){
+    var data = null;
+    function fetchIt(){
+      if (data) return Promise.resolve(data);
+      var url = CFG.local ? 'data/share/' + id + '.json'
+                          : 'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(id) + '?alt=media&key=' + encodeURIComponent(CFG.google_api_key || '');
+      return fetch(url, {cache: 'no-store'}).then(function(r){
+        if (r.status === 404 || r.status === 403 || r.status === 401){ var e = new Error('gone'); e.kind = 'gone'; throw e; }
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function(d){ data = d; return d; });
+    }
+    return {shared: true,
+      get: function(name){
+        return fetchIt().then(function(d){
+          if (name === 'index.json') return {format: 1, updated: d.shared_at, papers: [d.entry]};
+          if (name === d.entry.file) return d.bundle;
+          if (d.notes && name === 'notes/shared.json') return d.notes;
+          if (d.speech && d.entry.speech && name === d.entry.speech.file) return d.speech;
+          throw new Error('missing');
+        });
+      },
+      raw: function(){ return Promise.reject(new Error('missing')); }};
   }
   // Google Drive — 데스크톱이 만든 `Narani` 폴더(같은 Cloud 프로젝트라 drive.file로 보인다)를 읽는다.
   // 로그인은 팝업 대신 **리디렉트**(OAuth 클라이언트 측 흐름) — iOS 홈 화면 앱에선 팝업이 막히거나
@@ -549,20 +586,33 @@
         var body = JSON.stringify(obj);
         return (ids ? Promise.resolve(ids) : loadIds()).then(function(m){
           if (m[name]) return api(GUP + '/files/' + m[name] + '?uploadType=media',
-                                  {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: body});
+                                  {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: body}).then(function(){ return m[name]; });
           var b = 'narani' + Math.random().toString(36).slice(2);
           var meta = JSON.stringify({name: name, parents: [folder], mimeType: 'application/json'});
           return api(GUP + '/files?uploadType=multipart&fields=id', {method: 'POST',
             headers: {'Content-Type': 'multipart/related; boundary=' + b},
             body: '--' + b + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + meta +
                   '\r\n--' + b + '\r\nContent-Type: application/json\r\n\r\n' + body + '\r\n--' + b + '--'})
-            .then(function(r){ return r.json(); }).then(function(d){ ids[name] = d.id; });
+            .then(function(r){ return r.json(); }).then(function(d){ ids[name] = d.id; return d.id; });
         });
+      },
+      del: function(name){
+        return (ids ? Promise.resolve(ids) : loadIds()).then(function(m){
+          if (!m[name]) return;
+          return api(GAPI + '/files/' + m[name], {method: 'DELETE'}).then(function(){ delete ids[name]; });
+        });
+      },
+      // 공유 — 링크가 있는 사람 누구나 보기(검색·목록에는 안 뜬다). drive.file 권한으로 앱이 만든 파일에만 된다
+      makePublic: function(fileId){
+        return api(GAPI + '/files/' + fileId + '/permissions', {method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({role: 'reader', type: 'anyone', allowFileDiscovery: false})});
       }
     };
   }
   takeRedirect();
-  var source = CFG.local ? localSource() : (CFG.google_client_id ? driveSource() : null);
+  var source = SHARE_ID ? shareSource(SHARE_ID) : CFG.local ? localSource() : (CFG.google_client_id ? driveSource() : null);
+  if (SHARE_ID) doc.body.classList.add('shared');
+  else if (source && source.makePublic) doc.body.classList.add('can-share');
   var reconnecting = !!(source && source.drive) && gSilent();
   doc.addEventListener('visibilitychange', function(){
     if (doc.visibilityState === 'visible' && source && source.drive) reconnecting = gSilent() || reconnecting;
@@ -570,6 +620,7 @@
   function sourceProblem(err){
     // 저장소 오류 → 목록 위에 보일 안내와 단추
     var kind = err && err.kind;
+    if (kind === 'gone') return {text: md4T('이 공유 링크는 열 수 없어요 — 보낸 사람이 공유를 껐거나 지웠어요.')};
     // 꺼진 망에서는 다시 연결도 못 한다 — 승인이 만료됐어도 오프라인 안내만
     if (navigator.onLine === false) return {text: md4T('오프라인 — 받아 둔 논문만 열려요')};
     if (reconnecting && kind === 'auth') return {text: md4T('Google Drive에 다시 연결하는 중…')};
@@ -716,7 +767,7 @@
     if (note) info.push(note);
     libBar.appendChild(el('span', 'grow', info.join(' · ')));
     if (source){
-      var re = el('button', 're', '\u21bb'); re.setAttribute('aria-label', md4T('새로 고침')); re.title = md4T('새로 고침');
+      var re = el('button', 're'); re.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>'; re.setAttribute('aria-label', md4T('새로 고침')); re.title = md4T('새로 고침');
       re.onclick = function(){ loadIndex(true); };
       libBar.appendChild(re);
     }
@@ -812,6 +863,12 @@
         if (autoSave()) saveOffline();
       }, function(err){
         var pr = sourceProblem(err);
+        if (SHARE_ID && err && err.kind === 'gone'){   // 보낸 사람이 공유를 껐다 — 이 기기에 받아 둔 사본도 지운다
+          try { caches.delete(DC); } catch (x) {}
+          loadSeq++; unmount(); readerClosed(); topTitle.textContent = APP;
+          loading.style.display = ''; loading.textContent = pr.text;
+          return;
+        }
         OFFLINE = navigator.onLine === false || (!pr.button && !!err && !err.kind);   // 망 오류(인증·폴더 문제가 아니라)
         if (cached) showIndex(cached, OFFLINE ? '' : pr.text, pr);
         else { libBar.innerHTML = ''; libBar.appendChild(el('span', 'grow', pr.text)); addAct(pr); }
@@ -830,7 +887,7 @@
   function mount(b, target){
     main.insertAdjacentHTML('beforeend', b.html);
     cur = doc.getElementById(PID); cur.classList.add('on');
-    DATA[PID] = {key: b.key, title: b.title_ko || b.title, cites: b.cites || {}, fns: b.fns || {}};
+    DATA[PID] = {key: b.key, title: b.title_ko || b.title, cites: b.cites || {}, fns: b.fns || {}, has_ko: !!b.has_ko};
     readerOpened(b);
     var t = target ? doc.getElementById(target) : null, off = 0;
     if (!t){
@@ -868,6 +925,7 @@
   }
   try { history.scrollRestoration = 'manual'; } catch (e) {}
   function route(){
+    if (SHARE_ID){ if (INDEX && INDEX.papers[0]) openPaper(fileId(INDEX.papers[0]), false); return; }
     var h = location.hash.replace(/^#!?/, '');
     if (h && h !== 'lib' && openPaper(h, false)) return;
     showLib(false);
@@ -935,6 +993,7 @@
     ops(NOTE.key).forEach(function(o){
       if (o.ts <= NOTE.applied) return;
       if (o.op === 'del'){ delete map[o.id]; return; }
+      if (o.op !== 'put' || !o.item) return;   // 메모 탭 기록(op=memo)은 memosView가
       if (!(o.item.id in map)) order.push(o.item.id);
       map[o.item.id] = o.item;
     });
@@ -1077,7 +1136,20 @@
     } else only = false;
     agBody.appendChild(bar);
     if (only) list = list.filter(function(it){ return it.note; });
+    // 논문 메모 탭(데스크톱 뷰어의 '메모' 패널) — 읽기만, 대화에서 '메모로' 넣은 것도 여기에
+    var mv = memosView().filter(function(m){ return m.text.trim(); });
+    if (mv.length){
+      var box = el('div', 'memos');
+      mv.forEach(function(m, k){
+        var d = el('details', 'memo'); if (k === 0) d.open = true;
+        var sm = el('summary', '', m.name); if (m.pending) sm.appendChild(el('span', 'pend', md4T('올릴 것 있음')));
+        d.appendChild(sm); var body = el('div', 'memo-md'); body.innerHTML = md(m.text); d.appendChild(body);
+        box.appendChild(d);
+      });
+      agBody.appendChild(box);
+    }
     if (!list.length){
+      if (mv.length) return;
       agBody.appendChild(el('p', 'hint', source && source.put
         ? md4T('아직 표시한 문장이 없어요. 본문의 문장을 누르면 색을 칠하거나 메모를 달 수 있어요.')
         : md4T('저장소에 연결해야 하이라이트·메모를 남길 수 있어요.')));
@@ -1104,7 +1176,7 @@
     var key = b.key;
     getNotes(e).then(function(n){
       if (!n || NOTE.key !== key) return;
-      NOTE.base = n.items || []; NOTE.applied = +n.applied || 0;
+      NOTE.base = n.items || []; NOTE.applied = +n.applied || 0; NOTE.memos = n.memos || [];
       var mine = ops(key), left = mine.filter(function(o){ return o.ts > NOTE.applied; });
       if (left.length !== mine.length) lsSet('narani:ops:' + key, left);   // 데스크톱이 합친 기록은 지운다
       paint();
@@ -1248,16 +1320,35 @@
   doc.addEventListener('click', function(e){
     if (!e.target.closest || !e.target.closest('#fs-pop, #fs-btn')) fsPop.classList.remove('open');
   }, true);
+  // 글꼴 — 고딕(기기 글꼴) · 명조. 명조는 기기에 한글 명조가 없을 수 있어(iOS) 고를 때만 웹 글꼴(Noto Serif)을 불러온다
+  var SERIF = '"Noto Serif KR", "Noto Serif JP", "Noto Serif SC", "AppleMyungjo", "Nanum Myeongjo", "Batang", Georgia, "Times New Roman", serif';
+  function setFf(v){
+    var serif = v === 'serif';
+    if (serif && !doc.getElementById('ff-css')){
+      var l = doc.createElement('link'); l.id = 'ff-css'; l.rel = 'stylesheet';
+      l.href = 'https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700&family=Noto+Serif+JP:wght@400;700&family=Noto+Serif+SC:wght@400;700&display=swap';
+      doc.head.appendChild(l);
+    }
+    doc.documentElement.style.setProperty('--ff', serif ? SERIF : 'inherit');
+    lsSet('narani:ff', serif ? 'serif' : 'sans');
+    doc.getElementById('ff-sans').classList.toggle('on', !serif); doc.getElementById('ff-serif').classList.toggle('on', serif);
+  }
+  doc.getElementById('ff-sans').onclick = function(){ var a = topRow(); setFf('sans'); if (a) a.scrollIntoView({block: 'start'}); };
+  doc.getElementById('ff-serif').onclick = function(){ var a = topRow(); setFf('serif'); if (a) a.scrollIntoView({block: 'start'}); };
+  setFf(lsGet('narani:ff', 'sans'));
 
   // ---- 서랍 공통 ----
   var scrim = doc.getElementById('scrim'), tocd = doc.getElementById('tocd'), agent = doc.getElementById('agent');
-  function closeDrawers(){
+  function WIDE(){ return window.matchMedia && matchMedia('(min-width: 1100px)').matches; }
+  function closeDrawers(all){
+    // 넓은 화면에선 목차·메모 칸이 옆에 붙어 있다 — 목차를 눌러 이동해도 닫지 않는다(× 단추로만)
+    if (WIDE() && all !== true){ scrim.classList.remove('open'); return; }
     tocd.classList.remove('open'); agent.classList.remove('open'); scrim.classList.remove('open');
     try { doc.getElementById('ag-in').blur(); } catch (e) {}
   }
-  scrim.onclick = closeDrawers;
-  doc.getElementById('tocd-x').onclick = closeDrawers;
-  doc.getElementById('ag-x').onclick = closeDrawers;
+  scrim.onclick = function(){ closeDrawers(true); };
+  doc.getElementById('tocd-x').onclick = function(){ closeDrawers(true); };
+  doc.getElementById('ag-x').onclick = function(){ closeDrawers(true); };
   [tocd, agent].forEach(function(d){ d.addEventListener('click', function(e){ e.stopPropagation(); }); });
   function readerOpened(b){ JB.length = 0; jbShow(); body.classList.add('reading'); AG.key = b.key; AG.lang = b.lang || 'ko'; AG.title = b.title_ko || b.title; AG.msgs = null; }
   function readerClosed(){ JB.length = 0; jbShow(); FIGS = []; body.classList.remove('reading'); closeDrawers(); if (TK) talkEnd(md4T('논문을 닫음'), true); stopAudio(); }
@@ -1303,7 +1394,7 @@
       item.appendChild(b); list.appendChild(item);
     });
     if (!FIGS.length) list.appendChild(el('li', 'empty', md4T('그림·표가 없는 논문이에요.')));
-    tocd.classList.add('open'); scrim.classList.add('open');
+    tocd.classList.add('open'); if (!WIDE()) scrim.classList.add('open');
   }
   function openToc(){
     if (!cur) return;
@@ -1313,13 +1404,13 @@
     [].forEach.call(cur.querySelectorAll('.toc li'), function(li){
       var a = li.querySelector('a'); if (!a) return;
       var id = (a.getAttribute('href') || '').slice(1), item = el('li', li.className), b = el('a', '', a.textContent);
-      b.href = '#';
+      b.href = '#'; item.setAttribute('data-id', id);
       if (id === here) item.classList.add('here');
       b.onclick = function(ev){ ev.preventDefault(); closeDrawers(); flashRow(doc.getElementById(id)); };
       item.appendChild(b); list.appendChild(item);
     });
     if (!list.children.length) list.appendChild(el('li', 'empty', md4T('목차가 없는 논문이에요.')));
-    tocd.classList.add('open'); scrim.classList.add('open');
+    tocd.classList.add('open'); if (!WIDE()) scrim.classList.add('open');
     var h = list.querySelector('.here'); if (h) h.scrollIntoView({block: 'center'});
   }
   topTitle.onclick = function(e){
@@ -1403,7 +1494,31 @@
       });
     });
   }
-  function navOpened(){ indexFigs(); linkFigRefs(); }
+  function navOpened(){
+    indexFigs(); linkFigRefs(); setTimeout(rwApply, 0);
+    if (SHARE_ID && cur && !cur.querySelector('.share-note'))   // 공유받은 논문 — 읽기 전용이라는 것과 저작권
+      cur.insertBefore(el('p', 'note share-note', md4T('공유받은 논문이에요 — 링크를 받은 사람만 볼 수 있어요. 하이라이트·메모는 이 기기에만 남고, 원문의 저작권은 저자·출판사에 있어요.')), cur.firstChild);
+    if (WIDE()) sideToc();
+  }
+  // 넓은 화면 — 목차 칸을 늘 띄워 두고, 읽는 자리에 따라 '지금 절'을 옮긴다
+  function sideToc(){ if (lsGet('narani:toctab', 'toc') === 'fig') openFigs(); else openToc(); }
+  var hereTick = false;
+  window.addEventListener('scroll', function(){
+    if (hereTick || !cur || !WIDE()) return;
+    hereTick = true;
+    setTimeout(function(){
+      hereTick = false;
+      var id = currentSection(), list = doc.getElementById('tocd-list');
+      [].forEach.call(list.querySelectorAll('li[data-id]'), function(li){ li.classList.toggle('here', li.getAttribute('data-id') === id); });
+    }, 150);
+  }, {passive: true});
+  if (window.matchMedia) matchMedia('(min-width: 1100px)').addEventListener('change', function(m){
+    if (m.matches){ scrim.classList.remove('open'); if (cur){ sideToc(); rwApply(); } }
+    else {
+      closeDrawers(true);
+      if (doc.getElementById('m-both').checked){ var r = doc.getElementById('m-ko'); r.checked = true; r.dispatchEvent(new Event('change')); langLabel(); }
+    }
+  });
   function goFig(id){
     var t = visibleTarget(id); if (!t) return;
     var row = t.classList.contains('row') ? t : t.closest('.row');
@@ -1447,16 +1562,20 @@
   }, {passive: true});
 
   // ---- 번역 ⇄ 원문 토글 (대조는 화면에서 뺐다 — 문장을 누르면 짝 문장이 뜬다) ----
-  if (doc.getElementById('m-both').checked){ doc.getElementById('m-ko').checked = true; store('mode', 'ko'); }
+  // 넓은 화면에서는 세 번째로 '나란히'(원문 | 번역) — 폰에선 화면이 좁아 번역 ⇄ 원문만
+  if (doc.getElementById('m-both').checked && !WIDE()){ doc.getElementById('m-ko').checked = true; store('mode', 'ko'); }
   function langLabel(){
-    var en = doc.getElementById('m-en').checked;
-    setText('lang-btn', (en ? md4T('원문') : md4T('번역')) + ' ⇄');
-    doc.getElementById('lang-btn').setAttribute('aria-label', en ? md4T('번역으로 보기') : md4T('원문으로 보기'));
+    var en = doc.getElementById('m-en').checked, both = doc.getElementById('m-both').checked;
+    setText('lang-btn', (both ? md4T('나란히') : en ? md4T('원문') : md4T('번역')) + ' ⇄');
+    doc.getElementById('lang-btn').setAttribute('aria-label', WIDE() ? md4T('보기 바꾸기 (번역 · 원문 · 나란히)')
+                                                                      : en ? md4T('번역으로 보기') : md4T('원문으로 보기'));
   }
   doc.getElementById('lang-btn').onclick = function(e){
     e.stopPropagation();
     modeAnchor = topRow();   // 바꾸기 전 화면 맨 위 문단 — 바꾼 뒤 그 문단으로 (CORE_JS의 change 처리)
-    var to = doc.getElementById('m-en').checked ? 'm-ko' : 'm-en', r = doc.getElementById(to);
+    var ko = doc.getElementById('m-ko').checked, en = doc.getElementById('m-en').checked;
+    var to = WIDE() && (DATA[PID] || {}).has_ko ? (ko ? 'm-en' : en ? 'm-both' : 'm-ko') : (en ? 'm-ko' : 'm-en');
+    var r = doc.getElementById(to);
     r.checked = true; r.dispatchEvent(new Event('change'));
     langLabel();
   };
@@ -1498,6 +1617,8 @@
       var m = /^\s*(?:[-*•]|\d+[.)])\s+(.*)$/.exec(line);
       if (m){ if (!list){ out.push('<ul>'); list = true; } out.push('<li>' + m[1] + '</li>'); return; }
       if (list){ out.push('</ul>'); list = false; }
+      var hd = /^\s*#{1,6}\s+(.*)$/.exec(line);   // 메모 탭의 제목(## …) — 굵은 한 줄로
+      if (hd){ out.push('<p class="mh"><b>' + hd[1] + '</b></p>'); return; }
       if (line.trim()) out.push('<p>' + line + '</p>');
     });
     if (list) out.push('</ul>');
@@ -1511,7 +1632,10 @@
   });
   function msgEl(m){
     var d = el('div', 'm ' + (m.role === 'user' ? 'u' : (m.err ? 'a err' : 'a')));
-    if (m.role === 'user' || m.err) d.textContent = (m.voice && m.role === 'user' ? '🎙 ' : '') + m.content; else d.innerHTML = md(m.content);
+    if (m.role === 'user' || m.err){
+      d.textContent = m.content;
+      if (m.voice && m.role === 'user'){ var mi = el('span', 'vmic'); mi.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1a7 7 0 0 0 6-6.9z"/></svg>'; d.insertBefore(mi, d.firstChild); }   // 말로 물은 질문
+    } else d.innerHTML = md(m.content);
     return d;
   }
   var TAB_ICON = {   // 두 칸 스위치의 그림 — 연필(메모) · 말풍선(질문하기)
@@ -1533,6 +1657,85 @@
   }
   doc.getElementById('tab-notes').onclick = function(){ lsSet('narani:agtab', 'notes'); showNotes(); };
   doc.getElementById('tab-chat').onclick = function(){ lsSet('narani:agtab', 'chat'); showChat(); };
+
+  // ---- 논문 메모 탭 — 데스크톱이 notes/에 실어 보낸 탭(memos) 위에 아직 합쳐지지 않은 폰 기록(op=memo)을 얹는다 ----
+  function memosView(){
+    var out = (NOTE.memos || []).map(function(m){ return {name: m.name, text: m.text || '', stamp: m.stamp || '', pending: false}; });
+    ops(NOTE.key).forEach(function(o){
+      if (o.op !== 'memo' || o.ts <= NOTE.applied) return;
+      var m = out.filter(function(x){ return x.name === o.tab; })[0];
+      if (!m){ m = {name: o.tab, text: '', stamp: '', pending: true}; out.push(m); }
+      m.text = o.mode === 'replace' ? o.text : (m.text.trim() ? m.text.replace(/\s+$/, '') + '\n\n' : '') + o.text.trim() + '\n';
+      m.pending = true;
+    });
+    return out;
+  }
+  function canMemo(){ return !!(source && source.put && !SHARE_ID && NOTE.key); }
+  // 대화 안에서 고른 글 — '메모로'를 누르면 답 전체 대신 그 부분만
+  var LASTSEL = null;
+  doc.addEventListener('selectionchange', function(){
+    var sel = window.getSelection && window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.anchorNode) return;
+    var n = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentNode, m = n && n.closest ? n.closest('#ag-body .m[data-i]') : null;
+    if (m) LASTSEL = {i: +m.getAttribute('data-i'), text: sel.toString().trim(), at: Date.now()};
+  });
+  var MEMO_MERGE = 'You maintain a researcher\'s markdown note about one paper. Merge the NEW material into the EXISTING note: ' +
+    'put each point where it belongs, keep everything already in the note (do not drop or shorten information), keep its headings, ' +
+    'structure and language (write in the language the note is written in), keep [rN] paragraph markers as they are, and avoid ' +
+    'repeating what the note already says. Return only the full updated note in markdown, with no preface.';
+  function memoBlock(msgs, i, sel){
+    var q = null;
+    for (var k = i - 1; k >= 0; k--) if (msgs[k].role === 'user'){ q = msgs[k].content; break; }
+    return (q ? '**Q.** ' + q.replace(/\s+/g, ' ').trim() + '\n\n' : '') + (sel || msgs[i].content).trim();
+  }
+  function memoSheet(msgs, i, sel){
+    var text = memoBlock(msgs, i, sel), tabs = memosView(), box = el('div', 'rng'), last = lsGet('narani:memotab', '');
+    var preview = el('div', 'memo-pre'); preview.textContent = text.length > 400 ? text.slice(0, 400) + '…' : text; box.appendChild(preview);
+    var pick = el('select', 'wv-sel'), nm = el('input', 'memo-new');
+    tabs.forEach(function(t){ var o = el('option', '', t.name); o.value = t.name; o.selected = t.name === last; pick.appendChild(o); });
+    var on = el('option', '', md4T('새 메모 탭…')); on.value = '\u0000new'; pick.appendChild(on);
+    if (!tabs.length) on.selected = true;
+    nm.placeholder = md4T('새 탭 이름'); nm.value = md4T('대화에서');
+    var lab = el('label', 'wv'); lab.appendChild(doc.createTextNode(md4T('넣을 메모') + ' ')); lab.appendChild(pick); box.appendChild(lab); box.appendChild(nm);
+    var modes = el('div');
+    [['append', md4T('끝에 덧붙이기 — 고른 글을 그대로')], ['merge', md4T('AI로 합치기 — 메모 흐름에 녹여 다시 씀(저장 전에 미리 봄)')]].forEach(function(x, k){
+      var l = el('label'), r = el('input'); r.type = 'radio'; r.name = 'mmode'; r.value = x[0]; r.checked = k === (lsGet('narani:memomode', 'append') === 'merge' ? 1 : 0);
+      l.appendChild(r); l.appendChild(doc.createTextNode(' ' + x[1])); modes.appendChild(l);
+    });
+    box.appendChild(modes);
+    function sync(){
+      var isNew = pick.value === '\u0000new', t = tabs.filter(function(x){ return x.name === pick.value; })[0];
+      nm.style.display = isNew ? '' : 'none';
+      var mr = modes.querySelector('input[value=merge]'); mr.disabled = isNew || !(t && t.text.trim());
+      if (mr.disabled && mr.checked) modes.querySelector('input[value=append]').checked = true;
+    }
+    pick.onchange = sync; sync();
+    openSheet(md4T('메모로 보내기'), [box], [button(md4T('넣기'), function(){
+      var isNew = pick.value === '\u0000new', name = isNew ? (nm.value.trim() || md4T('대화에서')) : pick.value;
+      var mode = (modes.querySelector('input[name=mmode]:checked') || {}).value || 'append';
+      lsSet('narani:memotab', name); lsSet('narani:memomode', mode);
+      if (mode !== 'merge'){ record({op: 'memo', tab: name, mode: 'append', text: text}); closeSheet(); toast(md4T('「{t}」 메모에 넣었어요', {t: name})); return; }
+      memoMerge(tabs.filter(function(x){ return x.name === name; })[0], text);
+    })]);
+  }
+  function memoMerge(tab, text){
+    var c = aiCfg(), out = '';
+    if (!c.keys[c.provider]){ closeSheet(); showSettings(); return; }
+    openSheet(md4T('메모로 보내기'), [para(md4T('AI가 「{t}」 메모에 합치는 중…', {t: tab.name}), 'more')], []);
+    askAI(c, MEMO_MERGE, [{role: 'user', content: 'EXISTING NOTE:\n' + tab.text + '\n\nNEW MATERIAL (from a chat about the paper):\n' + text}],
+          function(t){ out += t; }).then(function(){
+      out = out.trim();
+      if (!out) throw new Error(md4T('빈 답이 왔어요'));
+      var pv = el('div', 'memo-md memo-pre'); pv.innerHTML = md(out);
+      openSheet(md4T('합친 메모 미리 보기 — 「{t}」', {t: tab.name}), [pv, para(md4T('저장하면 이 판으로 바뀌어요. 그사이 데스크톱에서 메모를 고쳤으면 덮지 않고 끝에 덧붙여요.'), 'more')], [
+        button(md4T('저장'), function(){ record({op: 'memo', tab: tab.name, mode: 'replace', text: out, base: tab.stamp}); closeSheet(); toast(md4T('「{t}」 메모를 고쳤어요', {t: tab.name})); }),
+        button(md4T('그냥 덧붙이기'), function(){ record({op: 'memo', tab: tab.name, mode: 'append', text: text}); closeSheet(); toast(md4T('「{t}」 메모에 넣었어요', {t: tab.name})); })]);
+    }).catch(function(e){
+      openSheet(md4T('메모로 보내기'), [para(md4T('AI로 합치지 못했어요: {e}', {e: e.message || e}), 'more')],
+                [button(md4T('그냥 덧붙이기'), function(){ record({op: 'memo', tab: tab.name, mode: 'append', text: text}); closeSheet(); })]);
+    });
+  }
+  var MEMO_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zm-1 7V3.5L18.5 9zm-2 9H9v-2h2v-2h2v2h2v2h-2v2h-2z"/></svg>';
   function showChat(){
     AG.mode = 'chat'; setTabs(); agBody.innerHTML = '';
     doc.getElementById('ag-form').style.display = '';
@@ -1540,7 +1743,20 @@
     if (!c.keys[c.provider]){ showSettings(md4T('질문하려면 이 기기에 AI 서비스와 API 키를 한 번 넣어 주세요.')); return; }
     var msgs = chat();
     if (!msgs.length) agBody.appendChild(el('p', 'hint', md4T('이 논문에 대해 무엇이든 물어보세요 — 답의 [r12] 같은 표시를 누르면 그 문단으로 갑니다. ({p} · {m})', {p: PNAME[c.provider] || c.provider, m: c.model})));
-    msgs.forEach(function(m){ agBody.appendChild(msgEl(m)); });
+    msgs.forEach(function(m, i){
+      var d = msgEl(m);
+      if (m.role === 'assistant' && !m.err && canMemo()){   // 답(또는 그 안에서 고른 글)을 논문 메모 탭으로
+        d.setAttribute('data-i', i);
+        var b = el('button', 'to-memo'); b.type = 'button'; b.innerHTML = MEMO_SVG; b.appendChild(doc.createTextNode(md4T('메모로')));
+        b.onclick = function(ev){
+          ev.stopPropagation();
+          var sel = LASTSEL && LASTSEL.i === i && Date.now() - LASTSEL.at < 120000 ? LASTSEL.text : '';
+          memoSheet(msgs, i, sel);
+        };
+        d.appendChild(b);
+      }
+      agBody.appendChild(d);
+    });
     agBody.scrollTop = agBody.scrollHeight;
   }
   function showSettings(note){
@@ -1588,9 +1804,10 @@
     e.stopPropagation();
     closeSheet();
     if (body.classList.contains('listening')){ talkStart(); return; }   // 듣는 중엔 말로 묻기 단추
-    setText('ag-clear', '⟲'); doc.getElementById('ag-clear').setAttribute('aria-label', md4T('대화 지우기'));
+    doc.getElementById('ag-clear').innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>'; doc.getElementById('ag-clear').setAttribute('aria-label', md4T('대화 지우기'));
     agIn.placeholder = md4T('이 논문에 대해 물어보세요');
-    agent.classList.add('open'); scrim.classList.add('open');
+    if (WIDE() && agent.classList.contains('open')){ closeDrawers(true); return; }   // 넓은 화면: 💬로 옆 칸 열고 닫기
+    agent.classList.add('open'); if (!WIDE()) scrim.classList.add('open');
     var tab = lsGet('narani:agtab', null) || (items().length ? 'notes' : 'chat');   // 지난번 탭 (처음엔 표시가 있으면 메모)
     if (tab === 'notes') showNotes(); else showChat();
   };
@@ -1705,6 +1922,134 @@
   doc.getElementById('ag-form').addEventListener('submit', function(e){ e.preventDefault(); send(); });
   agIn.addEventListener('input', function(){ agIn.style.height = ''; agIn.style.height = Math.min(agIn.scrollHeight, 200) + 'px'; });
   agIn.addEventListener('keydown', function(e){ if (e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); send(); } });
+  // ---- 공유 — 이 논문을 링크로 (번역·원문·내 하이라이트·메모, 읽을 목록이 있으면 그것도) ----
+  // 내 Drive의 Narani 폴더에 공유 파일 하나를 만들고 '링크가 있는 사람 누구나 보기'로 연다. 받는 사람은
+  // #share=<파일 id>로 로그인 없이 읽는다. 다시 올리면 같은 파일을 고쳐 링크가 그대로고, 끄면 파일을 지운다.
+  function shareLink(id){ return location.origin + location.pathname.replace(/index\.html$/, '') + '#share=' + id; }
+  function shares(){ return lsGet('narani:shares', {}); }
+  function shareOut(link){
+    if (navigator.share) return navigator.share({title: (DATA[PID] || {}).title || APP, url: link}).catch(function(){});
+    if (navigator.clipboard) return navigator.clipboard.writeText(link).then(function(){ toast(md4T('링크를 복사했어요')); }, function(){});
+  }
+  function toast(t){ var n = el('div', 'toast', t); doc.body.appendChild(n); setTimeout(function(){ n.remove(); }, 2200); }
+  function sharePayload(e, memoNames){
+    return getPaper(e).then(function(b){
+      var sp = speechOf(e), entry = {key: e.key, hash: e.hash, lang: e.lang, title: e.title, title_ko: e.title_ko, authors: e.authors,
+        year: e.year, venue: e.venue, has_ko: e.has_ko, aligned: e.aligned, file: 'papers/shared.json', notes_hash: 's' + Date.now()};
+      var out = {format: 1, kind: 'narani-share', shared_at: Date.now() / 1000, entry: entry, bundle: b,
+                 notes: {items: items(), applied: 0,
+                         memos: memosView().filter(function(m){ return memoNames.indexOf(m.name) >= 0 && m.text.trim(); })
+                                           .map(function(m){ return {name: m.name, text: m.text, stamp: ''}; })}};
+      if (!sp) return out;
+      return webPlan(sp).then(function(plan){ entry.speech = {file: 'speech/shared.json', sig: sp.sig}; out.speech = plan; return out; },
+                              function(){ return out; });
+    });
+  }
+  function shareSheet(){
+    if (!cur || !NOTE.fid) return;
+    var e = entryOf(NOTE.fid), key = NOTE.key, name = 'share/' + NOTE.fid + '.json', have = shares()[key];
+    if (!e) return;
+    var nodes = [para(md4T('링크를 받은 사람만 볼 수 있어요 — 검색되거나 공개 목록에 오르지 않아요. 번역·원문·내 하이라이트·메모(고른 메모 탭)가 담기고, 받는 사람은 로그인 없이 읽기 전용으로 열어요.')),
+                 para(md4T('원문의 저작권은 저자·출판사에 있어요. 필요한 사람에게만 보내 주세요.'), 'more')];
+    if (!CFG.local && !CFG.google_api_key) nodes.push(para(md4T('이 웹앱에는 공유용 Google API 키가 없어 받는 사람이 열 수 없어요 — 데스크톱 config.toml [phone]의 google_web_api_key를 넣고 웹앱을 다시 올려 주세요.'), 'more'));
+    if (have) nodes.push(para(have.link, 'more share-link'));
+    // 담을 논문 메모 탭 — 기본은 모두(지난번에 뺀 탭은 빼 둔다)
+    var mv = memosView().filter(function(m){ return m.text.trim(); }), skip = lsGet('narani:shareskip:' + key, []), checks = [];
+    if (mv.length){
+      var mb = el('div', 'rng'); mb.appendChild(el('div', 'sh-label', md4T('함께 담을 메모 탭')));
+      mv.forEach(function(m){
+        var l = el('label'), c = el('input'); c.type = 'checkbox'; c.checked = skip.indexOf(m.name) < 0; c.value = m.name;
+        l.appendChild(c); l.appendChild(doc.createTextNode(' ' + m.name)); mb.appendChild(l); checks.push(c);
+      });
+      nodes.push(mb);
+    }
+    function make(){
+      var names = checks.filter(function(c){ return c.checked; }).map(function(c){ return c.value; });
+      lsSet('narani:shareskip:' + key, checks.filter(function(c){ return !c.checked; }).map(function(c){ return c.value; }));
+      closeSheet(); toast(md4T('공유 파일을 올리는 중…'));
+      sharePayload(e, names).then(function(payload){ return source.put(name, payload); })
+        .then(function(id){ return source.makePublic(id).then(function(){ return id; }); })
+        .then(function(id){
+          var m = shares(); m[key] = {id: id, link: shareLink(id), at: Date.now()}; lsSet('narani:shares', m);
+          shareOut(m[key].link); shareSheet();
+        }, function(err){ toast((err && err.kind === 'auth') ? md4T('Google Drive 연결이 만료됐어요.') : md4T('공유하지 못했어요 — 인터넷 연결을 확인하세요.')); });
+    }
+    function stop(){
+      closeSheet();
+      source.del(name).then(function(){
+        var m = shares(); delete m[key]; lsSet('narani:shares', m); toast(md4T('공유를 껐어요 — 링크가 더 이상 열리지 않아요'));
+      }, function(){ toast(md4T('공유를 끄지 못했어요 — 인터넷 연결을 확인하세요.')); });
+    }
+    var acts = have ? [button(md4T('링크 보내기'), function(){ shareOut(have.link); }),
+                       button(md4T('지금 내용으로 다시 올리기'), make), button(md4T('공유 끄기'), stop)]
+                    : [button(md4T('링크 만들기'), make)];
+    openSheet(md4T('공유'), nodes, acts);
+  }
+  doc.getElementById('share-btn').onclick = function(e){ e.stopPropagation(); shareSheet(); };
+
+  // ---- 본문 너비 (넓은 화면) — 읽기 칸 오른쪽 끝의 막대를 끈다. 한 칸·나란히 따로 기억, 두 번 누르면 처음 너비 ----
+  var rwEl = doc.getElementById('rw');
+  function rwKey(){ return doc.getElementById('m-both').checked ? 'rw2' : 'rw1'; }
+  function rwApply(){
+    ['rw1', 'rw2'].forEach(function(k){ var v = lsGet('narani:' + k, 0); if (v) doc.body.style.setProperty('--' + k, v + 'px'); else doc.body.style.removeProperty('--' + k); });
+    rwPlace();
+  }
+  function rwPlace(){
+    if (!cur || !WIDE()) return;
+    var r = main.getBoundingClientRect();
+    rwEl.style.left = Math.round(r.right - 88 + 12) + 'px';   // 글 오른쪽 끝(떠 있는 단추 자리 앞)
+  }
+  rwEl.addEventListener('pointerdown', function(e){
+    e.preventDefault(); rwEl.setPointerCapture(e.pointerId); rwEl.classList.add('drag');
+    var x0 = e.clientX, w0 = main.getBoundingClientRect().width, k = rwKey(), anchor = topRow();
+    function mv(ev){
+      var w = Math.max(520, Math.min(window.innerWidth - 80, Math.round(w0 + (ev.clientX - x0) * 2)));   // 가운데 정렬이라 양쪽으로 — 두 배
+      doc.body.style.setProperty('--' + k, w + 'px'); rwPlace();
+    }
+    function up(ev){
+      rwEl.releasePointerCapture(ev.pointerId); rwEl.classList.remove('drag');
+      rwEl.removeEventListener('pointermove', mv); rwEl.removeEventListener('pointerup', up);
+      lsSet('narani:' + k, Math.round(main.getBoundingClientRect().width));
+      if (anchor) anchor.scrollIntoView({block: 'start'});
+    }
+    rwEl.addEventListener('pointermove', mv); rwEl.addEventListener('pointerup', up);
+  });
+  rwEl.addEventListener('dblclick', function(){ lsSet('narani:' + rwKey(), 0); rwApply(); });
+  window.addEventListener('resize', rwPlace);
+  [].forEach.call(doc.querySelectorAll('input.mode'), function(r){ r.addEventListener('change', function(){ setTimeout(rwPlace, 0); }); });
+  doc.getElementById('toc-btn').onclick = function(e){ e.stopPropagation(); if (lsGet('narani:toctab', 'toc') === 'fig') openFigs(); else openToc(); };
+
+  // ---- 키보드·마우스 (넓은 화면) — ←/→ 이전·다음 절, Space 재생·일시정지(듣는 중), L 보기 바꾸기,
+  // / 질문하기, Esc 닫기. 글을 쓰는 칸에서는 건드리지 않는다. 단추에 마우스를 올리면 이름(aria-label)이 뜬다 ----
+  function stepSection(dir){
+    var secs = [].slice.call(cur.querySelectorAll('.row.sec')).filter(function(r){ return r.getClientRects().length; }), to = null, i;
+    if (!secs.length) return;
+    if (dir > 0){ for (i = 0; i < secs.length; i++) if (secs[i].getBoundingClientRect().top > 90){ to = secs[i]; break; } }
+    else { for (i = secs.length - 1; i >= 0; i--) if (secs[i].getBoundingClientRect().top < 40){ to = secs[i]; break; } }
+    if (to) to.scrollIntoView({block: 'start'}); else if (dir < 0) window.scrollTo(0, 0);
+  }
+  doc.addEventListener('keydown', function(e){
+    if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey || e.isComposing) return;
+    var t = e.target;
+    if (t && t.closest && t.closest('input, textarea, select, [contenteditable]')) return;
+    if (doc.getElementById('zv') || !cur) return;
+    var k = e.key;
+    if (k === 'ArrowRight' || k === 'ArrowLeft'){ e.preventDefault(); closeSheet(); stepSection(k === 'ArrowRight' ? 1 : -1); }
+    else if (k === ' ' && doc.body.classList.contains('listening')){ e.preventDefault(); doc.getElementById('pl-pp').click(); }
+    else if (k === 'l' || k === 'L'){ doc.getElementById('lang-btn').click(); }
+    else if (k === '/'){
+      e.preventDefault();
+      if (!agent.classList.contains('open')) doc.getElementById('fab').click();
+      if (agent.classList.contains('notes')) showChat();
+      setTimeout(function(){ try { agIn.focus(); } catch (x) {} }, 50);
+    }
+    else if (k === 'Escape' && !doc.getElementById('sheet').classList.contains('open')) closeDrawers(true);
+  });
+  doc.addEventListener('mouseover', function(e){
+    var b = e.target.closest && e.target.closest('button[aria-label]');
+    if (b && !b.title) b.title = b.getAttribute('aria-label');
+  });
+
   // ---- 그림·표 전체 화면 — 누르면 열고, 두 손가락으로 키우고, 끌어 옮기고, 두 번 눌러 확대·원래대로,
   // 원래 크기에서 위아래로 쓸거나 바깥을 누르면 닫는다. 본문 화면 확대는 막아 두었다(_PWA_CSS) ----
   var ZV = null;
@@ -1835,6 +2180,12 @@
     }
     o.addEventListener('pointerup', up);
     o.addEventListener('pointercancel', up);
+    o.addEventListener('wheel', function(e){   // 마우스 휠·트랙패드 — 커서 자리를 기준으로
+      if (cb && cb.contains(e.target)) return;
+      e.preventDefault();
+      var ns = Math.max(Z.fit, Math.min(maxS(), Z.s * Math.exp(-e.deltaY * 0.0015))), px = (e.clientX - Z.x) / Z.s, py = (e.clientY - Z.y) / Z.s;
+      Z.s = ns; Z.x = e.clientX - px * ns; Z.y = e.clientY - py * ns; clampXY(); apply(false);
+    }, {passive: false});
     // iOS: 겹친 화면 위에서도 페이지 확대·스크롤이 일어나지 않게
     function stop(e){ if (!(cb && cb.contains(e.target))) e.preventDefault(); }
     o.addEventListener('touchmove', stop, {passive: false});
