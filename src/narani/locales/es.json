@@ -1372,5 +1372,20 @@
  "고딕": "Sans",
  "명조": "Serif",
  "고딕체로 읽기": "Leer con fuente sin serifa",
- "명조체로 읽기": "Leer con fuente con serifa"
+ "명조체로 읽기": "Leer con fuente con serifa",
+ "공유": "Compartir",
+ "이 공유 링크는 열 수 없어요 — 보낸 사람이 공유를 껐거나 지웠어요.": "No se puede abrir este enlace compartido — quien lo envió desactivó el uso compartido o lo eliminó.",
+ "공유받은 논문이에요 — 링크를 받은 사람만 볼 수 있어요. 하이라이트·메모는 이 기기에만 남고, 원문의 저작권은 저자·출판사에 있어요.": "Este artículo se compartió contigo — solo quien tenga el enlace puede verlo. Tus resaltados y notas se quedan en este dispositivo, y los derechos de autor del texto original son de sus autores y editorial.",
+ "링크를 복사했어요": "Enlace copiado",
+ "링크를 받은 사람만 볼 수 있어요 — 검색되거나 공개 목록에 오르지 않아요. 번역·원문·내 하이라이트·메모가 담기고, 받는 사람은 로그인 없이 읽기 전용으로 열어요.": "Solo quien tenga el enlace puede verlo — no aparece en búsquedas ni listas públicas. Incluye la traducción, el original y tus resaltados y notas, y quien lo recibe lo abre en solo lectura sin iniciar sesión.",
+ "원문의 저작권은 저자·출판사에 있어요. 필요한 사람에게만 보내 주세요.": "Los derechos de autor del texto original son de sus autores y editorial. Envíalo solo a quien lo necesite.",
+ "이 웹앱에는 공유용 Google API 키가 없어 받는 사람이 열 수 없어요 — 데스크톱 config.toml [phone]의 google_web_api_key를 넣고 웹앱을 다시 올려 주세요.": "Esta aplicación web no tiene una clave de API de Google para compartir, así que no se pueden abrir los enlaces — añade google_web_api_key en [phone] del config.toml del escritorio y vuelve a publicar la aplicación web.",
+ "공유 파일을 올리는 중…": "Subiendo el archivo compartido…",
+ "공유하지 못했어요 — 인터넷 연결을 확인하세요.": "No se pudo compartir — revisa tu conexión a internet.",
+ "공유를 껐어요 — 링크가 더 이상 열리지 않아요": "Se dejó de compartir — el enlace ya no se abre",
+ "공유를 끄지 못했어요 — 인터넷 연결을 확인하세요.": "No se pudo dejar de compartir — revisa tu conexión a internet.",
+ "링크 보내기": "Enviar enlace",
+ "지금 내용으로 다시 올리기": "Subir la versión actual",
+ "공유 끄기": "Dejar de compartir",
+ "링크 만들기": "Crear enlace"
 }

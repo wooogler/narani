@@ -49,6 +49,14 @@ html { touch-action: pan-x pan-y; }
 .pop { position: absolute; right: 10px; top: calc(100% + 4px); display: none; gap: 6px; padding: 6px; z-index: 6;
   background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.12); }
 .pop.open { display: flex; }
+/* 공유 — 단추는 내 Drive에 연결됐을 때만, 공유받은 화면은 그 한 편만(목록·뒤로 없음) */
+.top .tb.sh { display: none !important; padding: 4px 8px; }
+.js.reading.can-share .top .tb.sh { display: inline-grid !important; place-items: center; }
+.shared #back, .shared #lib { display: none !important; }
+.share-note { margin: 12px 0 4px; }
+.share-link { word-break: break-all; user-select: all; }
+.toast { position: fixed; left: 50%; top: calc(env(safe-area-inset-top) + 64px); transform: translateX(-50%); z-index: 25;
+  background: var(--fg); color: var(--bg); border-radius: 999px; padding: 8px 16px; font-size: .85em; box-shadow: 0 6px 18px rgba(0,0,0,.2); }
 .pop-sep { width: 1px; align-self: stretch; background: var(--line); margin: 2px 2px; }
 .pop .ff.on { background: var(--hl2); border-color: var(--accent); }
 #ff-serif { font-family: Georgia, "AppleMyungjo", "Batang", serif; }
@@ -356,7 +364,9 @@ _PRELUDE_JS = r"""
 # 목록 ↔ 논문 — 논문은 저장소(또는 캐시)에서 받아 하나씩 꽂는다. mobile._ROUTE_JS의 자리.
 _APP_JS = r"""
   var CFG = window.NARANI_CFG || {};
-  var PID = 'p0', DC = 'narani-data';
+  // 공유 링크로 연 경우(#share=<Drive 파일 id>) — 로그인 없이 그 한 편만 읽기 전용으로. 받아 둔 것도 따로 둔다
+  var SHARE_ID = (/^#share=([\w-]{10,})/.exec(location.hash) || [])[1] || null;
+  var PID = 'p0', DC = SHARE_ID ? 'narani-share' : 'narani-data';
   // iOS Safari는 viewport의 user-scalable=no를 무시한다 — 두 손가락 제스처를 직접 막는다(#zv 안은 그쪽이 따로 처리)
   doc.addEventListener('gesturestart', function(e){ e.preventDefault(); });
   var main = doc.querySelector('main'), libList = doc.getElementById('lib-list'),
@@ -371,6 +381,7 @@ _APP_JS = r"""
     langLabel();
     setText('fs-dn', md4T('가') + '−'); setText('fs-up', md4T('가') + '+'); setText('fs-btn', md4T('가'));
     doc.getElementById('fs-btn').setAttribute('aria-label', md4T('글자 크기'));
+    doc.getElementById('share-btn').setAttribute('aria-label', md4T('공유'));
     doc.getElementById('top-title').setAttribute('aria-label', md4T('목차'));
     doc.getElementById('fab').setAttribute('aria-label', md4T('메모') + ' · ' + md4T('질문하기'));
     setText('lnk-about', md4T('Narani 소개')); setText('lnk-privacy', md4T('개인정보처리방침'));
@@ -397,12 +408,41 @@ _APP_JS = r"""
         if (!r.ok) throw new Error('HTTP ' + r.status);
         return r.json();
       });
-    }, put: function(name, obj){   // 미리보기 서버는 mobile/ 아래만 받아 준다
+    }, put: function(name, obj){   // 미리보기 서버는 mobile/·share/ 아래만 받아 준다
       return fetch('data/' + name, {method: 'PUT', headers: {'Content-Type': 'application/json'},
                                     body: JSON.stringify(obj)}).then(function(r){
         if (!r.ok) throw new Error('HTTP ' + r.status);
+        return name.replace(/^share\//, '').replace(/\.json$/, '');   // 미리보기에선 이름이 곧 공유 id
       });
-    }};
+    }, del: function(name){
+      return fetch('data/' + name, {method: 'DELETE'}).then(function(r){ if (!r.ok && r.status !== 404) throw new Error('HTTP ' + r.status); });
+    }, makePublic: function(){ return Promise.resolve(); }};
+  }
+  // 공유받은 논문 — 보낸 사람 Drive의 공유 파일(링크가 있는 사람 누구나 보기) 하나를 API 키로 받는다(로그인 없음).
+  // 파일 하나에 목록 한 줄·번들·하이라이트·메모·(있으면) 읽을 목록이 다 들어 있다 — 그걸 저장소처럼 내준다
+  function shareSource(id){
+    var data = null;
+    function fetchIt(){
+      if (data) return Promise.resolve(data);
+      var url = CFG.local ? 'data/share/' + id + '.json'
+                          : 'https://www.googleapis.com/drive/v3/files/' + encodeURIComponent(id) + '?alt=media&key=' + encodeURIComponent(CFG.google_api_key || '');
+      return fetch(url, {cache: 'no-store'}).then(function(r){
+        if (r.status === 404 || r.status === 403 || r.status === 401){ var e = new Error('gone'); e.kind = 'gone'; throw e; }
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.json();
+      }).then(function(d){ data = d; return d; });
+    }
+    return {shared: true,
+      get: function(name){
+        return fetchIt().then(function(d){
+          if (name === 'index.json') return {format: 1, updated: d.shared_at, papers: [d.entry]};
+          if (name === d.entry.file) return d.bundle;
+          if (d.notes && name === 'notes/shared.json') return d.notes;
+          if (d.speech && d.entry.speech && name === d.entry.speech.file) return d.speech;
+          throw new Error('missing');
+        });
+      },
+      raw: function(){ return Promise.reject(new Error('missing')); }};
   }
   // Google Drive — 데스크톱이 만든 `Narani` 폴더(같은 Cloud 프로젝트라 drive.file로 보인다)를 읽는다.
   // 로그인은 팝업 대신 **리디렉트**(OAuth 클라이언트 측 흐름) — iOS 홈 화면 앱에선 팝업이 막히거나
@@ -522,20 +562,33 @@ _APP_JS = r"""
         var body = JSON.stringify(obj);
         return (ids ? Promise.resolve(ids) : loadIds()).then(function(m){
           if (m[name]) return api(GUP + '/files/' + m[name] + '?uploadType=media',
-                                  {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: body});
+                                  {method: 'PATCH', headers: {'Content-Type': 'application/json'}, body: body}).then(function(){ return m[name]; });
           var b = 'narani' + Math.random().toString(36).slice(2);
           var meta = JSON.stringify({name: name, parents: [folder], mimeType: 'application/json'});
           return api(GUP + '/files?uploadType=multipart&fields=id', {method: 'POST',
             headers: {'Content-Type': 'multipart/related; boundary=' + b},
             body: '--' + b + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + meta +
                   '\r\n--' + b + '\r\nContent-Type: application/json\r\n\r\n' + body + '\r\n--' + b + '--'})
-            .then(function(r){ return r.json(); }).then(function(d){ ids[name] = d.id; });
+            .then(function(r){ return r.json(); }).then(function(d){ ids[name] = d.id; return d.id; });
         });
+      },
+      del: function(name){
+        return (ids ? Promise.resolve(ids) : loadIds()).then(function(m){
+          if (!m[name]) return;
+          return api(GAPI + '/files/' + m[name], {method: 'DELETE'}).then(function(){ delete ids[name]; });
+        });
+      },
+      // 공유 — 링크가 있는 사람 누구나 보기(검색·목록에는 안 뜬다). drive.file 권한으로 앱이 만든 파일에만 된다
+      makePublic: function(fileId){
+        return api(GAPI + '/files/' + fileId + '/permissions', {method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({role: 'reader', type: 'anyone', allowFileDiscovery: false})});
       }
     };
   }
   takeRedirect();
-  var source = CFG.local ? localSource() : (CFG.google_client_id ? driveSource() : null);
+  var source = SHARE_ID ? shareSource(SHARE_ID) : CFG.local ? localSource() : (CFG.google_client_id ? driveSource() : null);
+  if (SHARE_ID) doc.body.classList.add('shared');
+  else if (source && source.makePublic) doc.body.classList.add('can-share');
   var reconnecting = !!(source && source.drive) && gSilent();
   doc.addEventListener('visibilitychange', function(){
     if (doc.visibilityState === 'visible' && source && source.drive) reconnecting = gSilent() || reconnecting;
@@ -543,6 +596,7 @@ _APP_JS = r"""
   function sourceProblem(err){
     // 저장소 오류 → 목록 위에 보일 안내와 단추
     var kind = err && err.kind;
+    if (kind === 'gone') return {text: md4T('이 공유 링크는 열 수 없어요 — 보낸 사람이 공유를 껐거나 지웠어요.')};
     // 꺼진 망에서는 다시 연결도 못 한다 — 승인이 만료됐어도 오프라인 안내만
     if (navigator.onLine === false) return {text: md4T('오프라인 — 받아 둔 논문만 열려요')};
     if (reconnecting && kind === 'auth') return {text: md4T('Google Drive에 다시 연결하는 중…')};
@@ -785,6 +839,12 @@ _APP_JS = r"""
         if (autoSave()) saveOffline();
       }, function(err){
         var pr = sourceProblem(err);
+        if (SHARE_ID && err && err.kind === 'gone'){   // 보낸 사람이 공유를 껐다 — 이 기기에 받아 둔 사본도 지운다
+          try { caches.delete(DC); } catch (x) {}
+          loadSeq++; unmount(); readerClosed(); topTitle.textContent = APP;
+          loading.style.display = ''; loading.textContent = pr.text;
+          return;
+        }
         OFFLINE = navigator.onLine === false || (!pr.button && !!err && !err.kind);   // 망 오류(인증·폴더 문제가 아니라)
         if (cached) showIndex(cached, OFFLINE ? '' : pr.text, pr);
         else { libBar.innerHTML = ''; libBar.appendChild(el('span', 'grow', pr.text)); addAct(pr); }
@@ -841,6 +901,7 @@ _APP_JS = r"""
   }
   try { history.scrollRestoration = 'manual'; } catch (e) {}
   function route(){
+    if (SHARE_ID){ if (INDEX && INDEX.papers[0]) openPaper(fileId(INDEX.papers[0]), false); return; }
     var h = location.hash.replace(/^#!?/, '');
     if (h && h !== 'lib' && openPaper(h, false)) return;
     showLib(false);
@@ -1410,6 +1471,8 @@ _READER_JS = r"""
   }
   function navOpened(){
     indexFigs(); linkFigRefs();
+    if (SHARE_ID && cur && !cur.querySelector('.share-note'))   // 공유받은 논문 — 읽기 전용이라는 것과 저작권
+      cur.insertBefore(el('p', 'note share-note', md4T('공유받은 논문이에요 — 링크를 받은 사람만 볼 수 있어요. 하이라이트·메모는 이 기기에만 남고, 원문의 저작권은 저자·출판사에 있어요.')), cur.firstChild);
     if (WIDE()) sideToc();
   }
   // 넓은 화면 — 목차 칸을 늘 띄워 두고, 읽는 자리에 따라 '지금 절'을 옮긴다
@@ -1740,6 +1803,57 @@ _READER_JS = r"""
   doc.getElementById('ag-form').addEventListener('submit', function(e){ e.preventDefault(); send(); });
   agIn.addEventListener('input', function(){ agIn.style.height = ''; agIn.style.height = Math.min(agIn.scrollHeight, 200) + 'px'; });
   agIn.addEventListener('keydown', function(e){ if (e.key === 'Enter' && !e.shiftKey && !e.isComposing){ e.preventDefault(); send(); } });
+  // ---- 공유 — 이 논문을 링크로 (번역·원문·내 하이라이트·메모, 읽을 목록이 있으면 그것도) ----
+  // 내 Drive의 Narani 폴더에 공유 파일 하나를 만들고 '링크가 있는 사람 누구나 보기'로 연다. 받는 사람은
+  // #share=<파일 id>로 로그인 없이 읽는다. 다시 올리면 같은 파일을 고쳐 링크가 그대로고, 끄면 파일을 지운다.
+  function shareLink(id){ return location.origin + location.pathname.replace(/index\.html$/, '') + '#share=' + id; }
+  function shares(){ return lsGet('narani:shares', {}); }
+  function shareOut(link){
+    if (navigator.share) return navigator.share({title: (DATA[PID] || {}).title || APP, url: link}).catch(function(){});
+    if (navigator.clipboard) return navigator.clipboard.writeText(link).then(function(){ toast(md4T('링크를 복사했어요')); }, function(){});
+  }
+  function toast(t){ var n = el('div', 'toast', t); doc.body.appendChild(n); setTimeout(function(){ n.remove(); }, 2200); }
+  function sharePayload(e){
+    return getPaper(e).then(function(b){
+      var sp = speechOf(e), entry = {key: e.key, hash: e.hash, lang: e.lang, title: e.title, title_ko: e.title_ko, authors: e.authors,
+        year: e.year, venue: e.venue, has_ko: e.has_ko, aligned: e.aligned, file: 'papers/shared.json', notes_hash: 's' + Date.now()};
+      var out = {format: 1, kind: 'narani-share', shared_at: Date.now() / 1000, entry: entry, bundle: b,
+                 notes: {items: items(), applied: 0}};
+      if (!sp) return out;
+      return webPlan(sp).then(function(plan){ entry.speech = {file: 'speech/shared.json', sig: sp.sig}; out.speech = plan; return out; },
+                              function(){ return out; });
+    });
+  }
+  function shareSheet(){
+    if (!cur || !NOTE.fid) return;
+    var e = entryOf(NOTE.fid), key = NOTE.key, name = 'share/' + NOTE.fid + '.json', have = shares()[key];
+    if (!e) return;
+    var nodes = [para(md4T('링크를 받은 사람만 볼 수 있어요 — 검색되거나 공개 목록에 오르지 않아요. 번역·원문·내 하이라이트·메모가 담기고, 받는 사람은 로그인 없이 읽기 전용으로 열어요.')),
+                 para(md4T('원문의 저작권은 저자·출판사에 있어요. 필요한 사람에게만 보내 주세요.'), 'more')];
+    if (!CFG.local && !CFG.google_api_key) nodes.push(para(md4T('이 웹앱에는 공유용 Google API 키가 없어 받는 사람이 열 수 없어요 — 데스크톱 config.toml [phone]의 google_web_api_key를 넣고 웹앱을 다시 올려 주세요.'), 'more'));
+    if (have) nodes.push(para(have.link, 'more share-link'));
+    function make(){
+      closeSheet(); toast(md4T('공유 파일을 올리는 중…'));
+      sharePayload(e).then(function(payload){ return source.put(name, payload); })
+        .then(function(id){ return source.makePublic(id).then(function(){ return id; }); })
+        .then(function(id){
+          var m = shares(); m[key] = {id: id, link: shareLink(id), at: Date.now()}; lsSet('narani:shares', m);
+          shareOut(m[key].link); shareSheet();
+        }, function(err){ toast((err && err.kind === 'auth') ? md4T('Google Drive 연결이 만료됐어요.') : md4T('공유하지 못했어요 — 인터넷 연결을 확인하세요.')); });
+    }
+    function stop(){
+      closeSheet();
+      source.del(name).then(function(){
+        var m = shares(); delete m[key]; lsSet('narani:shares', m); toast(md4T('공유를 껐어요 — 링크가 더 이상 열리지 않아요'));
+      }, function(){ toast(md4T('공유를 끄지 못했어요 — 인터넷 연결을 확인하세요.')); });
+    }
+    var acts = have ? [button(md4T('링크 보내기'), function(){ shareOut(have.link); }),
+                       button(md4T('지금 내용으로 다시 올리기'), make), button(md4T('공유 끄기'), stop)]
+                    : [button(md4T('링크 만들기'), make)];
+    openSheet(md4T('공유'), nodes, acts);
+  }
+  doc.getElementById('share-btn').onclick = function(e){ e.stopPropagation(); shareSheet(); };
+
   // ---- 키보드·마우스 (넓은 화면) — ←/→ 이전·다음 절, Space 재생·일시정지(듣는 중), L 보기 바꾸기,
   // / 질문하기, Esc 닫기. 글을 쓰는 칸에서는 건드리지 않는다. 단추에 마우스를 올리면 이름(aria-label)이 뜬다 ----
   function stepSection(dir){
@@ -2801,6 +2915,7 @@ def _index_html(cfg: dict) -> str:
         "<button class=\"only-js tb rd back\" id=\"back\">‹</button>"
         f"<button class=\"top-title\" id=\"top-title\">{APP_NAME}</button>"
         "<button class=\"only-js tb rd\" id=\"lang-btn\"></button>"
+        "<button class=\"only-js tb rd sh\" id=\"share-btn\"><svg viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M18 16.08c-.76 0-1.44.3-1.96.77L8.91 12.7c.05-.23.09-.46.09-.7s-.04-.47-.09-.7l7.05-4.11A2.99 2.99 0 0 0 21 5a3 3 0 1 0-5.91.7L8.04 9.81A3 3 0 1 0 6 15c.79 0 1.5-.31 2.04-.81l7.12 4.16c-.05.21-.08.43-.08.65A2.92 2.92 0 1 0 18 16.08z\"/></svg></button>"
         "<button class=\"only-js tb rd\" id=\"fs-btn\"></button>"
         "<div class=\"pop\" id=\"fs-pop\"><button class=\"fs\" id=\"fs-dn\"></button>"
         "<button class=\"fs\" id=\"fs-up\"></button><span class=\"pop-sep\"></span>"
@@ -2847,13 +2962,13 @@ def _index_html(cfg: dict) -> str:
     )
 
 
-def site_files(*, local: bool = False, google_client_id: str = "") -> dict[str, tuple[bytes, str]]:
+def site_files(*, local: bool = False, google_client_id: str = "", google_api_key: str = "") -> dict[str, tuple[bytes, str]]:
     """웹앱 파일들 → {이름: (바이트, MIME)}. local=True면 같은 주소의 `data/`를 저장소로 쓴다(미리보기)."""
     from narani import config
 
     cfg = {"app_name": APP_NAME, "source_lang": i18n.SOURCE, "fallback_lang": "en", "local": local,
            "ai_models": {p: list(m) for p, m in config.MODEL_TIERS.items()},  # 모바일 에이전트의 모델 고르기
-           "google_client_id": google_client_id, "catalogs": _catalogs()}
+           "google_client_id": google_client_id, "google_api_key": google_api_key, "catalogs": _catalogs()}
     app_js = (_PRELUDE_JS + "(function(){\n" + sentpair.JS + mobile.CORE_JS + _APP_JS + _NOTES_JS + _READER_JS
               + _AUDIO_JS + _TALK_JS              + "})();\n")
     manifest = {
@@ -2932,9 +3047,10 @@ def make_server(data_dir: Path, port: int = 0, host: str = "127.0.0.1",
 
         def do_PUT(self) -> None:  # noqa: N802 — 폰이 쓰는 기록(mobile/…)만 받는다
             path = self.path.split("?", 1)[0].lstrip("/")
-            target = (root / path[5:]).resolve() if path.startswith("data/mobile/") else None
+            sub = "share" if path.startswith("data/share/") else "mobile"
+            target = (root / path[5:]).resolve() if path.startswith(("data/mobile/", "data/share/")) else None
             size = int(self.headers.get("Content-Length") or 0)
-            if target is None or (root / "mobile") not in target.parents or not 0 < size <= 2_000_000:
+            if target is None or (root / sub) not in target.parents or not 0 < size <= 40_000_000:
                 self.send_error(403)
                 return
             data = self.rfile.read(size)
@@ -2945,6 +3061,16 @@ def make_server(data_dir: Path, port: int = 0, host: str = "127.0.0.1",
                 return
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(data)
+            self.send_response(204)
+            self.end_headers()
+
+        def do_DELETE(self) -> None:  # noqa: N802 — 공유 끄기(미리보기: share/ 파일 지우기)
+            path = self.path.split("?", 1)[0].lstrip("/")
+            target = (root / path[5:]).resolve() if path.startswith("data/share/") else None
+            if target is None or (root / "share") not in target.parents:
+                self.send_error(403)
+                return
+            target.unlink(missing_ok=True)
             self.send_response(204)
             self.end_headers()
 

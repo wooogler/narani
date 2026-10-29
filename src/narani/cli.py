@@ -1409,8 +1409,13 @@ def phone_site_cmd(out_dir: Path, google_client_id: str | None, domain: str | No
     if not google_client_id:
         click.echo(click.style("주의: 웹 클라이언트 ID가 없어 Drive에 연결하지 못하는 웹앱입니다.", fg="yellow"))
 
+    # 공유 링크를 받는 사람이 로그인 없이 읽으려면 브라우저용 API 키가 있어야 한다(같은 Cloud 프로젝트, 이 사이트에서만
+    # 쓰게 제한하고 Drive API만 허용) — config.toml [phone] google_web_api_key
+    api_key = gdrive.client_ids()["google_web_api_key"]
+    if not api_key:
+        click.echo(click.style("주의: google_web_api_key가 없어 공유 링크를 받는 사람이 열 수 없는 웹앱입니다.", fg="yellow"))
     files = web.write_site(out_dir, cname=pages.DOMAIN if domain is None else (domain or None),
-                           google_client_id=google_client_id)
+                           google_client_id=google_client_id, google_api_key=api_key)
     click.echo(f"웹앱 파일 {len(files)}개 → {out_dir}")
 
 

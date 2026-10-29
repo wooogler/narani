@@ -319,3 +319,26 @@ def test_phone_icons_are_svg_and_font_choice():
     for emoji in ("⚙", "🎙", "🗣", "⟲"):
         assert emoji not in html.split("<script>window.NARANI_CFG", 1)[1].split("</script>", 1)[1] and f"'{emoji}" not in js
     assert 'id="ff-serif"' in html and "function setFf" in js
+
+
+def test_phone_share_link(tmp_path):
+    # 링크 공유 — 내 Drive에 공유 파일(링크가 있는 사람 누구나 보기), 받는 사람은 #share=<id>로 로그인 없이
+    files = web.site_files(local=False, google_client_id="cid", google_api_key="KEY")
+    js, html = files["app.js"][0].decode(), files["index.html"][0].decode()
+    assert '"google_api_key": "KEY"' in html and 'id="share-btn"' in html
+    assert "function shareSource" in js and "function shareSheet" in js and "makePublic" in js
+    assert "type: 'anyone', allowFileDiscovery: false" in js
+    assert "SHARE_ID && err && err.kind === 'gone'" in js      # 공유를 끄면 받아 둔 사본도 지운다
+    # 미리보기 서버 — share/ 아래만 쓰고 지운다
+    import json as _json
+    import threading
+    import urllib.request
+    srv = web.make_server(tmp_path, 0)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    base = f"http://127.0.0.1:{srv.server_address[1]}/data/"
+    body = _json.dumps({"entry": {}}).encode()
+    urllib.request.urlopen(urllib.request.Request(base + "share/abc.json", data=body, method="PUT"))
+    assert (tmp_path / "share" / "abc.json").read_bytes() == body
+    urllib.request.urlopen(urllib.request.Request(base + "share/abc.json", method="DELETE"))
+    assert not (tmp_path / "share" / "abc.json").exists()
+    srv.shutdown()

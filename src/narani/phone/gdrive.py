@@ -68,7 +68,7 @@ def client_ids() -> dict[str, str]:
     except ValueError:
         base = {}
     return {k: str(sec.get(k) or base.get(k) or "").strip() for k in
-            ("google_desktop_client_id", "google_desktop_client_secret", "google_web_client_id")}
+            ("google_desktop_client_id", "google_desktop_client_secret", "google_web_client_id", "google_web_api_key")}
 
 
 def token_path() -> Path:

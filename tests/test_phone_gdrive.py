@@ -161,8 +161,9 @@ def test_client_ids_config_beats_built_in_defaults(tmp_path, monkeypatch):
     monkeypatch.setattr(gdrive.config, "CONFIG_DIR", tmp_path)
     monkeypatch.setattr(gdrive.config, "CONFIG_PATH", tmp_path / "config.toml")
     assert set(gdrive.client_ids()) == {"google_desktop_client_id", "google_desktop_client_secret",
-                                        "google_web_client_id"}
-    fake = {"google_desktop_client_id": "d.apps", "google_desktop_client_secret": "s", "google_web_client_id": "w.apps"}
+                                        "google_web_client_id", "google_web_api_key"}
+    fake = {"google_desktop_client_id": "d.apps", "google_desktop_client_secret": "s", "google_web_client_id": "w.apps",
+            "google_web_api_key": "k"}
     monkeypatch.setattr(gdrive, "_DEFAULTS", base64.b64encode(json.dumps(fake).encode()).decode())
     assert gdrive.client_ids() == fake  # 설정이 없으면 앱에 실린 기본값
     (tmp_path / "config.toml").write_text('[phone]\ngoogle_web_client_id = "mine.apps"\n', encoding="utf-8")
