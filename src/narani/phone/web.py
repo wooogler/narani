@@ -358,7 +358,10 @@ ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3p
     border-left: 0; padding-left: 0; margin: 0; }
   .js #m-both:checked ~ main .paper.has-ko:not(.noalign) .row > .cell.ko { order: 2; }
   .js #m-both:checked ~ main .paper.has-ko:not(.noalign) .row > .cell.same { grid-column: 1 / -1; }
-  .js #m-both:checked ~ main .cell.en :is(h1, h2, h3, h4, h5, h6) { font-size: revert; margin-top: revert; }
+  /* 원문 쪽 제목도 번역 쪽(.cell h1~h6)과 같은 크기·여백 — 한 칸 보기의 '작게 붙는 원문' 규칙을 되돌린다 */
+  .js #m-both:checked ~ main .paper.has-ko:not(.noalign) .cell.en h1 { font-size: 1.45em; margin: .6em 0 .4em; }
+  .js #m-both:checked ~ main .paper.has-ko:not(.noalign) .cell.en h2 { font-size: 1.22em; margin: 1.2em 0 .4em; }
+  .js #m-both:checked ~ main .paper.has-ko:not(.noalign) .cell.en :is(h3, h4, h5, h6) { font-size: 1.06em; margin: 1em 0 .3em; }
   #m-both:checked ~ main .cell.en img { display: block; }
 }
 @media (min-width: 1100px) and (hover: hover) {
