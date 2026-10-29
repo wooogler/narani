@@ -3578,6 +3578,12 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     viewer_state = {**load_panels(), "split": 58, "sync": True,
                     "stip": True, "edsplit": 50}  # stip: 한 언어만 볼 때 문장 짝 툴팁
 
+    def shown_panels(has_ko: bool, has_pdf: bool) -> tuple[bool, bool, bool]:
+        """실제로 보이는 (원문, 번역, PDF) — 켜 둔 패널이 이 논문에 없으면(번역만 켰는데 번역 전) 원문을 보인다.
+        캔버스·섹션 점프·도구 막대가 모두 이것을 봐야 한다(따로 따지면 원문이 보이는데 '위치 정보 없음')."""
+        en, ko, pdf = viewer_state["en"], viewer_state["ko"] and has_ko, viewer_state["pdf"] and has_pdf
+        return (en or not (ko or pdf)), ko, pdf
+
     # 정렬 행 — 그리드·목차·섹션 점프가 모두 같은 행 목록을 봐야 한다(따로 계산하면 레벨을 바꾼 뒤
     # 목차가 가리키는 행과 그리드의 행이 어긋난다). 문서 내용이 같으면 한 번만 계산한다.
     _rows_memo: dict = {}
@@ -4115,11 +4121,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         has_ko = bool(info["ko"])
         has_pdf = ctrl.pdf_page_count() > 0
 
-        show_en = viewer_state["en"]
-        show_ko = viewer_state["ko"] and has_ko
-        show_pdf = viewer_state["pdf"] and has_pdf
-        if not (show_en or show_ko or show_pdf):
-            show_en = True  # 최소 하나는 보이도록
+        show_en, show_ko, show_pdf = shown_panels(has_ko, has_pdf)
 
         def text_area(solo: bool = False) -> None:
             """solo = 텍스트가 한 컬럼(원문만·번역만)으로 보일 때 — PDF 옆이어도 본문에 폭 핸들을 두고
@@ -4341,7 +4343,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                           on_click=lambda: _vtoggle("sync")).props(
                     "flat dense round " + ("color=primary" if viewer_state["sync"] else "color=grey-6")) \
                     .tooltip(t("스크롤 시 PDF 페이지 따라오기 (켜짐)") if viewer_state["sync"] else t("스크롤 시 PDF 페이지 따라오기 (꺼짐)"))
-            if not edit_state["on"] and (viewer_state["en"] or (viewer_state["ko"] and has_ko)):
+            if not edit_state["on"] and any(shown_panels(has_ko, has_pdf)[:2]):
                 # 같은 논문을 위아래 두 뷰어로 — 켜고 끄는 상태는 클라이언트(§ui/split_view.py)만 안다
                 ui.button(icon="horizontal_split", on_click=lambda: ui.run_javascript(
                     f"window.{split_view.SPLIT_API} && window.{split_view.SPLIT_API}.toggle()")) \
@@ -5010,9 +5012,8 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         줄로(옆 칸이 따라온다). 텍스트가 꺼지고 PDF만 켜져 있으면 PDF의 해당 쪽으로.
         임의로 다른 패널을 열지 않는다.
         """
-        has_pdf = ctrl.pdf_page_count() > 0
-        show_text = viewer_state["en"] or (viewer_state["ko"] and bool(ctrl.ko_markdown()))
-        show_pdf = viewer_state["pdf"] and has_pdf
+        show_en, show_ko, show_pdf = shown_panels(bool(ctrl.ko_markdown()), ctrl.pdf_page_count() > 0)
+        show_text = show_en or show_ko
         pg = _sec_page0(sid)
         if edit_state["on"]:
             # 편집을 끄지 않는다 — 입력 맥락을 끊지 않는다. 편집기를 그 헤더로 옮기면 옆 칸(PDF·미리보기)이 따라온다.
