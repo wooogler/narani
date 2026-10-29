@@ -33,7 +33,11 @@ _PWA_CSS = """
 /* 화면 전체 확대(핀치·두 번 누르기)는 막는다 — 글자는 '가' 단추로, 그림·표는 눌러서 전체 화면(#zv)에서 키운다 */
 html { touch-action: pan-x pan-y; }
 .top button { white-space: nowrap; }
-.top .back { font-size: 1.3em; line-height: 1; padding: 4px 10px; }
+.top .back { font-size: 1.3em; line-height: 1; }
+/* 그림 단추(뒤로·목차·공유)는 34px 정사각형 — 뒤로·목차는 테두리 없이(이동 단추), 공유는 다른 단추들처럼 테두리 */
+.top .back, .top .tb.tocb, .top .tb.sh { width: 34px; height: 34px; min-height: 34px; padding: 0; flex: none; }
+.top .back, .top .tb.tocb { border-color: transparent; background: none; }
+.js.reading .top .back { display: grid; place-items: center; }
 .js.reading .top .tb.rd { display: inline-block; }
 .top .tb.rd, #fab.rd { display: none; }
 /* 제목 — 두 줄까지. 논문을 열었을 때는 누르면 목차(▾) */
@@ -42,7 +46,7 @@ html { touch-action: pan-x pan-y; }
   -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .js.reading .top .top-title { position: relative; }
 /* 목차 — 제목 왼쪽의 ☰ 단추(제목을 눌러도 열린다). 본문 머리의 접힌 목차는 이 서랍과 겹쳐 숨긴다(서랍이 그것을 읽어 그린다) */
-.top .tb.tocb { padding: 4px 6px; display: none; }
+.top .tb.tocb { display: none; }
 .js.reading .top .tb.tocb { display: inline-grid; place-items: center; }
 .js .paper .toc { display: none; }
 .top #lang-btn { font-weight: 600; min-width: 64px; }
@@ -71,7 +75,7 @@ details.memo .pend { margin-left: 8px; font-weight: 400; font-size: .8em; color:
   transition: background .12s; }
 #rw:hover::after, #rw.drag::after { background: var(--accent); }
 /* 공유 — 단추는 내 Drive에 연결됐을 때만, 공유받은 화면은 그 한 편만(목록·뒤로 없음) */
-.top .tb.sh { display: none !important; padding: 4px 8px; }
+.top .tb.sh { display: none !important; }
 .js.reading.can-share .top .tb.sh { display: inline-grid !important; place-items: center; }
 .shared #back, .shared #lib { display: none !important; }
 .share-note { margin: 12px 0 4px; }
@@ -313,6 +317,9 @@ ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3p
   /* 목차 칸은 ☰·× 로 접고 편다(접은 채로 기억) */
   .js.reading.toc-off { --sl: 0px; }
   .js.reading.toc-off #tocd { transform: translateX(-102%); }
+  /* 위 막대와 목차 칸 머리를 같은 높이(52px)로 — 두 밑줄이 한 줄로 이어진다 */
+  .js.reading .top { height: 52px; padding-top: 0; padding-bottom: 0; }
+  .js.reading #tocd .tocd-tabs { height: 52px; flex: none; padding: 0 8px 0 12px; }
   /* 논문 제목은 위 막대에 있다 — 제목·× 줄은 빼고, 목차|그림·표 칸 옆의 « 로 접는다 */
   .js.reading #tocd > .dh:first-child { display: none; }
   .js.reading #tocd-fold { display: grid; }
