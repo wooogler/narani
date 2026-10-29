@@ -51,6 +51,7 @@ html { touch-action: pan-x pan-y; }
 .pop { position: absolute; right: 10px; top: calc(100% + 4px); display: none; gap: 6px; padding: 6px; z-index: 6;
   background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.12); }
 .pop.open { display: flex; }
+#tocd-fold { display: none; place-items: center; flex: none; padding: 4px; }
 /* 논문 메모 탭 — 메모 창 위쪽, 대화의 '메모로' 단추 */
 .memos { margin: 0 0 12px; }
 details.memo { border: 1px solid var(--line); border-radius: 10px; background: var(--card); margin: 0 0 8px; }
@@ -312,8 +313,9 @@ ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3p
   /* 목차 칸은 ☰·× 로 접고 편다(접은 채로 기억) */
   .js.reading.toc-off { --sl: 0px; }
   .js.reading.toc-off #tocd { transform: translateX(-102%); }
-  /* 논문 제목은 위 막대에 있다 — 칸 머리에는 다시 쓰지 않고 × 만 */
-  .js.reading #tocd-title { visibility: hidden; }
+  /* 논문 제목은 위 막대에 있다 — 제목·× 줄은 빼고, 목차|그림·표 칸 옆의 « 로 접는다 */
+  .js.reading #tocd > .dh:first-child { display: none; }
+  .js.reading #tocd-fold { display: grid; }
   .js.reading main { max-width: var(--rw1, 800px); }
   .js.reading:has(#m-both:checked) main { max-width: var(--rw2, 1320px); }
   /* 본문 너비 막대 — 읽기 칸 오른쪽 끝을 끌어 넓히고 좁힌다(두 번 누르면 처음 너비) */
@@ -411,6 +413,7 @@ _APP_JS = r"""
     doc.getElementById('fs-btn').setAttribute('aria-label', md4T('글자 크기'));
     doc.getElementById('share-btn').setAttribute('aria-label', md4T('공유'));
     doc.getElementById('toc-btn').setAttribute('aria-label', md4T('목차'));
+    doc.getElementById('tocd-fold').setAttribute('aria-label', md4T('목차 칸 접기'));
     doc.getElementById('rw').setAttribute('aria-label', md4T('본문 너비 — 끌어서 조절, 두 번 누르면 처음대로'));
     doc.getElementById('rw').title = md4T('본문 너비 — 끌어서 조절, 두 번 누르면 처음대로');
     doc.getElementById('top-title').setAttribute('aria-label', md4T('목차'));
@@ -1368,6 +1371,7 @@ _READER_JS = r"""
   }
   scrim.onclick = function(){ closeDrawers(true); };
   doc.getElementById('tocd-x').onclick = function(){ if (WIDE()) tocSide(true); else closeDrawers(true); };
+  doc.getElementById('tocd-fold').onclick = function(){ tocSide(true); };
   doc.getElementById('ag-x').onclick = function(){ closeDrawers(true); };
   [tocd, agent].forEach(function(d){ d.addEventListener('click', function(e){ e.stopPropagation(); }); });
   function readerOpened(b){ JB.length = 0; jbShow(); body.classList.add('reading'); AG.key = b.key; AG.lang = b.lang || 'ko'; AG.title = b.title_ko || b.title; AG.msgs = null; }
@@ -3128,7 +3132,7 @@ def _index_html(cfg: dict) -> str:
         "<div id=\"scrim\"></div><div id=\"upd\" role=\"status\"></div>"
         "<nav id=\"tocd\"><div class=\"dh\"><span id=\"tocd-title\"></span><button id=\"tocd-x\">×</button></div>"
         "<div class=\"dh tocd-tabs\"><div class=\"ag-tabs\" role=\"tablist\"><button id=\"tocd-t-toc\" role=\"tab\"></button>"
-        "<button id=\"tocd-t-fig\" role=\"tab\"></button></div></div>"
+        "<button id=\"tocd-t-fig\" role=\"tab\"></button></div><button id=\"tocd-fold\"><svg viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M17.59 18 19 16.59 14.42 12 19 7.41 17.59 6l-6 6zM11 18l1.41-1.41L7.83 12l4.58-4.59L11 6l-6 6z\"/></svg></button></div>"
         "<ol id=\"tocd-list\"></ol></nav>"
         # 듣기 — 🎧(음성이 있는 논문) · 아래 재생 막대
         "<button id=\"lis\" class=\"rd\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" aria-hidden=\"true\">"
