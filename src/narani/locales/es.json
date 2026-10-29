@@ -1368,5 +1368,9 @@
  "모든 논문을 이 기기에 받아 두기 (오프라인에서도)": "Guardar todos los artículos en este dispositivo (sin conexión)",
  "음성도 받아 두기 ({n}편 · {mb}MB)": "Guardar también el audio ({n} artículos · {mb} MB)",
  "나란히": "En paralelo",
- "보기 바꾸기 (번역 · 원문 · 나란히)": "Cambiar vista (traducción · original · en paralelo)"
+ "보기 바꾸기 (번역 · 원문 · 나란히)": "Cambiar vista (traducción · original · en paralelo)",
+ "고딕": "Sans",
+ "명조": "Serif",
+ "고딕체로 읽기": "Leer con fuente sin serifa",
+ "명조체로 읽기": "Leer con fuente con serifa"
 }

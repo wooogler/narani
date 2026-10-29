@@ -49,6 +49,10 @@ html { touch-action: pan-x pan-y; }
 .pop { position: absolute; right: 10px; top: calc(100% + 4px); display: none; gap: 6px; padding: 6px; z-index: 6;
   background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.12); }
 .pop.open { display: flex; }
+.pop-sep { width: 1px; align-self: stretch; background: var(--line); margin: 2px 2px; }
+.pop .ff.on { background: var(--hl2); border-color: var(--accent); }
+#ff-serif { font-family: Georgia, "AppleMyungjo", "Batang", serif; }
+.paper { font-family: var(--ff, inherit); }
 #scrim { position: fixed; inset: 0; background: rgba(0,0,0,.28); z-index: 11; opacity: 0; pointer-events: none;
   transition: opacity .18s ease; }
 #scrim.open { opacity: 1; pointer-events: auto; }
@@ -207,7 +211,7 @@ ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3p
 #pl-range, #pl-spd { font-size: .95em; }
 /* 목소리 단추 — 폰 내장 음성일 때, 또는 데스크톱 음성과 둘 중 고를 수 있을 때만 */
 #pl-voice { display: none; font-size: 1.05em; }
-.web-tts #pl-voice, .two-eng #pl-voice { display: inline-block; }
+.web-tts #pl-voice, .two-eng #pl-voice { display: inline-grid; place-items: center; }
 .rng .wv { display: flex; align-items: center; gap: 8px; margin: 8px 0; }
 .rng .wv-sel { flex: 1; min-width: 0; font: inherit; padding: 6px; border-radius: 8px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); }
 ::highlight(tts) { background-color: rgba(255, 196, 0, .45); }
@@ -217,8 +221,12 @@ ol.nl .al { display: block; color: var(--muted); font-size: .8em; margin-top: 3p
 .js.reading.listening #fab.rd { width: auto; padding: 0 18px 0 14px; border-radius: 26px; }
 .js.reading.listening #fab .fab-c, .js.reading.listening #fab-n { display: none; }
 .js.reading.listening #fab-ask { display: flex; }
-#ag-mic { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); font-size: 1.05em;
-  align-self: flex-end; }
+#ag-mic { width: 40px; height: 40px; border-radius: 50%; border: 1px solid var(--line); background: var(--card); color: var(--fg);
+  align-self: flex-end; display: grid; place-items: center; padding: 0; }
+/* 그림 단추들(설정·지우기·목소리·새로 고침·보내기) — 이모지 대신 같은 선 굵기의 SVG */
+#ag-set, #ag-clear, #ag-send, .lib-bar button.re { display: inline-grid; place-items: center; }
+#ag-set svg, #ag-clear svg { display: block; }
+.vmic { display: inline-block; vertical-align: -2px; margin-right: 4px; opacity: .7; }
 #talkbar { position: fixed; left: 12px; right: 12px; bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 13; display: none;
   align-items: center; gap: 8px; background: var(--fg); color: var(--bg); border-radius: 16px; padding: 10px 10px 10px 14px;
   box-shadow: 0 8px 24px rgba(0,0,0,.25); font-weight: 600; }
@@ -368,6 +376,8 @@ _APP_JS = r"""
     setText('lnk-about', md4T('Narani 소개')); setText('lnk-privacy', md4T('개인정보처리방침'));
     doc.getElementById('fs-dn').setAttribute('aria-label', md4T('글자 작게'));
     doc.getElementById('fs-up').setAttribute('aria-label', md4T('글자 크게'));
+    setText('ff-sans', md4T('고딕')); setText('ff-serif', md4T('명조'));
+    doc.getElementById('ff-sans').setAttribute('aria-label', md4T('고딕체로 읽기')); doc.getElementById('ff-serif').setAttribute('aria-label', md4T('명조체로 읽기'));
     doc.getElementById('back').setAttribute('aria-label', md4T('논문 목록'));
     audioLabels();
   }
@@ -679,7 +689,7 @@ _APP_JS = r"""
     if (note) info.push(note);
     libBar.appendChild(el('span', 'grow', info.join(' · ')));
     if (source){
-      var re = el('button', 're', '\u21bb'); re.setAttribute('aria-label', md4T('새로 고침')); re.title = md4T('새로 고침');
+      var re = el('button', 're'); re.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z"/></svg>'; re.setAttribute('aria-label', md4T('새로 고침')); re.title = md4T('새로 고침');
       re.onclick = function(){ loadIndex(true); };
       libBar.appendChild(re);
     }
@@ -1224,6 +1234,22 @@ _READER_JS = r"""
   doc.addEventListener('click', function(e){
     if (!e.target.closest || !e.target.closest('#fs-pop, #fs-btn')) fsPop.classList.remove('open');
   }, true);
+  // 글꼴 — 고딕(기기 글꼴) · 명조. 명조는 기기에 한글 명조가 없을 수 있어(iOS) 고를 때만 웹 글꼴(Noto Serif)을 불러온다
+  var SERIF = '"Noto Serif KR", "Noto Serif JP", "Noto Serif SC", "AppleMyungjo", "Nanum Myeongjo", "Batang", Georgia, "Times New Roman", serif';
+  function setFf(v){
+    var serif = v === 'serif';
+    if (serif && !doc.getElementById('ff-css')){
+      var l = doc.createElement('link'); l.id = 'ff-css'; l.rel = 'stylesheet';
+      l.href = 'https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@400;700&family=Noto+Serif+JP:wght@400;700&family=Noto+Serif+SC:wght@400;700&display=swap';
+      doc.head.appendChild(l);
+    }
+    doc.documentElement.style.setProperty('--ff', serif ? SERIF : 'inherit');
+    lsSet('narani:ff', serif ? 'serif' : 'sans');
+    doc.getElementById('ff-sans').classList.toggle('on', !serif); doc.getElementById('ff-serif').classList.toggle('on', serif);
+  }
+  doc.getElementById('ff-sans').onclick = function(){ var a = topRow(); setFf('sans'); if (a) a.scrollIntoView({block: 'start'}); };
+  doc.getElementById('ff-serif').onclick = function(){ var a = topRow(); setFf('serif'); if (a) a.scrollIntoView({block: 'start'}); };
+  setFf(lsGet('narani:ff', 'sans'));
 
   // ---- 서랍 공통 ----
   var scrim = doc.getElementById('scrim'), tocd = doc.getElementById('tocd'), agent = doc.getElementById('agent');
@@ -1516,7 +1542,10 @@ _READER_JS = r"""
   });
   function msgEl(m){
     var d = el('div', 'm ' + (m.role === 'user' ? 'u' : (m.err ? 'a err' : 'a')));
-    if (m.role === 'user' || m.err) d.textContent = (m.voice && m.role === 'user' ? '🎙 ' : '') + m.content; else d.innerHTML = md(m.content);
+    if (m.role === 'user' || m.err){
+      d.textContent = m.content;
+      if (m.voice && m.role === 'user'){ var mi = el('span', 'vmic'); mi.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1a7 7 0 0 0 6-6.9z"/></svg>'; d.insertBefore(mi, d.firstChild); }   // 말로 물은 질문
+    } else d.innerHTML = md(m.content);
     return d;
   }
   var TAB_ICON = {   // 두 칸 스위치의 그림 — 연필(메모) · 말풍선(질문하기)
@@ -1593,7 +1622,7 @@ _READER_JS = r"""
     e.stopPropagation();
     closeSheet();
     if (body.classList.contains('listening')){ talkStart(); return; }   // 듣는 중엔 말로 묻기 단추
-    setText('ag-clear', '⟲'); doc.getElementById('ag-clear').setAttribute('aria-label', md4T('대화 지우기'));
+    doc.getElementById('ag-clear').innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><path fill="currentColor" d="M6 19a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>'; doc.getElementById('ag-clear').setAttribute('aria-label', md4T('대화 지우기'));
     agIn.placeholder = md4T('이 논문에 대해 물어보세요');
     if (WIDE() && agent.classList.contains('open')){ closeDrawers(true); return; }   // 넓은 화면: 💬로 옆 칸 열고 닫기
     agent.classList.add('open'); if (!WIDE()) scrim.classList.add('open');
@@ -2774,7 +2803,8 @@ def _index_html(cfg: dict) -> str:
         "<button class=\"only-js tb rd\" id=\"lang-btn\"></button>"
         "<button class=\"only-js tb rd\" id=\"fs-btn\"></button>"
         "<div class=\"pop\" id=\"fs-pop\"><button class=\"fs\" id=\"fs-dn\"></button>"
-        "<button class=\"fs\" id=\"fs-up\"></button></div>"
+        "<button class=\"fs\" id=\"fs-up\"></button><span class=\"pop-sep\"></span>"
+        "<button class=\"fs ff\" id=\"ff-sans\"></button><button class=\"fs ff\" id=\"ff-serif\"></button></div>"
         "</header>"
         f"<main><nav id=\"lib\"><h1 id=\"lib-h\">{APP_NAME}</h1><div class=\"lib-bar\" id=\"lib-bar\"></div>"
         "<ol id=\"lib-list\"></ol><div class=\"lib-opts\" id=\"lib-opts\"></div><p class=\"lib-foot\"><a href=\"about.html\" id=\"lnk-about\"></a> · "
@@ -2792,7 +2822,7 @@ def _index_html(cfg: dict) -> str:
         "<path fill=\"currentColor\" d=\"M12 3a9 9 0 0 0-9 9v6a3 3 0 0 0 3 3h1a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H5v-1a7 7 0 0 1"
         " 14 0v1h-2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1a3 3 0 0 0 3-3v-6a9 9 0 0 0-9-9z\"/></svg></button>"
         "<div id=\"player\" role=\"region\"><div class=\"pl-top\"><button id=\"pl-range\"></button><span id=\"pl-sec\"></span>"
-        "<button id=\"pl-voice\">🗣</button><button id=\"pl-spd\">1×</button><button id=\"pl-x\">×</button></div>"
+        "<button id=\"pl-voice\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M9 13a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4zm6.76-9.64-1.68 1.69c.84 1.18.84 2.71 0 3.89l1.68 1.69c2.02-2.02 2.02-5.07 0-7.27zM20.07 2l-1.63 1.63c2.77 3.02 2.77 7.56 0 10.74L20.07 16c3.9-3.89 3.91-9.95 0-14z\"/></svg></button><button id=\"pl-spd\">1×</button><button id=\"pl-x\">×</button></div>"
         "<input type=\"range\" id=\"pl-seek\" min=\"0\" step=\"1\" value=\"0\">"
         "<div class=\"pl-t\"><span id=\"pl-cur\">0:00</span><span id=\"pl-dur\">0:00</span></div>"
         "<div class=\"pl-ctl\"><button id=\"pl-prev\"><svg viewBox=\"0 0 24 24\" width=\"22\" height=\"22\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M6 6h2v12H6zm3.5 6 8.5 6V6z\"/></svg></button>"
@@ -2807,9 +2837,9 @@ def _index_html(cfg: dict) -> str:
         "</svg><span id=\"fab-ask-t\"></span></span></button>"
         "<section id=\"agent\" role=\"dialog\"><div class=\"dh\"><div class=\"ag-tabs\" role=\"tablist\">"
         "<button id=\"tab-notes\" role=\"tab\"></button><button id=\"tab-chat\" role=\"tab\"></button></div>"
-        "<button id=\"ag-clear\"></button><button id=\"ag-set\">⚙</button><button id=\"ag-x\">×</button></div>"
+        "<button id=\"ag-clear\"></button><button id=\"ag-set\"><svg viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.49.49 0 0 0-.59-.22l-2.39.96a7.03 7.03 0 0 0-1.62-.94l-.36-2.54A.48.48 0 0 0 13.92 2h-3.84a.48.48 0 0 0-.48.41l-.36 2.54c-.59.24-1.13.56-1.62.94l-2.39-.96a.49.49 0 0 0-.59.22L2.72 8.47a.49.49 0 0 0 .12.61l2.03 1.58c-.04.31-.07.63-.07.94s.02.63.06.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32a.49.49 0 0 0-.12-.61l-2.01-1.58zM12 15.6A3.6 3.6 0 1 1 12 8.4a3.6 3.6 0 0 1 0 7.2z\"/></svg></button><button id=\"ag-x\">×</button></div>"
         "<div id=\"ag-body\"></div><form id=\"ag-form\"><textarea id=\"ag-in\" rows=\"1\"></textarea>"
-        "<button id=\"ag-mic\" type=\"button\">🎙</button><button id=\"ag-send\" type=\"submit\">↑</button></form></section>"
+        "<button id=\"ag-mic\" type=\"button\"><svg viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M12 14a3 3 0 0 0 3-3V5a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3zm5-3a5 5 0 0 1-10 0H5a7 7 0 0 0 6 6.9V21h2v-3.1a7 7 0 0 0 6-6.9z\"/></svg></button><button id=\"ag-send\" type=\"submit\"><svg viewBox=\"0 0 24 24\" width=\"20\" height=\"20\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M4 12l1.41 1.41L11 7.83V20h2V7.83l5.58 5.59L20 12l-8-8-8 8z\"/></svg></button></form></section>"
         # 말로 묻기 — 대화 중 상태 막대와 답 소리
         "<div id=\"talkbar\" role=\"status\"><span class=\"lv\"></span><span id=\"tk-st\"></span>"
         "<span id=\"tk-meta\"></span><button id=\"tk-end\"></button></div><audio id=\"tk-au\" autoplay playsinline></audio>"

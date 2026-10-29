@@ -311,3 +311,11 @@ def test_phone_reader_has_wide_screen_layout():
     assert ".js.reading:has(#agent.open)" in html and "#m-both:checked ~ main .paper.has-ko:not(.noalign) .row { display: grid" in html
     assert "function WIDE" in js and "function sideToc" in js and "function stepSection" in js
     assert "(ko ? 'm-en' : en ? 'm-both' : 'm-ko')" in js       # 넓은 화면: 번역 → 원문 → 나란히
+
+
+def test_phone_icons_are_svg_and_font_choice():
+    files = web.site_files(local=True)
+    js, html = files["app.js"][0].decode(), files["index.html"][0].decode()
+    for emoji in ("⚙", "🎙", "🗣", "⟲"):
+        assert emoji not in html.split("<script>window.NARANI_CFG", 1)[1].split("</script>", 1)[1] and f"'{emoji}" not in js
+    assert 'id="ff-serif"' in html and "function setFf" in js
