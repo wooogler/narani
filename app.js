@@ -1353,7 +1353,7 @@
   doc.getElementById('ag-x').onclick = function(){ closeDrawers(true); };
   [tocd, agent].forEach(function(d){ d.addEventListener('click', function(e){ e.stopPropagation(); }); });
   function readerOpened(b){ JB.length = 0; jbShow(); body.classList.add('reading'); AG.key = b.key; AG.lang = b.lang || 'ko'; AG.title = b.title_ko || b.title; AG.msgs = null; }
-  function readerClosed(){ JB.length = 0; jbShow(); FIGS = []; body.classList.remove('reading'); closeDrawers(); if (TK) talkEnd(md4T('논문을 닫음'), true); stopAudio(); }
+  function readerClosed(){ JB.length = 0; jbShow(); FIGS = []; body.classList.remove('reading'); closeDrawers(true); if (TK) talkEnd(md4T('논문을 닫음'), true); stopAudio(); }
   function flashRow(row){
     if (!row) return;
     beforeJump();
