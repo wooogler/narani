@@ -51,6 +51,20 @@ html { touch-action: pan-x pan-y; }
 .pop { position: absolute; right: 10px; top: calc(100% + 4px); display: none; gap: 6px; padding: 6px; z-index: 6;
   background: var(--card); border: 1px solid var(--line); border-radius: 10px; box-shadow: 0 6px 20px rgba(0,0,0,.12); }
 .pop.open { display: flex; }
+/* 논문 메모 탭 — 메모 창 위쪽, 대화의 '메모로' 단추 */
+.memos { margin: 0 0 12px; }
+details.memo { border: 1px solid var(--line); border-radius: 10px; background: var(--card); margin: 0 0 8px; }
+details.memo summary { padding: 8px 12px; cursor: pointer; font-weight: 600; font-size: .9em; }
+details.memo .pend { margin-left: 8px; font-weight: 400; font-size: .8em; color: var(--accent); }
+.memo-md { padding: 0 12px 8px; font-size: .9em; line-height: 1.6; }
+.memo-md p { margin: 0 0 .6em; } .memo-md ul, .memo-md ol { margin: 0 0 .6em; padding-left: 1.2em; }
+.memo-pre { max-height: 32vh; overflow-y: auto; white-space: pre-wrap; font-size: .85em; color: var(--muted); border-left: 3px solid var(--line);
+  padding: 2px 0 2px 10px; margin: 0 0 10px; }
+.memo-md.memo-pre { white-space: normal; color: var(--fg); }
+.memo-new { width: 100%; font: inherit; font-size: 16px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--bg); color: var(--fg); margin: 0 0 8px; }
+#ag-body .to-memo { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; border: 1px solid var(--line); background: var(--card);
+  color: var(--muted); border-radius: 999px; padding: 3px 10px; font: inherit; font-size: .78em; }
 #rw { display: none; position: fixed; top: 50%; z-index: 7; width: 16px; height: 72px; margin-top: -36px; cursor: ew-resize; touch-action: none; }
 #rw::after { content: ""; position: absolute; left: 6px; top: 0; bottom: 0; width: 4px; border-radius: 2px; background: var(--line);
   transition: background .12s; }
@@ -989,6 +1003,7 @@ _NOTES_JS = r"""
     ops(NOTE.key).forEach(function(o){
       if (o.ts <= NOTE.applied) return;
       if (o.op === 'del'){ delete map[o.id]; return; }
+      if (o.op !== 'put' || !o.item) return;   // 메모 탭 기록(op=memo)은 memosView가
       if (!(o.item.id in map)) order.push(o.item.id);
       map[o.item.id] = o.item;
     });
@@ -1131,7 +1146,20 @@ _NOTES_JS = r"""
     } else only = false;
     agBody.appendChild(bar);
     if (only) list = list.filter(function(it){ return it.note; });
+    // 논문 메모 탭(데스크톱 뷰어의 '메모' 패널) — 읽기만, 대화에서 '메모로' 넣은 것도 여기에
+    var mv = memosView().filter(function(m){ return m.text.trim(); });
+    if (mv.length){
+      var box = el('div', 'memos');
+      mv.forEach(function(m, k){
+        var d = el('details', 'memo'); if (k === 0) d.open = true;
+        var sm = el('summary', '', m.name); if (m.pending) sm.appendChild(el('span', 'pend', md4T('올릴 것 있음')));
+        d.appendChild(sm); var body = el('div', 'memo-md'); body.innerHTML = md(m.text); d.appendChild(body);
+        box.appendChild(d);
+      });
+      agBody.appendChild(box);
+    }
     if (!list.length){
+      if (mv.length) return;
       agBody.appendChild(el('p', 'hint', source && source.put
         ? md4T('아직 표시한 문장이 없어요. 본문의 문장을 누르면 색을 칠하거나 메모를 달 수 있어요.')
         : md4T('저장소에 연결해야 하이라이트·메모를 남길 수 있어요.')));
@@ -1158,7 +1186,7 @@ _NOTES_JS = r"""
     var key = b.key;
     getNotes(e).then(function(n){
       if (!n || NOTE.key !== key) return;
-      NOTE.base = n.items || []; NOTE.applied = +n.applied || 0;
+      NOTE.base = n.items || []; NOTE.applied = +n.applied || 0; NOTE.memos = n.memos || [];
       var mine = ops(key), left = mine.filter(function(o){ return o.ts > NOTE.applied; });
       if (left.length !== mine.length) lsSet('narani:ops:' + key, left);   // 데스크톱이 합친 기록은 지운다
       paint();
@@ -1606,6 +1634,8 @@ _READER_JS = r"""
       var m = /^\s*(?:[-*•]|\d+[.)])\s+(.*)$/.exec(line);
       if (m){ if (!list){ out.push('<ul>'); list = true; } out.push('<li>' + m[1] + '</li>'); return; }
       if (list){ out.push('</ul>'); list = false; }
+      var hd = /^\s*#{1,6}\s+(.*)$/.exec(line);   // 메모 탭의 제목(## …) — 굵은 한 줄로
+      if (hd){ out.push('<p class="mh"><b>' + hd[1] + '</b></p>'); return; }
       if (line.trim()) out.push('<p>' + line + '</p>');
     });
     if (list) out.push('</ul>');
@@ -1644,6 +1674,85 @@ _READER_JS = r"""
   }
   doc.getElementById('tab-notes').onclick = function(){ lsSet('narani:agtab', 'notes'); showNotes(); };
   doc.getElementById('tab-chat').onclick = function(){ lsSet('narani:agtab', 'chat'); showChat(); };
+
+  // ---- 논문 메모 탭 — 데스크톱이 notes/에 실어 보낸 탭(memos) 위에 아직 합쳐지지 않은 폰 기록(op=memo)을 얹는다 ----
+  function memosView(){
+    var out = (NOTE.memos || []).map(function(m){ return {name: m.name, text: m.text || '', stamp: m.stamp || '', pending: false}; });
+    ops(NOTE.key).forEach(function(o){
+      if (o.op !== 'memo' || o.ts <= NOTE.applied) return;
+      var m = out.filter(function(x){ return x.name === o.tab; })[0];
+      if (!m){ m = {name: o.tab, text: '', stamp: '', pending: true}; out.push(m); }
+      m.text = o.mode === 'replace' ? o.text : (m.text.trim() ? m.text.replace(/\s+$/, '') + '\n\n' : '') + o.text.trim() + '\n';
+      m.pending = true;
+    });
+    return out;
+  }
+  function canMemo(){ return !!(source && source.put && !SHARE_ID && NOTE.key); }
+  // 대화 안에서 고른 글 — '메모로'를 누르면 답 전체 대신 그 부분만
+  var LASTSEL = null;
+  doc.addEventListener('selectionchange', function(){
+    var sel = window.getSelection && window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.anchorNode) return;
+    var n = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentNode, m = n && n.closest ? n.closest('#ag-body .m[data-i]') : null;
+    if (m) LASTSEL = {i: +m.getAttribute('data-i'), text: sel.toString().trim(), at: Date.now()};
+  });
+  var MEMO_MERGE = 'You maintain a researcher\'s markdown note about one paper. Merge the NEW material into the EXISTING note: ' +
+    'put each point where it belongs, keep everything already in the note (do not drop or shorten information), keep its headings, ' +
+    'structure and language (write in the language the note is written in), keep [rN] paragraph markers as they are, and avoid ' +
+    'repeating what the note already says. Return only the full updated note in markdown, with no preface.';
+  function memoBlock(msgs, i, sel){
+    var q = null;
+    for (var k = i - 1; k >= 0; k--) if (msgs[k].role === 'user'){ q = msgs[k].content; break; }
+    return (q ? '**Q.** ' + q.replace(/\s+/g, ' ').trim() + '\n\n' : '') + (sel || msgs[i].content).trim();
+  }
+  function memoSheet(msgs, i, sel){
+    var text = memoBlock(msgs, i, sel), tabs = memosView(), box = el('div', 'rng'), last = lsGet('narani:memotab', '');
+    var preview = el('div', 'memo-pre'); preview.textContent = text.length > 400 ? text.slice(0, 400) + '…' : text; box.appendChild(preview);
+    var pick = el('select', 'wv-sel'), nm = el('input', 'memo-new');
+    tabs.forEach(function(t){ var o = el('option', '', t.name); o.value = t.name; o.selected = t.name === last; pick.appendChild(o); });
+    var on = el('option', '', md4T('새 메모 탭…')); on.value = '\u0000new'; pick.appendChild(on);
+    if (!tabs.length) on.selected = true;
+    nm.placeholder = md4T('새 탭 이름'); nm.value = md4T('대화에서');
+    var lab = el('label', 'wv'); lab.appendChild(doc.createTextNode(md4T('넣을 메모') + ' ')); lab.appendChild(pick); box.appendChild(lab); box.appendChild(nm);
+    var modes = el('div');
+    [['append', md4T('끝에 덧붙이기 — 고른 글을 그대로')], ['merge', md4T('AI로 합치기 — 메모 흐름에 녹여 다시 씀(저장 전에 미리 봄)')]].forEach(function(x, k){
+      var l = el('label'), r = el('input'); r.type = 'radio'; r.name = 'mmode'; r.value = x[0]; r.checked = k === (lsGet('narani:memomode', 'append') === 'merge' ? 1 : 0);
+      l.appendChild(r); l.appendChild(doc.createTextNode(' ' + x[1])); modes.appendChild(l);
+    });
+    box.appendChild(modes);
+    function sync(){
+      var isNew = pick.value === '\u0000new', t = tabs.filter(function(x){ return x.name === pick.value; })[0];
+      nm.style.display = isNew ? '' : 'none';
+      var mr = modes.querySelector('input[value=merge]'); mr.disabled = isNew || !(t && t.text.trim());
+      if (mr.disabled && mr.checked) modes.querySelector('input[value=append]').checked = true;
+    }
+    pick.onchange = sync; sync();
+    openSheet(md4T('메모로 보내기'), [box], [button(md4T('넣기'), function(){
+      var isNew = pick.value === '\u0000new', name = isNew ? (nm.value.trim() || md4T('대화에서')) : pick.value;
+      var mode = (modes.querySelector('input[name=mmode]:checked') || {}).value || 'append';
+      lsSet('narani:memotab', name); lsSet('narani:memomode', mode);
+      if (mode !== 'merge'){ record({op: 'memo', tab: name, mode: 'append', text: text}); closeSheet(); toast(md4T('「{t}」 메모에 넣었어요', {t: name})); return; }
+      memoMerge(tabs.filter(function(x){ return x.name === name; })[0], text);
+    })]);
+  }
+  function memoMerge(tab, text){
+    var c = aiCfg(), out = '';
+    if (!c.keys[c.provider]){ closeSheet(); showSettings(); return; }
+    openSheet(md4T('메모로 보내기'), [para(md4T('AI가 「{t}」 메모에 합치는 중…', {t: tab.name}), 'more')], []);
+    askAI(c, MEMO_MERGE, [{role: 'user', content: 'EXISTING NOTE:\n' + tab.text + '\n\nNEW MATERIAL (from a chat about the paper):\n' + text}],
+          function(t){ out += t; }).then(function(){
+      out = out.trim();
+      if (!out) throw new Error(md4T('빈 답이 왔어요'));
+      var pv = el('div', 'memo-md memo-pre'); pv.innerHTML = md(out);
+      openSheet(md4T('합친 메모 미리 보기 — 「{t}」', {t: tab.name}), [pv, para(md4T('저장하면 이 판으로 바뀌어요. 그사이 데스크톱에서 메모를 고쳤으면 덮지 않고 끝에 덧붙여요.'), 'more')], [
+        button(md4T('저장'), function(){ record({op: 'memo', tab: tab.name, mode: 'replace', text: out, base: tab.stamp}); closeSheet(); toast(md4T('「{t}」 메모를 고쳤어요', {t: tab.name})); }),
+        button(md4T('그냥 덧붙이기'), function(){ record({op: 'memo', tab: tab.name, mode: 'append', text: text}); closeSheet(); toast(md4T('「{t}」 메모에 넣었어요', {t: tab.name})); })]);
+    }).catch(function(e){
+      openSheet(md4T('메모로 보내기'), [para(md4T('AI로 합치지 못했어요: {e}', {e: e.message || e}), 'more')],
+                [button(md4T('그냥 덧붙이기'), function(){ record({op: 'memo', tab: tab.name, mode: 'append', text: text}); closeSheet(); })]);
+    });
+  }
+  var MEMO_SVG = '<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true"><path fill="currentColor" d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8zm-1 7V3.5L18.5 9zm-2 9H9v-2h2v-2h2v2h2v2h-2v2h-2z"/></svg>';
   function showChat(){
     AG.mode = 'chat'; setTabs(); agBody.innerHTML = '';
     doc.getElementById('ag-form').style.display = '';
@@ -1651,7 +1760,20 @@ _READER_JS = r"""
     if (!c.keys[c.provider]){ showSettings(md4T('질문하려면 이 기기에 AI 서비스와 API 키를 한 번 넣어 주세요.')); return; }
     var msgs = chat();
     if (!msgs.length) agBody.appendChild(el('p', 'hint', md4T('이 논문에 대해 무엇이든 물어보세요 — 답의 [r12] 같은 표시를 누르면 그 문단으로 갑니다. ({p} · {m})', {p: PNAME[c.provider] || c.provider, m: c.model})));
-    msgs.forEach(function(m){ agBody.appendChild(msgEl(m)); });
+    msgs.forEach(function(m, i){
+      var d = msgEl(m);
+      if (m.role === 'assistant' && !m.err && canMemo()){   // 답(또는 그 안에서 고른 글)을 논문 메모 탭으로
+        d.setAttribute('data-i', i);
+        var b = el('button', 'to-memo'); b.type = 'button'; b.innerHTML = MEMO_SVG; b.appendChild(doc.createTextNode(md4T('메모로')));
+        b.onclick = function(ev){
+          ev.stopPropagation();
+          var sel = LASTSEL && LASTSEL.i === i && Date.now() - LASTSEL.at < 120000 ? LASTSEL.text : '';
+          memoSheet(msgs, i, sel);
+        };
+        d.appendChild(b);
+      }
+      agBody.appendChild(d);
+    });
     agBody.scrollTop = agBody.scrollHeight;
   }
   function showSettings(note){
@@ -1827,12 +1949,14 @@ _READER_JS = r"""
     if (navigator.clipboard) return navigator.clipboard.writeText(link).then(function(){ toast(md4T('링크를 복사했어요')); }, function(){});
   }
   function toast(t){ var n = el('div', 'toast', t); doc.body.appendChild(n); setTimeout(function(){ n.remove(); }, 2200); }
-  function sharePayload(e){
+  function sharePayload(e, memoNames){
     return getPaper(e).then(function(b){
       var sp = speechOf(e), entry = {key: e.key, hash: e.hash, lang: e.lang, title: e.title, title_ko: e.title_ko, authors: e.authors,
         year: e.year, venue: e.venue, has_ko: e.has_ko, aligned: e.aligned, file: 'papers/shared.json', notes_hash: 's' + Date.now()};
       var out = {format: 1, kind: 'narani-share', shared_at: Date.now() / 1000, entry: entry, bundle: b,
-                 notes: {items: items(), applied: 0}};
+                 notes: {items: items(), applied: 0,
+                         memos: memosView().filter(function(m){ return memoNames.indexOf(m.name) >= 0 && m.text.trim(); })
+                                           .map(function(m){ return {name: m.name, text: m.text, stamp: ''}; })}};
       if (!sp) return out;
       return webPlan(sp).then(function(plan){ entry.speech = {file: 'speech/shared.json', sig: sp.sig}; out.speech = plan; return out; },
                               function(){ return out; });
@@ -1842,13 +1966,25 @@ _READER_JS = r"""
     if (!cur || !NOTE.fid) return;
     var e = entryOf(NOTE.fid), key = NOTE.key, name = 'share/' + NOTE.fid + '.json', have = shares()[key];
     if (!e) return;
-    var nodes = [para(md4T('링크를 받은 사람만 볼 수 있어요 — 검색되거나 공개 목록에 오르지 않아요. 번역·원문·내 하이라이트·메모가 담기고, 받는 사람은 로그인 없이 읽기 전용으로 열어요.')),
+    var nodes = [para(md4T('링크를 받은 사람만 볼 수 있어요 — 검색되거나 공개 목록에 오르지 않아요. 번역·원문·내 하이라이트·메모(고른 메모 탭)가 담기고, 받는 사람은 로그인 없이 읽기 전용으로 열어요.')),
                  para(md4T('원문의 저작권은 저자·출판사에 있어요. 필요한 사람에게만 보내 주세요.'), 'more')];
     if (!CFG.local && !CFG.google_api_key) nodes.push(para(md4T('이 웹앱에는 공유용 Google API 키가 없어 받는 사람이 열 수 없어요 — 데스크톱 config.toml [phone]의 google_web_api_key를 넣고 웹앱을 다시 올려 주세요.'), 'more'));
     if (have) nodes.push(para(have.link, 'more share-link'));
+    // 담을 논문 메모 탭 — 기본은 모두(지난번에 뺀 탭은 빼 둔다)
+    var mv = memosView().filter(function(m){ return m.text.trim(); }), skip = lsGet('narani:shareskip:' + key, []), checks = [];
+    if (mv.length){
+      var mb = el('div', 'rng'); mb.appendChild(el('div', 'sh-label', md4T('함께 담을 메모 탭')));
+      mv.forEach(function(m){
+        var l = el('label'), c = el('input'); c.type = 'checkbox'; c.checked = skip.indexOf(m.name) < 0; c.value = m.name;
+        l.appendChild(c); l.appendChild(doc.createTextNode(' ' + m.name)); mb.appendChild(l); checks.push(c);
+      });
+      nodes.push(mb);
+    }
     function make(){
+      var names = checks.filter(function(c){ return c.checked; }).map(function(c){ return c.value; });
+      lsSet('narani:shareskip:' + key, checks.filter(function(c){ return !c.checked; }).map(function(c){ return c.value; }));
       closeSheet(); toast(md4T('공유 파일을 올리는 중…'));
-      sharePayload(e).then(function(payload){ return source.put(name, payload); })
+      sharePayload(e, names).then(function(payload){ return source.put(name, payload); })
         .then(function(id){ return source.makePublic(id).then(function(){ return id; }); })
         .then(function(id){
           var m = shares(); m[key] = {id: id, link: shareLink(id), at: Date.now()}; lsSet('narani:shares', m);

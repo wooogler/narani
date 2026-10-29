@@ -196,6 +196,21 @@ body.ag-standalone .ag-list, body.ag-standalone .ag-foot {
   background: #eef4fd; font-size: 12.5px; line-height: 1.6; white-space: pre-wrap;
   overflow-wrap: break-word; }
 .ag-a { font-size: 12.5px; line-height: 1.68; overflow-wrap: break-word; }
+/* 대화 → 메모 탭 — 답 아래 '메모로' 단추와 그 자리에 펴지는 작은 카드 */
+.ag-memo-b { display: inline-flex; align-items: center; gap: 3px; margin-top: 2px; border: 1px solid #e4e1da; background: #fff;
+  color: #6b6862; border-radius: 999px; padding: 1px 9px; font-size: 11px; cursor: pointer; }
+.ag-memo-b:hover { border-color: #2f6fd0; color: #2f6fd0; }
+.ag-memo-b .material-icons { font-size: 13px; }
+.ag-memo { margin-top: 6px; border: 1px solid #e4e1da; border-radius: 10px; background: #fbfaf7; padding: 8px 10px; font-size: 12px; }
+.ag-memo .pre { max-height: 140px; overflow-y: auto; white-space: pre-wrap; color: #6b6862; border-left: 3px solid #e4e1da;
+  padding-left: 8px; margin-bottom: 6px; }
+.ag-memo select, .ag-memo input[type=text] { width: 100%; font: inherit; padding: 3px 6px; border: 1px solid #e4e1da; border-radius: 6px;
+  margin: 2px 0 6px; background: #fff; }
+.ag-memo label { display: block; margin: 2px 0; }
+.ag-memo .acts { display: flex; gap: 6px; margin-top: 6px; }
+.ag-memo .acts button { border: 1px solid #e4e1da; background: #fff; border-radius: 7px; padding: 3px 10px; font: inherit; cursor: pointer; }
+.ag-memo .acts button.pri { background: #2f6fd0; border-color: #2f6fd0; color: #fff; }
+.ag-memo .st { color: #6b6862; margin-top: 4px; }
 .ag-a p, .ag-a ul, .ag-a ol, .ag-a blockquote { margin: 0 0 7px; }
 /* 앱의 Tailwind 리셋이 목록 기호와 제목 굵기를 지운다 — 답 안에서는 되살린다 */
 .ag-a ul, .ag-a ol { padding-left: 19px; }
@@ -1099,6 +1114,84 @@ JS = r"""
       });
     });
   }
+
+  // ---- 대화 → 논문 메모 탭 — 답(또는 그 안에서 고른 글)을 메모 탭에 덧붙이거나 AI로 합친다(미리 보고 저장) ----
+  var memoSel = null;   // 답 안에서 마지막으로 고른 글 {turn, text}
+  document.addEventListener('selectionchange', function(){
+    var sel = window.getSelection && window.getSelection();
+    if (!sel || sel.isCollapsed || !sel.anchorNode) return;
+    var n = sel.anchorNode.nodeType === 1 ? sel.anchorNode : sel.anchorNode.parentNode;
+    var a = n && n.closest ? n.closest('.ag-a[data-turn]') : null;
+    if (a) memoSel = {turn: a.getAttribute('data-turn'), text: sel.toString().trim(), at: Date.now()};
+  });
+  function memoText(t){
+    var i = turns.indexOf(t), q = null, k;
+    for (k = i - 1; k >= 0; k--) if (turns[k].role === 'user'){ q = turns[k].text; break; }
+    var body = memoSel && memoSel.turn === String(t.id) && Date.now() - memoSel.at < 120000 && memoSel.text ? memoSel.text : t.text;
+    return (q ? '**Q.** ' + String(q).replace(/\s+/g, ' ').trim() + '\n\n' : '') + String(body || '').trim();
+  }
+  function memoButton(t, wrap){
+    var b = document.createElement('button');
+    b.className = 'ag-memo-b'; b.type = 'button';
+    b.innerHTML = '<span class="material-icons">note_add</span>' + esc(md4T('메모로'));
+    b.title = md4T('이 답(고른 부분이 있으면 그 부분)을 논문 메모 탭에 넣기');
+    b.onclick = function(e){ e.stopPropagation(); var old = wrap.querySelector('.ag-memo'); if (old){ old.remove(); return; } wrap.appendChild(memoCard(t)); };
+    return b;
+  }
+  function memoCard(t){
+    var tok = paper, text = memoText(t), card = document.createElement('div');
+    card.className = 'ag-memo';
+    var pre = document.createElement('div'); pre.className = 'pre'; pre.textContent = text; card.appendChild(pre);
+    var pick = document.createElement('select'), nm = document.createElement('input'), st = document.createElement('div');
+    nm.type = 'text'; nm.value = md4T('대화에서'); nm.placeholder = md4T('새 탭 이름'); st.className = 'st';
+    var modes = document.createElement('div');
+    [['append', md4T('끝에 덧붙이기 — 고른 글을 그대로')], ['merge', md4T('AI로 합치기 — 메모 흐름에 녹여 다시 씀(저장 전에 미리 봄)')]].forEach(function(x, k){
+      var l = document.createElement('label'), r = document.createElement('input');
+      r.type = 'radio'; r.name = 'agmm-' + t.id; r.value = x[0]; r.checked = k === 0;
+      l.appendChild(r); l.appendChild(document.createTextNode(' ' + x[1])); modes.appendChild(l);
+    });
+    var tabs = [];
+    function sync(){
+      var isNew = pick.value === '\u0000new', tb = tabs.filter(function(x){ return x.name === pick.value; })[0];
+      nm.style.display = isNew ? '' : 'none';
+      var mr = modes.querySelector('input[value=merge]'); mr.disabled = isNew || !(tb && tb.chars);
+      if (mr.disabled && mr.checked) modes.querySelector('input[value=append]').checked = true;
+    }
+    pick.onchange = sync;
+    var acts = document.createElement('div'); acts.className = 'acts';
+    var go = document.createElement('button'), no = document.createElement('button');
+    go.className = 'pri'; go.textContent = md4T('넣기'); no.textContent = md4T('취소');
+    no.onclick = function(){ card.remove(); };
+    function done(r){ if (r && r.refresh) doAction(r.refresh); card.innerHTML = ''; st.textContent = md4T('「{t}」 메모에 넣었어요', {t: r.tab}); card.appendChild(st); setTimeout(function(){ card.remove(); }, 2500); }
+    function fail(e){ st.textContent = String(e && e.message || e); }
+    go.onclick = function(){
+      var isNew = pick.value === '\u0000new', name = isNew ? (nm.value.trim() || md4T('대화에서')) : pick.value;
+      var mode = (modes.querySelector('input:checked') || {}).value || 'append';
+      var url = '/agent/memo/' + encodeURIComponent(tok);
+      if (mode !== 'merge'){ api('POST', url, {tab: name, mode: 'append', text: text}).then(done, fail); return; }
+      go.disabled = true; st.textContent = md4T('AI가 「{t}」 메모에 합치는 중…', {t: name});
+      api('POST', url + '/merge', {tab: name, text: text}).then(function(r){
+        pre.textContent = r.merged; pre.style.maxHeight = '260px'; pre.style.color = 'inherit';
+        modes.style.display = 'none'; pick.style.display = 'none'; nm.style.display = 'none';
+        st.textContent = md4T('합친 메모 미리 보기 — 「{t}」', {t: name}) + ' · ' + md4T('저장하면 이 판으로 바뀌어요(옛 판은 휴지통에).');
+        go.disabled = false; go.textContent = md4T('저장');
+        go.onclick = function(){ api('POST', url, {tab: name, mode: 'replace', text: r.merged, stamp: r.stamp}).then(done, fail); };
+        var app = document.createElement('button'); app.textContent = md4T('그냥 덧붙이기');
+        app.onclick = function(){ api('POST', url, {tab: name, mode: 'append', text: text}).then(done, fail); };
+        acts.insertBefore(app, no);
+      }, function(e){ go.disabled = false; fail(e); });
+    };
+    acts.appendChild(go); acts.appendChild(no);
+    card.appendChild(pick); card.appendChild(nm); card.appendChild(modes); card.appendChild(acts); card.appendChild(st);
+    api('GET', '/agent/memo/' + encodeURIComponent(tok)).then(function(r){
+      tabs = r.tabs || [];
+      tabs.forEach(function(x){ var o = document.createElement('option'); o.value = x.name; o.textContent = x.name; pick.appendChild(o); });
+      var on = document.createElement('option'); on.value = '\u0000new'; on.textContent = md4T('새 메모 탭…'); pick.appendChild(on);
+      if (!tabs.length) on.selected = true;
+      sync();
+    }, fail);
+    return card;
+  }
   function turnNode(t){
     var wrap = document.createElement('div');
     if (t.role === 'user'){
@@ -1120,8 +1213,10 @@ JS = r"""
       a.className = 'ag-a';
       if (t.html) a.innerHTML = t.html;     // 서버에서 마크다운 렌더 (raw HTML 비활성)
       else a.textContent = t.text;
+      a.setAttribute('data-turn', t.id);
       wireChips(a, t);
       wrap.appendChild(a);
+      if (paper && t.text) wrap.appendChild(memoButton(t, wrap));
     }
     if (t.error){
       var e = document.createElement('div');

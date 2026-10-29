@@ -150,6 +150,20 @@ def title_provider():  # noqa: ANN201 — llm.base.Provider
     return config.build_provider(prov, tiers[0] if tiers else None)
 
 
+# 대화 → 메모 탭 'AI로 합치기' — 폰 리더(§phone.web MEMO_MERGE)와 같은 지시
+MEMO_MERGE = ("You maintain a researcher's markdown note about one paper. Merge the NEW material into the EXISTING note: "
+              "put each point where it belongs, keep everything already in the note (do not drop or shorten information), "
+              "keep its headings, structure and language (write in the language the note is written in), keep [rN] "
+              "paragraph markers as they are, and avoid repeating what the note already says. Return only the full "
+              "updated note in markdown, with no preface.")
+
+
+def memo_provider():  # noqa: ANN201 — llm.base.Provider
+    """메모 합치기용 LLM — 에이전트가 쓰는 서비스·모델(설정 → AI)."""
+    prov, model = config.resolve_chat_choice()
+    return config.build_provider(prov, model)
+
+
 def clean_title(raw: str) -> str:
     """모델 답 → 제목 한 줄 (따옴표·'제목:' 머리·끝 마침표를 떼고 세션 제목 길이로 자른다)."""
     line = next((x for x in (raw or "").splitlines() if x.strip()), "")
@@ -232,7 +246,8 @@ def register_routes(fastapi_app, wd_for: Callable[[str], WorkDir | None],  # noq
                     build_agent: Callable[[], object] | None = None,
                     workspace: Callable[[], Path] | None = None,
                     build_job_provider: Callable | None = None,
-                    build_title_provider: Callable[[], object] | None = None) -> None:
+                    build_title_provider: Callable[[], object] | None = None,
+                    build_memo_provider: Callable[[], object] | None = None) -> None:
     """`/agent/...` 라우트 등록.
 
     wd_for: 토큰 → WorkDir (모르면 None; 폴백 금지).
@@ -271,6 +286,55 @@ def register_routes(fastapi_app, wd_for: Callable[[str], WorkDir | None],  # noq
         if s is None:
             raise HTTPException(status_code=404)
         return s
+
+    # ---- 대화 → 논문 메모 탭 (창의 '메모로' 단추) — 덧붙이기, 또는 AI로 합친 판을 미리 보고 바꾸기 ----
+    def _wd_or_404(tok: str) -> WorkDir:
+        wd = wd_for(tok)
+        if wd is None:
+            raise HTTPException(status_code=404)
+        return wd
+
+    @fastapi_app.get("/agent/memo/{tok}")
+    def _memo_tabs(tok: str):  # noqa: ANN202 — 메모 탭 목록 (내용이 있는지)
+        from narani import notes
+
+        wd = _wd_or_404(tok)
+        return {"tabs": [{"name": n, "chars": len(notes.read(wd, n).strip())} for n in notes.tab_names(wd)]}
+
+    @fastapi_app.post("/agent/memo/{tok}/merge")
+    def _memo_merge(tok: str, body: dict):  # noqa: ANN202 — AI로 합친 판(저장하지 않는다) + 바탕 지문
+        from narani import notes
+
+        wd, tab, text = _wd_or_404(tok), str(body.get("tab") or ""), str(body.get("text") or "").strip()
+        old, stamp = notes.read_stamped(wd, tab)
+        if not text or not old.strip():
+            return JSONResponse({"error": "합칠 메모나 글이 없습니다"}, status_code=400)
+        try:
+            out = (build_memo_provider or memo_provider)().complete(
+                MEMO_MERGE, f"EXISTING NOTE:\n{old}\n\nNEW MATERIAL (from a chat about the paper):\n{text}", max_tokens=8192)
+        except Exception as e:  # noqa: BLE001
+            return JSONResponse({"error": str(e)}, status_code=502)
+        return {"merged": out.strip(), "stamp": stamp}
+
+    @fastapi_app.post("/agent/memo/{tok}")
+    def _memo_write(tok: str, body: dict):  # noqa: ANN202 — 덧붙이기(append) · 합친 판으로 바꾸기(replace, 바탕 지문 확인)
+        from narani import notes
+
+        wd, text, mode = _wd_or_404(tok), str(body.get("text") or "").strip(), body.get("mode") or "append"
+        tab = notes.clean_name(str(body.get("tab") or "")) or notes.default_name()
+        if not text or mode not in ("append", "replace"):
+            return JSONResponse({"error": "쓸 내용이 없습니다"}, status_code=400)
+        if tab not in notes.tab_names(wd):
+            tab = notes.add(wd, tab)
+        old, stamp = notes.read_stamped(wd, tab)
+        try:
+            if mode == "replace":
+                notes.write(wd, tab, text + "\n", expect=body.get("stamp"), keep_old=True)
+            else:
+                notes.write(wd, tab, (old.rstrip() + "\n\n" if old.strip() else "") + text + "\n", expect=stamp)
+        except notes.Conflict:
+            return JSONResponse({"error": "그사이 메모가 바뀌었습니다 — 다시 시도하세요"}, status_code=409)
+        return {"tab": tab, "refresh": {"kind": "refresh", "what": "notes", "token": tok, "tab": tab}}
 
     @fastapi_app.get("/agent/sessions")
     def _list():  # noqa: ANN202 — 세션 목록 (최근순)

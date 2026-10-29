@@ -3,8 +3,13 @@
 저장소 안의 모양 (§phone):
   notes/<id>.json   — 데스크톱이 쓴다. 그 논문의 annotations.json 항목 전부 + applied
                       (폰이 남긴 기록을 어디까지 합쳤는지 — 폰은 그보다 옛 기록을 지운다)
-  mobile/<id>.json  — 폰이 쓴다. 폰에서 한 일의 기록 {ops: [{op: put|del, ts, item|id}]}
-                      put은 표시 하나를 통째로(만들기·색·메모 고치기), del은 지우기.
+  mobile/<id>.json  — 폰이 쓴다. 폰에서 한 일의 기록 {ops: [{op: put|del|memo, ts, item|id|…}]}
+                      put은 표시 하나를 통째로(만들기·색·메모 고치기), del은 지우기, memo는 논문 메모 탭(§narani.notes)에
+                      글 넣기 {tab, mode: append|replace, text, base(replace일 때 고친 바탕의 지문)}.
+
+notes/<id>.json에는 논문 메모 탭도 실린다(memos: [{name, text, stamp}]) — 폰은 그것을 보여 주고, 대화에서 고른 글을
+덧붙이거나(append) AI로 합친 판으로 바꾼다(replace). 바꾸는 사이 데스크톱에서 그 탭이 바뀌었으면(지문이 다르면)
+덮지 않고 끝에 덧붙인다 — 어느 쪽 글도 잃지 않게.
 
 데스크톱은 annotations.json을 저장할 때마다 항목의 updated를 지금 시각으로 다시 적는다 — 그래서
 '나중에 고친 쪽'을 updated로 가릴 수 없다. 대신 폰 기록의 ts(폰 시계)와, 데스크톱이 이미 합친
@@ -21,6 +26,7 @@ import hashlib
 import json
 from pathlib import Path
 
+from narani import notes as memo
 from narani.phone import bundle as bmod
 from narani.phone.store import Store
 from narani.ui import annotations
@@ -99,6 +105,45 @@ def apply_ops(items: list[dict], ops: object, applied: float) -> tuple[list[dict
     return annotations.normalize(kept), max(applied, fresh[-1][0]), len(fresh)
 
 
+def apply_memo_ops(wd: WorkDir, ops: object, applied: float) -> tuple[float, int]:
+    """폰의 메모 탭 기록(op=memo) 중 applied 뒤의 것을 탭 파일에 얹는다. 반환: (새 applied, 얹은 수)."""
+    if not isinstance(ops, list):
+        return applied, 0
+    fresh = []
+    for op in ops[-MAX_OPS:]:
+        try:
+            ts = float(op.get("ts"))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if ts > applied and op.get("op") == "memo" and str(op.get("text") or "").strip():
+            fresh.append((ts, op))
+    fresh.sort(key=lambda x: x[0])
+    for _ts, op in fresh:
+        name, text = memo.clean_name(str(op.get("tab") or "")) or memo.default_name(), str(op["text"])
+        if name not in memo.tab_names(wd):
+            name = memo.add(wd, name)
+        cur, st = memo.read_stamped(wd, name)
+        if op.get("mode") == "replace" and op.get("base") == st:
+            memo.write(wd, name, text, keep_old=True)      # AI로 합친 판 — 바탕이 그대로면 바꾼다(옛 판은 휴지통에)
+            continue
+        if op.get("mode") == "replace":                    # 그사이 데스크톱에서 바뀌었다 — 덮지 않고 덧붙인다
+            text = "<!-- " + _MERGED_NOTE + " -->\n" + text
+        memo.write(wd, name, (cur.rstrip() + "\n\n" if cur.strip() else "") + text.strip() + "\n")
+    return (max(applied, fresh[-1][0]) if fresh else applied), len(fresh)
+
+
+_MERGED_NOTE = "폰에서 AI로 합친 판 — 그사이 데스크톱에서 메모가 바뀌어 덮지 않고 덧붙였어요"
+
+
+def memo_snapshot(wd: WorkDir) -> list[dict]:
+    """폰에 보일 논문 메모 탭들 — 이름·내용·지문(폰이 AI로 합칠 때 바탕으로 넘긴다)."""
+    out = []
+    for name in memo.tab_names(wd):
+        text, st = memo.read_stamped(wd, name)
+        out.append({"name": name, "text": text, "stamp": st or ""})
+    return out
+
+
 def _read_json(store: Store, name: str) -> object:
     raw = store.read(name)
     if not raw:
@@ -123,19 +168,23 @@ def sync_paper(store: Store, root: Path, prev_hash: str = "") -> dict:
     phone = _read_json(store, mobile_name(key))
     if isinstance(phone, dict):
         items2, applied2, merged = apply_ops(items, phone.get("ops"), applied)
+        applied3, memo_n = apply_memo_ops(wd, phone.get("ops"), applied)
         if merged:
             items = annotations.save(wd, items2)
-            st["applied"] = applied = applied2
+        if merged or memo_n:
+            st["applied"] = applied = max(applied2, applied3)
             save_state(wd, st)
-    if not items and not applied:
+            merged += memo_n
+    memos = [m for m in memo_snapshot(wd) if m["text"].strip()]
+    if not items and not applied and not memos:
         if prev_hash:
             store.delete(notes_name(key))
         return {"merged": merged, "notes_hash": "", "wrote": bool(prev_hash)}
     # updated는 저장 때마다 바뀌므로 지문에서 뺀다 — 내용이 같으면 다시 올리지 않는다
     stable = [{k: v for k, v in it.items() if k != "updated"} for it in items]
-    digest = hashlib.sha256(bmod.dumps({"items": stable, "applied": applied})).hexdigest()[:24]
+    digest = hashlib.sha256(bmod.dumps({"items": stable, "applied": applied, "memos": memos})).hexdigest()[:24]
     wrote = digest != prev_hash
     if wrote:
         store.write(notes_name(key), bmod.dumps({"format": FORMAT, "key": key, "items": items,
-                                                 "applied": applied}))
+                                                 "applied": applied, "memos": memos}))
     return {"merged": merged, "notes_hash": digest, "wrote": wrote}

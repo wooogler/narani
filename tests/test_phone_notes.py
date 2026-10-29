@@ -156,3 +156,37 @@ def test_service_refresh_quietly_skips_when_offline(tmp_path, monkeypatch):
 
     monkeypatch.setattr(gdrive, "open_store", offline)
     assert service.refresh_quietly() is None  # 오프라인이어도 앱 켜기를 막지 않는다
+
+
+def test_memo_tabs_go_to_phone_and_phone_appends_or_merges(tmp_path):
+    from narani import notes as memo
+
+    wd = _wd(tmp_path, "bots")
+    memo.write(wd, memo.default_name(), "요약: 봇을 맞춘다.\n")
+    store = LocalStore(tmp_path / "store")
+    sync.push([wd.root], store)
+    snap = json.loads(store.read(notes.notes_name("bots")))
+    m = snap["memos"][0]
+    assert m["text"] == "요약: 봇을 맞춘다.\n" and m["stamp"] == memo.stamp(wd, m["name"])
+
+    # 폰: 대화에서 고른 글을 끝에 덧붙이고, 새 탭에도 넣는다
+    ops = [{"op": "memo", "ts": 2000.0, "tab": m["name"], "mode": "append", "text": "Q. 왜?\n\n이유가 있다."},
+           {"op": "memo", "ts": 2001.0, "tab": "아이디어", "mode": "append", "text": "새 생각"}]
+    store.write(notes.mobile_name("bots"), json.dumps({"format": 1, "key": "bots", "ops": ops}).encode())
+    assert sync.push([wd.root], store)["merged"] == 2
+    assert memo.read(wd, m["name"]) == "요약: 봇을 맞춘다.\n\nQ. 왜?\n\n이유가 있다.\n"
+    assert memo.read(wd, "아이디어") == "새 생각\n" and notes.load_state(wd)["applied"] == 2001.0
+    snap = json.loads(store.read(notes.notes_name("bots")))
+    base = next(x for x in snap["memos"] if x["name"] == m["name"])["stamp"]
+
+    # AI로 합친 판 — 바탕이 그대로면 바꾸고(옛 판은 휴지통), 그사이 바뀌었으면 덮지 않고 덧붙인다
+    ops.append({"op": "memo", "ts": 2002.0, "tab": m["name"], "mode": "replace", "text": "정리된 요약", "base": base})
+    store.write(notes.mobile_name("bots"), json.dumps({"format": 1, "key": "bots", "ops": ops}).encode())
+    sync.push([wd.root], store)
+    assert memo.read(wd, m["name"]) == "정리된 요약"
+    memo.write(wd, m["name"], "데스크톱에서 고침\n")
+    ops.append({"op": "memo", "ts": 2003.0, "tab": m["name"], "mode": "replace", "text": "옛 바탕으로 합친 판", "base": base})
+    store.write(notes.mobile_name("bots"), json.dumps({"format": 1, "key": "bots", "ops": ops}).encode())
+    sync.push([wd.root], store)
+    got = memo.read(wd, m["name"])
+    assert got.startswith("데스크톱에서 고침\n\n<!-- ") and got.rstrip().endswith("옛 바탕으로 합친 판")

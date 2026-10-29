@@ -118,7 +118,7 @@ def test_site_files_shell_and_catalog():
     cfg = json.loads(re.search(r"window\.NARANI_CFG = (\{.*?\});</script>", html).group(1))
     assert cfg["local"] is False and cfg["google_client_id"].startswith("abc")
     assert cfg["catalogs"]["en"]["새로 고침"] == "Refresh"  # 리더 JS 문구만 실린다
-    assert "논문 목록" in cfg["catalogs"]["en"] and len(cfg["catalogs"]["en"]) < 160
+    assert "논문 목록" in cfg["catalogs"]["en"] and len(cfg["catalogs"]["en"]) < 260
     js = files["app.js"][0].decode()
     assert "function pairUp" in js and "function onSentence" in js and "function openPaper" in js
     # 껍데기가 바뀌면 서비스 워커 캐시 이름도 바뀐다
@@ -349,3 +349,12 @@ def test_phone_toc_button_and_width_bar():
     js, html = files["app.js"][0].decode(), files["index.html"][0].decode()
     assert 'id="toc-btn"' in html and ".js .paper .toc { display: none; }" in html   # ☰ 단추, 본문 위 목차는 숨김
     assert 'id="rw"' in html and "function rwApply" in js and "narani:rw1" not in html   # 데스크톱 본문 너비 막대
+
+
+def test_phone_memo_tabs_and_chat_to_memo():
+    # 논문 메모 탭을 보여 주고, 대화의 답(또는 고른 부분)을 메모 탭에 덧붙이거나 AI로 합친다(op=memo로 데스크톱에)
+    js = web.site_files(local=True)["app.js"][0].decode()
+    assert "function memosView" in js and "function memoSheet" in js and "function memoMerge" in js
+    assert "op: 'memo', tab: name, mode: 'append'" in js and "mode: 'replace', text: out, base: tab.stamp" in js
+    assert "if (o.op !== 'put' || !o.item) return;" in js          # 하이라이트 목록은 메모 기록을 건너뛴다
+    assert "memoNames.indexOf(m.name) >= 0" in js                   # 공유에는 고른 메모 탭만

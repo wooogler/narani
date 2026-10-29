@@ -309,3 +309,35 @@ def test_model_options_marks_providers_without_key(cfg_snapshot):
     assert {o["model"] for o in opts} >= set(config.MODEL_TIERS["anthropic"])
     by_prov = {o["provider"]: o["has_key"] for o in opts}
     assert by_prov["openai"] is True and by_prov["anthropic"] is False
+
+
+def test_chat_to_memo_tab_append_and_merge(tmp_path):
+    """창의 '메모로' — 탭 목록, 덧붙이기(없는 탭은 만든다), AI로 합친 판(바탕 지문이 그대로일 때만 바꾼다)."""
+    from narani import notes
+
+    class Merger:
+        def complete(self, system, user, *, max_tokens=4096):  # noqa: ANN001, ARG002
+            assert "EXISTING NOTE" in user and "NEW MATERIAL" in user
+            return "## 합친 메모\n\n- 옛 줄\n- 새 줄\n"
+
+    wd = make_wd(tmp_path)
+    reg = Registry(wd)
+    app = FastAPI()
+    routes.register_routes(app, reg.wd_for, reg.register, build_agent=_agent, build_memo_provider=Merger)
+    client, tok = TestClient(app), next(iter(reg.by_token))
+    url = f"/agent/memo/{tok}"
+    assert client.get("/agent/memo/nope").status_code == 404
+    r = client.post(url, json={"tab": "아이디어", "mode": "append", "text": "**Q.** 왜?\n\n옛 줄"})
+    assert r.status_code == 200 and r.json()["refresh"]["what"] == "notes"
+    assert notes.read(wd, r.json()["tab"]) == "**Q.** 왜?\n\n옛 줄\n"
+    tab = r.json()["tab"]
+    assert {"name": tab, "chars": 14} in client.get(url).json()["tabs"]
+    client.post(url, json={"tab": tab, "mode": "append", "text": "둘째"})
+    assert notes.read(wd, tab).endswith("옛 줄\n\n둘째\n")
+    m = client.post(url + "/merge", json={"tab": tab, "text": "새 줄"}).json()
+    assert m["merged"].startswith("## 합친 메모") and m["stamp"] == notes.stamp(wd, tab)
+    notes.write(wd, tab, "그사이 고침\n")            # 바탕이 바뀌면 덮지 않는다
+    assert client.post(url, json={"tab": tab, "mode": "replace", "text": m["merged"], "stamp": m["stamp"]}).status_code == 409
+    m = client.post(url + "/merge", json={"tab": tab, "text": "새 줄"}).json()
+    assert client.post(url, json={"tab": tab, "mode": "replace", "text": m["merged"], "stamp": m["stamp"]}).status_code == 200
+    assert notes.read(wd, tab) == "## 합친 메모\n\n- 옛 줄\n- 새 줄\n"
