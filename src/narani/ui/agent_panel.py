@@ -336,6 +336,7 @@ a.chat-cite-note:hover { background: #f7cf60; }
 .ag-at-i.on { background: #eef4fd; }
 .ag-at-i.on .material-icons { color: #2383e2; }
 .ag-at-t { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-at-tr { color: #97948d; }
 .ag-at-s { flex: 0 0 auto; color: #97948d; font-size: 10.5px; max-width: 45%; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; }
 .ag-at-none { padding: 8px; color: #97948d; }
@@ -1649,16 +1650,22 @@ JS = r"""
   function atKeyOf(m){
     return m.kind + ':' + (m.token || m.id || '') + ':' + (m.row == null ? '' : m.row) + ':' + (m.tab || '');
   }
+  // 번역 제목(title_tr)이 있으면 [앞, 뒤] — 화면 언어가 그 논문의 번역 언어면(tr_first) 번역 제목이 앞이다
+  function atNames(m){
+    var a = m.title || m.tab || '', b = m.title_tr || '';
+    return (m.tr_first && b) ? [b, a] : [a, b];
+  }
   function atLabel(m){
-    if (m.kind === 'paper' && m.current) return md4T('이 논문') + ' · ' + (m.title || '');
-    return m.title || m.tab || '';
+    var n = atNames(m)[0];
+    if (m.kind === 'paper' && m.current) return md4T('이 논문') + ' · ' + n;
+    return n;
   }
   function ctxChips(ms, removable){
     var box = document.createElement('div');
     box.className = removable ? 'ag-ctx-in' : 'ag-q-ctx';
     ms.forEach(function(m, i){
       var c = document.createElement('span'); c.className = 'ag-chip';
-      c.title = atLabel(m) + (m.kind === 'section' && m.row != null
+      c.title = atLabel(m) + (atNames(m)[1] ? ' · ' + atNames(m)[1] : '') + (m.kind === 'section' && m.row != null
         ? ' (r' + m.row + (m.end != null && m.end !== m.row ? '–r' + m.end : '') + ')' : '');
       c.innerHTML = '<i class="material-icons" aria-hidden="true">' + (AT_ICON[m.kind] || 'label')
         + '</i><span class="ag-chip-t">' + esc(atLabel(m)) + '</span>';
@@ -1756,10 +1763,13 @@ JS = r"""
       b.className = 'ag-at-i' + (i === atSel ? ' on' : ''); b.setAttribute('role', 'option');
       var sub = m.kind === 'section' ? 'r' + m.row + (m.end != null && m.end !== m.row ? '–r' + m.end : '')
         : (m.sub || '');
+      var nm = atNames(m);
       b.innerHTML = '<i class="material-icons" aria-hidden="true">' + (AT_ICON[m.kind] || 'label')
         + '</i><span class="ag-at-t">' + (m.kind === 'section' && m.level > 1
-          ? '&nbsp;'.repeat((m.level - 1) * 2) : '') + esc(m.kind === 'paper' && m.current ? m.title : atLabel(m))
+          ? '&nbsp;'.repeat((m.level - 1) * 2) : '') + esc(nm[0])
+        + (nm[1] ? '<span class="ag-at-tr"> · ' + esc(nm[1]) + '</span>' : '')
         + '</span>' + (sub ? '<span class="ag-at-s">' + esc(sub) + '</span>' : '');
+      if (nm[1]) b.title = nm[0] + ' · ' + nm[1];
       b.addEventListener('mousedown', function(ev){ ev.preventDefault(); });   // 입력창 초점을 지킨다
       b.addEventListener('click', function(){ atPick(i); });
       atBox.appendChild(b);
@@ -1775,7 +1785,8 @@ JS = r"""
       input.value = input.value.slice(0, from) + input.value.slice(p).replace(/^ /, '');
       input.selectionStart = input.selectionEnd = from;
     }
-    var keep = {kind: m.kind, token: m.token, title: m.title, row: m.row, end: m.end, tab: m.tab, id: m.id};
+    var keep = {kind: m.kind, token: m.token, title: m.title, title_tr: m.title_tr, tr_first: m.tr_first || null,
+                row: m.row, end: m.end, tab: m.tab, id: m.id};
     Object.keys(keep).forEach(function(k){ if (keep[k] == null) delete keep[k]; });
     if (m.current) keep.current = true;
     if (atPicked.length < 8) atPicked.push(keep);

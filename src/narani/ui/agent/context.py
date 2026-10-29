@@ -63,14 +63,16 @@ class Mention(_Loose):
 
     kind: str                     # MENTION_KINDS
     token: str | None = None      # paper·section·note — 그 논문
-    title: str | None = None      # 보이는 이름 (논문 제목·섹션 제목·탭 이름·컬렉션 이름)
+    title: str | None = None      # 보이는 이름 (논문 제목·섹션 제목·탭 이름·컬렉션 이름) — 원문
+    title_tr: str | None = None   # paper·section — 번역 제목 (번역이 있고 헤더를 번역했을 때)
+    tr_first: bool | None = None  # 창이 번역 제목을 앞에 쓴다 (화면 언어 = 그 논문의 번역 언어)
     row: int | None = None        # section — 첫 행
     end: int | None = None        # section — 끝 행 (포함)
     tab: str | None = None        # note — 메모 탭 이름
     id: str | None = None         # collection — 컬렉션 id
     auto: bool = False            # 사용자가 고른 게 아니라 지금 보고 있는 것(창이 기본으로 붙인다)
 
-    @field_validator("title", "tab")
+    @field_validator("title", "title_tr", "tab")
     @classmethod
     def _clip(cls, v: str | None) -> str | None:
         return " ".join(v.split())[:120] if v else v
@@ -131,18 +133,20 @@ def _ranges(rows: list[int]) -> str:
 
 def _mention_line(m: Mention) -> str:
     title = (m.title or "").strip() or "(이름 없음)"
+    # 번역 제목도 같이 — 사용자가 질문에서 번역어로 가리켜도('방법 섹션') 같은 것인 줄 안다
+    named = f"'{title}'" + (f" (번역 제목 '{m.title_tr}')" if m.title_tr else "")
     tok = m.token or ""
     if m.auto and m.kind == "paper":
-        return f"- 지금 보고 있는 논문 '{title}' (token {tok}) — 따로 말이 없으면 이 논문에 대해 답한다"
+        return f"- 지금 보고 있는 논문 {named} (token {tok}) — 따로 말이 없으면 이 논문에 대해 답한다"
     if m.auto and m.kind == "collection":
         return (f"- 지금 보고 있는 컬렉션 '{title}' (id {m.id}) — 따로 말이 없으면 이 컬렉션의 논문들"
                 f"(list_papers(project='{m.id}'))을 두고 답한다")
     if m.kind == "paper":
-        return f"- 논문 '{title}' (token {tok}) — search_paper·read_rows·outline에 token={tok}"
+        return f"- 논문 {named} (token {tok}) — search_paper·read_rows·outline에 token={tok}"
     if m.kind == "section":
         rows = f"r{m.row}" + (f"–r{m.end}" if m.end is not None and m.end != m.row else "")
         end = f", end={m.end}" if m.end is not None else ""
-        return (f"- 섹션 '{title}' (논문 token {tok}, {rows}) — "
+        return (f"- 섹션 {named} (논문 token {tok}, {rows}) — "
                 f"read_rows(start={m.row}{end}, token={tok})로 읽는다")
     if m.kind == "note":
         tab = m.tab or title

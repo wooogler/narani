@@ -72,6 +72,46 @@ def model_options() -> list[dict]:
 
 
 MENTION_PAPERS = 8      # @ 후보에 보일 다른 논문 수 (글자를 치면 그 글자로 거른다)
+_HEAD_PEEK = 16_384     # 다른 논문의 번역 제목 — 원문·번역 파일 앞머리만 읽어 첫 # 제목을 짝짓는다
+
+
+def _mention_norm(text: str) -> str:
+    """@ 검색 비교용 — NFKC·대소문자·공백을 걷는다(한글 '관련연구'도 '관련 연구'에 걸리게)."""
+    import unicodedata
+
+    return re.sub(r"\s+", "", unicodedata.normalize("NFKC", text or "").casefold())
+
+
+def _first_heading(path: Path) -> str:
+    try:
+        with path.open(encoding="utf-8", errors="ignore") as f:
+            head = f.read(_HEAD_PEEK)
+    except OSError:
+        return ""
+    m = re.search(r"^#\s+(.+)$", head, re.M)
+    return m.group(1) if m else ""
+
+
+_TITLE_TR: dict[tuple, str | None] = {}
+
+
+def _title_tr(wd: WorkDir, title: str) -> str | None:
+    """논문의 번역 제목 — 번역의 첫 # 제목. 원문 첫 # 제목이 논문 제목일 때만(아니면 '1 서론' 같은 게 잡힌다).
+
+    목록의 다른 논문마다 부르므로 (경로, mtime)으로 기억한다.
+    """
+    from narani.ui.app import _head_key
+    from narani.ui.mobile import _clean_heading
+
+    try:
+        key = (str(wd.ko_md), wd.ko_md.stat().st_mtime_ns, wd.en_md.stat().st_mtime_ns, title)
+    except OSError:
+        return None                       # 번역이 없다
+    if key not in _TITLE_TR:
+        en, ko = _clean_heading(_first_heading(wd.en_md)), _clean_heading(_first_heading(wd.ko_md))
+        ok = en and ko and _head_key(en) == _head_key(title) and _head_key(ko) != _head_key(en)
+        _TITLE_TR[key] = ko[:120] if ok else None
+    return _TITLE_TR[key]
 
 
 def mention_candidates(wd_for: Callable[[str], WorkDir | None], register_token: Callable[[WorkDir], str],
@@ -80,22 +120,40 @@ def mention_candidates(wd_for: Callable[[str], WorkDir | None], register_token: 
 
     값만 싣는다(§context.Mention). 섹션은 retrieval의 헤더 행으로 범위를 정한다 — 다음 같은·윗
     레벨 헤더 앞까지. q는 제목·저자·학회(논문), 이름(섹션·탭·컬렉션)에 든 글자로 거른다.
+
+    번역이 있으면 논문·섹션에 번역 제목(`title_tr`)도 싣고 q는 원문·번역 제목 어느 쪽에 맞아도 걸린다
+    (`@방법`도 `@Method`도). 섹션의 번역 제목은 정렬 행의 번역 블록 헤더 — 목차와 같은 짝이다. 헤더를
+    번역하지 않아 둘이 같으면 싣지 않는다. `tr_first`는 화면 언어가 그 논문의 번역 언어일 때 —
+    창이 번역 제목을 앞에 쓴다.
     """
-    from narani import notes, projects
+    from narani import i18n, notes, projects
     from narani.ui.agent import retrieval
+    from narani.ui.app import _head_key, _heading_of
+    from narani.ui.mobile import _clean_heading
     from narani.workdir import paper_title, recent_workdirs
 
-    qq = " ".join((q or "").split()).lower()
+    qq = _mention_norm(q)
+    ui = i18n.ui_lang()
 
-    def hit(*texts: str) -> bool:
-        return not qq or any(qq in (t or "").lower() for t in texts)
+    def hit(*texts: str | None) -> bool:
+        return not qq or any(qq in _mention_norm(t or "") for t in texts)
+
+    def with_tr(item: dict, tr: str | None, lang: str) -> dict:
+        if tr:
+            item["title_tr"] = tr
+            if lang == ui:
+                item["tr_first"] = True
+        return item
 
     out: list[dict] = []
     wd = wd_for(paper) if paper else None
     if wd is not None:
         title = " ".join(paper_title(wd.root).split())[:120]
-        if hit(title, "이 논문", "this paper"):
-            out.append({"kind": "paper", "token": paper, "title": title, "current": True})
+        title_tr = _title_tr(wd, title)
+        lang = wd.lang
+        if hit(title, title_tr, "이 논문", "this paper", t("이 논문")):
+            out.append(with_tr({"kind": "paper", "token": paper, "title": title, "current": True},
+                               title_tr, lang))
         try:
             chunks = retrieval.paper(wd).chunks
         except Exception:  # noqa: BLE001 — 본문을 못 읽어도 다른 후보는 보인다
@@ -104,10 +162,17 @@ def mention_candidates(wd_for: Callable[[str], WorkDir | None], register_token: 
         last = chunks[-1].row if chunks else 0
         for i, c in enumerate(heads):
             nxt = next((h for h in heads[i + 1:] if h.head_level <= c.head_level), None)
-            if hit(c.heading):
-                out.append({"kind": "section", "token": paper, "title": c.heading[:120],
-                            "row": c.row, "end": (nxt.row - 1) if nxt else last,
-                            "level": c.head_level})
+            en = _clean_heading(c.heading)
+            if i == 0 and c.head_level == 1 and _head_key(en) == _head_key(title):
+                continue                  # 맨 앞 # 제목은 논문 제목 — '이 논문'과 겹친다
+            ko_head = _heading_of(c.ko) if c.ko else None
+            tr = _clean_heading(ko_head[1]) if ko_head else ""
+            if tr and _mention_norm(tr) == _mention_norm(en):
+                tr = ""
+            if hit(en, tr):
+                out.append(with_tr({"kind": "section", "token": paper, "title": en[:120],
+                                    "row": c.row, "end": (nxt.row - 1) if nxt else last,
+                                    "level": c.head_level}, tr[:120], lang))
         try:
             tabs = notes.tab_names(wd)
         except Exception:  # noqa: BLE001
@@ -119,15 +184,17 @@ def mention_candidates(wd_for: Callable[[str], WorkDir | None], register_token: 
     for r in recent_workdirs(Path(ws), limit=100_000):
         if shown >= MENTION_PAPERS:
             break
-        t = str(r.get("title") or r.get("name") or "")
-        if not hit(t, " ".join(r.get("authors") or []), str(r.get("venue") or "")):
+        t_ = " ".join(str(r.get("title") or r.get("name") or "").split())[:120]
+        owd = WorkDir(Path(r["root"]))
+        tr = _title_tr(owd, t_) if r.get("has_ko") else None
+        if not hit(t_, tr, " ".join(r.get("authors") or []), str(r.get("venue") or "")):
             continue
-        tok = register_token(WorkDir(Path(r["root"])))
+        tok = register_token(owd)
         if tok == paper:
             continue
         authors = ", ".join((r.get("authors") or [])[:2])
         sub = " · ".join(b for b in (str(r.get("year") or ""), authors) if b)
-        out.append({"kind": "paper", "token": tok, "title": " ".join(t.split())[:120], "sub": sub})
+        out.append(with_tr({"kind": "paper", "token": tok, "title": t_, "sub": sub}, tr, owd.lang))
         shown += 1
     out += [{"kind": "collection", "id": i, "title": n} for i, n in names.items() if hit(n)]
     return out

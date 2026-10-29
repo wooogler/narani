@@ -123,3 +123,70 @@ def test_what_you_are_viewing_is_default_context_but_not_saved_on_the_turn(tmp_p
     asyncio.run(go())
     assert [t for t in s.turns if t["role"] == "user"][-1]["mentions"] == [
         {"kind": "note", "token": tok, "tab": "요약"}]
+
+
+def _sections(items: list[dict]) -> list[dict]:
+    return [i for i in items if i["kind"] == "section"]
+
+
+def test_sections_carry_translated_titles_and_match_either(tmp_path, monkeypatch):
+    """번역된 논문 — 섹션에 번역 제목을 싣고, q는 원문·번역 제목 어느 쪽으로도 같은 섹션에 걸린다."""
+    monkeypatch.setattr("narani.projects.all_projects", lambda: [])
+    reg = Registry(make_wd(tmp_path))
+    tok = next(iter(reg.by_token))
+    items = mention_candidates(reg.wd_for, reg.register, tmp_path, tok, "")
+    here = items[0]
+    assert here["current"] and here["title"] == "Bespoke Bots" and here["title_tr"] == "맞춤형 봇"
+    # 맨 앞 # 제목(= 논문 제목)은 섹션으로 다시 내지 않는다
+    assert [(s["title"], s.get("title_tr")) for s in _sections(items)] == [
+        ("2 Method", "2 방법"), ("3 Results", "3 결과")]
+    by_ko = _sections(mention_candidates(reg.wd_for, reg.register, tmp_path, tok, "방법"))
+    by_en = _sections(mention_candidates(reg.wd_for, reg.register, tmp_path, tok, "METHOD"))
+    assert by_ko == by_en and [s["row"] for s in by_ko] == [_sections(items)[0]["row"]]
+    # 공백을 빼고 쳐도 · 번역 제목으로 논문도 걸린다
+    assert _sections(mention_candidates(reg.wd_for, reg.register, tmp_path, tok, "2방법")) == by_ko
+    hit = mention_candidates(reg.wd_for, reg.register, tmp_path, tok, "맞춤")
+    assert [i["kind"] for i in hit] == ["paper"] and hit[0]["current"]
+
+
+def test_translated_title_order_follows_screen_language(tmp_path, monkeypatch):
+    """화면 언어가 그 논문의 번역 언어면 tr_first — 창이 번역 제목을 앞에 쓴다."""
+    monkeypatch.setattr("narani.projects.all_projects", lambda: [])
+    reg = Registry(make_wd(tmp_path))
+    tok = next(iter(reg.by_token))
+    monkeypatch.setattr("narani.i18n.ui_lang", lambda: "ko")
+    assert all(s.get("tr_first") for s in _sections(mention_candidates(reg.wd_for, reg.register, tmp_path, tok)))
+    monkeypatch.setattr("narani.i18n.ui_lang", lambda: "en")
+    secs = _sections(mention_candidates(reg.wd_for, reg.register, tmp_path, tok))
+    assert secs and not any(s.get("tr_first") for s in secs) and all(s.get("title_tr") for s in secs)
+
+
+def test_untranslated_paper_or_heading_has_no_translated_title(tmp_path, monkeypatch):
+    monkeypatch.setattr("narani.projects.all_projects", lambda: [])
+    reg = Registry(make_wd(tmp_path, ko=None))
+    tok = next(iter(reg.by_token))
+    items = mention_candidates(reg.wd_for, reg.register, tmp_path, tok, "")
+    assert not any("title_tr" in i for i in items)
+    assert mention_candidates(reg.wd_for, reg.register, tmp_path, tok, "방법") == []
+    # 헤더를 번역하지 않은 섹션(둘이 같다)은 번역 제목을 싣지 않는다 · 마크다운 표기는 걷는다
+    en = "# Bespoke Bots\n\nIntro.\n\n## **2** Method\n\nText.\n\n## 3 Results\n\nMore.\n"
+    ko = "# 맞춤형 봇\n\n소개.\n\n## **2** Method\n\n본문.\n\n## 3 결과\n\n더.\n"
+    reg2 = Registry(make_wd(tmp_path, "q", en=en, ko=ko))
+    tok2 = next(iter(reg2.by_token))
+    secs = _sections(mention_candidates(reg2.wd_for, reg2.register, tmp_path, tok2, ""))
+    assert [(s["title"], s.get("title_tr")) for s in secs] == [("2 Method", None), ("3 Results", "3 결과")]
+
+
+def test_other_papers_match_translated_title(tmp_path, monkeypatch):
+    monkeypatch.setattr("narani.projects.all_projects", lambda: [])
+    make_wd(tmp_path, "other", title="Bespoke Bots")
+    reg = Registry()
+    got = mention_candidates(reg.wd_for, reg.register, tmp_path, "", "맞춤형")
+    assert [(i["kind"], i["title"], i.get("title_tr")) for i in got] == [("paper", "Bespoke Bots", "맞춤형 봇")]
+
+
+def test_prompt_names_both_titles():
+    ctx = _ctx(mentions=[{"kind": "section", "token": "abc", "title": "2 Method", "title_tr": "2 방법",
+                          "tr_first": True, "row": 3, "end": 5}])
+    block = mentions_prompt(ctx)
+    assert "섹션 '2 Method' (번역 제목 '2 방법')" in block and "read_rows(start=3, end=5, token=abc)" in block
