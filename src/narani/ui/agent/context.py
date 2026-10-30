@@ -159,8 +159,8 @@ def mentions_prompt(ctx: ScreenContext | None) -> str:
     if ctx is None or not ctx.mentions:
         return ""
     block = ("[사용자가 @로 지정한 맥락 — 이 질문은 이것을 중심으로 답한다]\n"
-             "질문이 가리키는 '이것·여기'는 화면보다 이 목록이 먼저다. 내용은 실려 있지 않으니 "
-             "아래 값으로 tool을 불러 읽는다.\n" + "\n".join(_mention_line(m) for m in ctx.mentions))
+             "질문 글 속 '@이름'은 아래 목록의 그 항목이고, 질문이 가리키는 '이것·여기'는 화면보다 "
+             "이 목록이 먼저다. 내용은 실려 있지 않으니 아래 값으로 tool을 불러 읽는다.\n" + "\n".join(_mention_line(m) for m in ctx.mentions))
     return block if len(block) <= MENTION_PROMPT_MAX else block[:MENTION_PROMPT_MAX].rstrip() + "…"
 
 

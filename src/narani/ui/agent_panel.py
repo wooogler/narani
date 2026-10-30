@@ -308,7 +308,7 @@ a.chat-cite-note:hover { background: #f7cf60; }
 /* 보고 있는 것(기본 맥락) — 고른 칩과 같은 줄, 테두리만 있는 옅은 칩 */
 .ag-chip.ag-chip-auto { background: #fff; border-style: dashed; border-color: #b9cde6; color: #3d5a7a; }
 .ag-chip-k { color: #8aa2bf; margin-right: 1px; }
-/* @ 맥락 — 입력창 위 칩 줄(이번 질문에 붙여 보낼 것)과 '@'를 치면 뜨는 고르기 목록 */
+/* @ 맥락 — 입력창 위 칩 줄(보고 있는 것)과 '@'를 치면 뜨는 고르기 목록. 고른 것은 글 속 알약이다 */
 .ag-ctx { display: none; flex-wrap: wrap; gap: 4px; margin: 0 0 6px; }
 .ag-ctx.on { display: flex; }
 .ag-chip { display: inline-flex; align-items: center; gap: 3px; max-width: 100%; height: 22px;
@@ -350,11 +350,18 @@ a.chat-cite-note:hover { background: #f7cf60; }
   border-radius: 14px; padding: 4px 4px 4px 3px; box-shadow: 0 2px 10px rgba(35,131,226,.10);
   transition: border-color .12s ease, box-shadow .12s ease; }
 .ag-row:focus-within { border-color: #2383e2; box-shadow: 0 0 0 3px rgba(35,131,226,.16), 0 2px 10px rgba(35,131,226,.10); }
-.ag-input { flex: 1 1 auto; min-width: 0; width: 0; resize: none; max-height: 160px; box-sizing: border-box; border: none;
+/* 글칸은 contenteditable — @로 고른 맥락이 글 사이에 알약(.ag-pill)으로 들어간다. 높이는 글을 따라 160px까지 */
+.ag-input { flex: 1 1 auto; min-width: 0; width: 0; max-height: 160px; overflow-y: auto; box-sizing: border-box; border: none;
   padding: 7px 4px; font: inherit; font-size: 13.5px; line-height: 1.5; background: transparent;
-  color: inherit; outline: none; min-height: 34px; }
-.ag-input::placeholder { color: #8a8780; }
-.ag-input:disabled { color: #97948d; }
+  color: inherit; outline: none; min-height: 34px; white-space: pre-wrap; overflow-wrap: anywhere; cursor: text; }
+.ag-input:empty::before { content: attr(data-ph); color: #8a8780; pointer-events: none; }
+.ag-input.off { color: #97948d; cursor: default; }
+/* @ 맥락 알약 — 입력창과 보낸 질문 글 속에 같은 꼴로 */
+.ag-pill { display: inline-flex; align-items: center; gap: 2px; max-width: 100%; vertical-align: -3px;
+  padding: 0 5px 0 3px; margin: 0 1px; border-radius: 5px; background: #dde9f9; color: #1f5fa8;
+  font-size: .92em; line-height: 1.5; white-space: nowrap; cursor: default; user-select: all; }
+.ag-pill .material-icons { font-size: 1.05em; opacity: .8; }
+.ag-pill-t { overflow: hidden; text-overflow: ellipsis; min-width: 0; max-width: 220px; }
 .ag-send { flex: 0 0 32px; width: 32px; height: 32px; margin: 0 1px 1px 0; border: none; border-radius: 50%;
   background: #2383e2; color: #fff; font-size: 13px; cursor: pointer; }
 .ag-send:hover { background: #1668c4; }
@@ -400,7 +407,8 @@ a.chat-cite-note:hover { background: #f7cf60; }
   .ag-chip.ag-chip-auto { background: #1f1f1f; border-color: #3a4a5e; color: #8fbcf0; }
   .ag-name-in { background: #262626; }
   .ag-mi-hint { border-top-color: #333; }
-  .ag-input:disabled { background: #232323; color: #7d7d7d; }
+  .ag-input.off { color: #7d7d7d; }
+  .ag-pill { background: #23364d; color: #9cc6f5; }
   .ag-turn.ag-user + .ag-turn.ag-user, .ag-turn.ag-bot + .ag-turn.ag-user { border-color: #2c2c2c; }
   .ag-appr, .ag-cap { background: #2b2618; border-color: #6b5a24; }
   .ag-appr.done { background: #242424; border-color: #3a3a3a; color: #a0a0a0; }
@@ -461,8 +469,8 @@ HTML = """
     <div class="ag-row">
       <button type="button" class="ag-at-btn" title="⦃맥락 넣기 — 논문·섹션·메모 탭·컬렉션 (@)⦄"
         aria-label="⦃맥락 넣기⦄">@</button>
-      <textarea class="ag-input" rows="1"
-        placeholder="⦃무엇이든 물어보세요 · @로 맥락 넣기⦄" title="⦃Enter 보내기 · Shift+Enter 줄바꿈⦄"></textarea>
+      <div class="ag-input" contenteditable="true" role="textbox" aria-multiline="true" spellcheck="false"
+        data-ph="⦃무엇이든 물어보세요 · @로 맥락 넣기⦄" title="⦃Enter 보내기 · Shift+Enter 줄바꿈⦄"></div>
       <button type="button" class="ag-send" title="⦃전송 (Enter)⦄">&#10148;</button>
     </div>
   </div>
@@ -488,8 +496,8 @@ JS = r"""
   var popBtn = panel.querySelector('.ag-pop');
   var ctxBar = panel.querySelector('.ag-ctx'), atBox = panel.querySelector('.ag-at');
   var atBtn = panel.querySelector('.ag-at-btn');
-  // @ 맥락 — 다음 질문에 붙여 보낼 것(atPicked)과 고르기 목록 상태. 보내면 비운다(그 질문의 것이다)
-  var atPicked = [], atItems = [], atSel = 0, atFrom = -1, atTimer = null, atSeq = 0;
+  // @ 맥락 고르기 목록 상태. 고른 것은 입력창 글 속 알약(pills())이다 — 보내면 글과 함께 비워진다
+  var atItems = [], atSel = 0, atAt = null, atTimer = null, atSeq = 0;
   // 단독 창(/agent)이면 서버가 이 스크립트 앞에 {session, paper, title}을 심는다 — 셸에서는 null
   var SA = window.__md4AgentStandalone || null;
   var POPOUT_PATH = '/agent', SA_POLL_MS = 10000;
@@ -514,7 +522,7 @@ JS = r"""
   var JOB_POLL_MS = 3000;
   var capRetry = null;       // 비용 상한으로 막힌 요청 {body, msg} — '그래도 계속'이 override를 더해 다시 보낸다
   var notice = null;         // 단독 창의 화면 이동 안내 {url} — 다음 질문을 보내면 걷힌다
-  var PH_IDLE = input.placeholder;
+  var PH_IDLE = input.getAttribute('data-ph');
   var PH_WAIT = md4T('승인을 기다리는 중 — 그냥 보내면 건너뜁니다');
   var models = [], modelInfo = {ready: true, reason: '', provider: '', model: ''};
 
@@ -1197,10 +1205,7 @@ JS = r"""
     var wrap = document.createElement('div');
     if (t.role === 'user'){
       wrap.className = 'ag-turn ag-user';
-      var q = document.createElement('div');
-      q.className = 'ag-q'; q.textContent = t.text || '';
-      if (t.mentions && t.mentions.length) q.appendChild(ctxChips(t.mentions, false));
-      wrap.appendChild(q);
+      wrap.appendChild(qNode(t.text, t.mentions));
       apprDone(wrap, t.id);
       // 승인 뒤 이어 돈 run이 다시 승인 대기로 끝났을 때 그 사이 부른 tool 줄 — 같은 카드가 왜 또
       // 떴는지(예: 실패한 호출 뒤 다시 시도) 보이게 잠긴 카드 뒤에 둔다
@@ -1350,9 +1355,7 @@ JS = r"""
     var frag = document.createDocumentFragment();
     if (live.q){
       var u = document.createElement('div'); u.className = 'ag-turn ag-user';
-      var q = document.createElement('div'); q.className = 'ag-q'; q.textContent = live.q;
-      if (live.mentions && live.mentions.length) q.appendChild(ctxChips(live.mentions, false));
-      u.appendChild(q); frag.appendChild(u);
+      u.appendChild(qNode(live.q, live.mentions)); frag.appendChild(u);
     }
     var w = document.createElement('div'); w.className = 'ag-turn ag-bot';
     liveTools = toolGroup(live.tools, 'live');
@@ -1418,10 +1421,12 @@ JS = r"""
       list.appendChild(er);
     }
     // 승인 대기 중에도 입력창은 연다 — 그냥 보내면 서버가 대기 호출을 모두 거절하고 이어 간다(건너뜀)
-    input.disabled = busy || !modelInfo.ready;
-    atBtn.disabled = input.disabled;
-    input.placeholder = pending ? PH_WAIT : PH_IDLE;
-    sendBtn.disabled = input.disabled;
+    var off = busy || !modelInfo.ready;
+    if (input.isContentEditable === off) input.contentEditable = off ? 'false' : 'true';
+    input.classList.toggle('off', off); input.setAttribute('aria-disabled', off ? 'true' : 'false');
+    atBtn.disabled = off;
+    input.setAttribute('data-ph', pending ? PH_WAIT : PH_IDLE);
+    sendBtn.disabled = off;
     list.scrollTop = list.scrollHeight;
   }
 
@@ -1535,19 +1540,19 @@ JS = r"""
   // again: 비용 상한에 막혔던 요청 본문 — override를 더해 그대로 다시 보낸다
   function send(text, approvals, again){
     if (busy || !sid) return;
-    var q, body;
+    var q, body, draft = null;
     if (again){
       var keepAt = (body = again).context && again.context.mentions;   // 막혔던 질문의 @ 맥락은 그대로
       body.override = true; body.context = ctxNow();
       if (keepAt) body.context.mentions = keepAt;
       q = body.message || ''; approvals = body.approvals || null;
-      if (q && input.value.trim() === q){ input.value = ''; autosize(); }
+      if (q && inputText().trim() === q) clearInput();
     } else {
       q = (text || '').trim();
       if (!q && !approvals) return;
       body = {message: q, context: ctxNow()};
       if (approvals) body.approvals = approvals;
-      if (q){ input.value = ''; autosize(); lastSel = null; paintSel(); atPicked = []; autoOff = ''; atClose(); paintCtx(); }
+      if (q){ draft = clearInput(); lastSel = null; paintSel(); autoOff = ''; atClose(); paintCtx(); }
     }
     capRetry = null; notice = null;
     // 대기 중이던 승인 카드를 잠근다 — 승인/거절을 보냈거나, 그냥 새 질문을 보내 건너뛰었다.
@@ -1578,9 +1583,7 @@ JS = r"""
       .catch(function(e){
         if (live && !live.started){            // 스트림 전 거절(키 없음·409·비용 상한 등) — 되돌려 놓는다
           var m = e.message || String(e);
-          if (q && !input.value) input.value = q;
-          var gone = (body.context && body.context.mentions) || [];   // @ 맥락도 칩으로 되돌린다
-          if (q && gone.length && !atPicked.length){ atPicked = gone.slice(); paintCtx(); }
+          if (draft && !inputText()) restoreInput(draft);     // 글과 @ 알약을 그대로 되돌린다
           if (rec){                            // 카드는 아직 답을 기다린다
             var arr = apprByTurn[key] || [], k = arr.indexOf(rec);
             if (k >= 0) arr.splice(k, 1);
@@ -1660,24 +1663,104 @@ JS = r"""
     if (m.kind === 'paper' && m.current) return md4T('이 논문') + ' · ' + n;
     return n;
   }
-  function ctxChips(ms, removable){
-    var box = document.createElement('div');
-    box.className = removable ? 'ag-ctx-in' : 'ag-q-ctx';
-    ms.forEach(function(m, i){
+  function atRows(m){
+    return m.kind === 'section' && m.row != null
+      ? ' (r' + m.row + (m.end != null && m.end !== m.row ? '–r' + m.end : '') + ')' : '';
+  }
+  function atText(m){ return '@' + (atNames(m)[0] || md4T('이 논문')); }   // 알약 = 질문 글 속 '@이름'
+  // 알약 — 입력창 것(edit)은 고친 수 없는 한 덩어리(contenteditable=false)로 값을 data-m에 싣는다
+  function pillNode(m, edit){
+    var p = document.createElement('span'); p.className = 'ag-pill';
+    var nm = atNames(m);
+    p.title = (m.kind === 'paper' && m.current ? md4T('이 논문') + ' · ' : '') + nm[0]
+      + (nm[1] ? ' · ' + nm[1] : '') + atRows(m);
+    p.innerHTML = '<i class="material-icons" aria-hidden="true">' + (AT_ICON[m.kind] || 'label')
+      + '</i><span class="ag-pill-t">' + esc(atText(m).slice(1)) + '</span>';
+    if (edit){ p.contentEditable = 'false'; p.setAttribute('data-m', JSON.stringify(m)); }
+    return p;
+  }
+  // 보낸 질문 — 글 속 '@이름'을 그 맥락의 알약으로. 글에 없는 맥락(옛 세션의 칩)은 아래 칩 줄로
+  function qNode(text, ms){
+    var q = document.createElement('div'); q.className = 'ag-q';
+    var s = text || '', pos = 0, used = {}, rest = [];
+    var tags = (ms || []).map(function(m){ return {m: m, s: atText(m)}; })
+      .sort(function(a, b){ return b.s.length - a.s.length; });   // 긴 이름부터 (같은 자리면 긴 쪽)
+    for (;;){
+      var at = -1, k = -1;
+      tags.forEach(function(g, i){
+        var j = used[i] ? -1 : s.indexOf(g.s, pos);
+        if (j >= 0 && (at < 0 || j < at)){ at = j; k = i; }
+      });
+      if (k < 0) break;
+      q.appendChild(document.createTextNode(s.slice(pos, at)));
+      q.appendChild(pillNode(tags[k].m, false));
+      used[k] = true; pos = at + tags[k].s.length;
+    }
+    q.appendChild(document.createTextNode(s.slice(pos)));
+    tags.forEach(function(g, i){ if (!used[i]) rest.push(g.m); });
+    if (rest.length) q.appendChild(ctxChips(rest));
+    return q;
+  }
+  function ctxChips(ms){
+    var box = document.createElement('div'); box.className = 'ag-q-ctx';
+    ms.forEach(function(m){
       var c = document.createElement('span'); c.className = 'ag-chip';
-      c.title = atLabel(m) + (atNames(m)[1] ? ' · ' + atNames(m)[1] : '') + (m.kind === 'section' && m.row != null
-        ? ' (r' + m.row + (m.end != null && m.end !== m.row ? '–r' + m.end : '') + ')' : '');
+      c.title = atLabel(m) + (atNames(m)[1] ? ' · ' + atNames(m)[1] : '') + atRows(m);
       c.innerHTML = '<i class="material-icons" aria-hidden="true">' + (AT_ICON[m.kind] || 'label')
         + '</i><span class="ag-chip-t">' + esc(atLabel(m)) + '</span>';
-      if (removable){
-        var x = document.createElement('button'); x.type = 'button'; x.className = 'ag-chip-x';
-        x.innerHTML = '&#10005;'; x.setAttribute('aria-label', md4T('맥락 빼기') + ' — ' + atLabel(m));
-        x.addEventListener('click', function(){ atPicked.splice(i, 1); paintCtx(); input.focus(); });
-        c.appendChild(x);
-      }
       box.appendChild(c);
     });
     return box;
+  }
+  // ---- 입력창 글 (contenteditable) — 글자 + 알약. 질문 글은 알약을 '@이름'으로 펴서 만든다 ----
+  function pills(){
+    var out = [];
+    input.querySelectorAll('.ag-pill[data-m]').forEach(function(p){
+      try { out.push(JSON.parse(p.getAttribute('data-m'))); } catch (e) {}
+    });
+    return out;
+  }
+  function inputText(){
+    var out = '';
+    (function walk(n){
+      for (var c = n.firstChild; c; c = c.nextSibling){
+        if (c.nodeType === 3){ out += c.nodeValue; continue; }
+        if (c.nodeType !== 1) continue;
+        if (c.classList.contains('ag-pill')){
+          try { out += atText(JSON.parse(c.getAttribute('data-m'))); } catch (e) {}
+        } else if (c.tagName === 'BR') out += '\n';
+        else {                               // Shift+Enter가 <div>로 줄을 나누는 브라우저도 있다
+          if (/^(DIV|P)$/.test(c.tagName) && out && out.slice(-1) !== '\n') out += '\n';
+          walk(c);
+        }
+      }
+    })(input);
+    return out.replace(/\u00a0/g, ' ');
+  }
+  function clearInput(){             // 비우고 지운 것을 돌려준다 (보내기 전 거절이면 restoreInput으로 되돌린다)
+    var keep = [];
+    while (input.firstChild) keep.push(input.removeChild(input.firstChild));
+    return keep;
+  }
+  function restoreInput(nodes){ nodes.forEach(function(n){ input.appendChild(n); }); caretEnd(); }
+  function tidyInput(){              // 다 지워도 남는 <br> 때문에 자리 글(:empty)이 안 보이는 것을 막는다
+    if (input.firstChild && !input.querySelector('.ag-pill') && !inputText().replace(/\n/g, '')) clearInput();
+  }
+  function caretTo(node, off){
+    var r = document.createRange(), s = window.getSelection();
+    r.setStart(node, off); r.collapse(true); s.removeAllRanges(); s.addRange(r);
+  }
+  function caretEnd(){
+    var r = document.createRange(), s = window.getSelection();
+    r.selectNodeContents(input); r.collapse(false); s.removeAllRanges(); s.addRange(r);
+  }
+  function insertPlain(text){        // 붙여 넣기·끌어 놓기는 글자만 (서식·그림이 글칸에 들어오지 않게)
+    if (!document.execCommand('insertText', false, text)){
+      var s = window.getSelection();
+      if (!s.rangeCount) return;
+      var r = s.getRangeAt(0), t = document.createTextNode(text);
+      r.deleteContents(); r.insertNode(t); caretTo(t, text.length);
+    }
   }
   // 기본 맥락 — 지금 보고 있는 것(뷰어의 논문, 홈에서 고른 컬렉션)을 따로 말하지 않아도 에이전트가 본다.
   // 입력창 위 점선 칩으로 보이고, ✕로 이번 질문에서만 뺄 수 있다(보내면 다시 붙는다, 화면이 바뀌어도).
@@ -1692,7 +1775,7 @@ JS = r"""
             title: ((n && n.textContent) || '').trim(), auto: true};
   }
   function ctxMentions(){
-    var a = autoCtx(), out = atPicked.slice();
+    var a = autoCtx(), out = pills();
     if (a && atKeyOf(a) !== autoOff && !out.some(function(m){ return atKeyOf(m) === atKeyOf(a); }))
       out.unshift(a);
     return out;
@@ -1700,7 +1783,7 @@ JS = r"""
   function paintCtx(){
     ctxBar.innerHTML = '';
     var a = autoCtx(), showA = a && atKeyOf(a) !== autoOff;
-    ctxBar.classList.toggle('on', atPicked.length > 0 || !!showA);
+    ctxBar.classList.toggle('on', !!showA);
     if (showA){
       var c = document.createElement('span'); c.className = 'ag-chip ag-chip-auto';
       c.title = md4T('지금 보고 있는 것 — 따로 말하지 않으면 에이전트가 이것을 두고 답합니다');
@@ -1713,24 +1796,23 @@ JS = r"""
       x.addEventListener('click', function(){ autoOff = atKeyOf(a); paintCtx(); input.focus(); });
       c.appendChild(x); ctxBar.appendChild(c);
     }
-    if (atPicked.length){
-      var inner = ctxChips(atPicked, true);
-      while (inner.firstChild) ctxBar.appendChild(inner.firstChild);
-    }
   }
-  function atQuery(){                    // 커서 앞 '@글자' — 없으면 null (줄바꿈·40자를 넘으면 끝)
-    var p = input.selectionStart;
-    if (p == null || p !== input.selectionEnd) return null;
-    var pre = input.value.slice(0, p), i = pre.lastIndexOf('@');
+  // 커서 앞 '@글자' — 없으면 null (줄바꿈·40자를 넘으면 끝). 커서가 든 글자 마디 안에서만 본다(알약이 경계)
+  function atQuery(){
+    var s = window.getSelection && window.getSelection();
+    if (!s || !s.rangeCount || !s.isCollapsed) return null;
+    var n = s.anchorNode;
+    if (!n || n.nodeType !== 3 || !input.contains(n)) return null;
+    var pre = n.nodeValue.slice(0, s.anchorOffset), i = pre.lastIndexOf('@');
     if (i < 0 || (i > 0 && !/\s/.test(pre[i - 1]))) return null;   // 메일 주소 속 @는 아니다
     var q = pre.slice(i + 1);
     if (/[\n]/.test(q) || q.length > 40 || /\s\s/.test(q)) return null;
-    return {from: i, q: q};
+    return {node: n, from: i, to: s.anchorOffset, q: q};
   }
   function atWatch(){
     var at = atQuery();
     if (!at) return atClose();
-    atFrom = at.from;
+    atAt = at;
     clearTimeout(atTimer);
     atTimer = setTimeout(function(){ atFetch(at.q); }, atBox.classList.contains('open') ? 120 : 0);
   }
@@ -1740,7 +1822,7 @@ JS = r"""
       .then(function(j){
         if (seq !== atSeq || !atQuery()) return;           // 그새 더 쳤거나 @를 지웠다
         var have = {};
-        atPicked.forEach(function(m){ have[atKeyOf(m)] = 1; });
+        pills().forEach(function(m){ have[atKeyOf(m)] = 1; });
         atItems = (j.items || []).filter(function(m){ return !have[atKeyOf(m)]; });
         atSel = 0; atRender(); atBox.classList.add('open');
       }).catch(function(){});
@@ -1778,22 +1860,26 @@ JS = r"""
     if (on && on.scrollIntoView) on.scrollIntoView({block: 'nearest'});
   }
   function atPick(i){
-    var m = atItems[i], at = atQuery();
+    var m = atItems[i], at = atQuery() || atAt;
     if (!m) return;
-    var from = at ? at.from : atFrom, p = input.selectionStart;
-    if (from >= 0 && p != null && p >= from){         // '@글자'를 지우고 칩으로
-      input.value = input.value.slice(0, from) + input.value.slice(p).replace(/^ /, '');
-      input.selectionStart = input.selectionEnd = from;
-    }
     var keep = {kind: m.kind, token: m.token, title: m.title, title_tr: m.title_tr, tr_first: m.tr_first || null,
                 row: m.row, end: m.end, tab: m.tab, id: m.id};
     Object.keys(keep).forEach(function(k){ if (keep[k] == null) delete keep[k]; });
     if (m.current) keep.current = true;
-    if (atPicked.length < 8) atPicked.push(keep);
-    atClose(); paintCtx(); autosize(); input.focus();
+    atClose(); input.focus();
+    if (pills().length >= 8) return;                   // 서버도 8개까지만 받는다
+    // '@글자'를 알약 + 빈칸으로 바꾼다 — 빈칸 뒤에 커서를 두어야 알약 뒤에서 이어 쓸 수 있다
+    var pill = pillNode(keep, true), sp = document.createTextNode(' ');
+    if (at && at.node.parentNode && input.contains(at.node)){
+      var tail = at.node.splitText(at.from);
+      tail.nodeValue = tail.nodeValue.slice(at.to - at.from).replace(/^[ \u00a0]/, '');
+      tail.parentNode.insertBefore(pill, tail); tail.parentNode.insertBefore(sp, tail);
+      if (!tail.nodeValue) tail.parentNode.removeChild(tail);
+    } else { input.appendChild(pill); input.appendChild(sp); }
+    caretTo(sp, 1);
   }
   function atClose(){
-    clearTimeout(atTimer); atSeq++; atItems = []; atFrom = -1;
+    clearTimeout(atTimer); atSeq++; atItems = []; atAt = null;
     atBox.classList.remove('open'); atBox.innerHTML = '';
   }
   function atKey(ev){
@@ -1810,11 +1896,7 @@ JS = r"""
     if (ev.key === 'Escape'){ ev.preventDefault(); ev.stopPropagation(); atClose(); return true; }
     return false;
   }
-  function ask(){ send(input.value, null); }
-  function autosize(){
-    input.style.height = 'auto';
-    input.style.height = Math.min(160, Math.max(34, input.scrollHeight)) + 'px';
-  }
+  function ask(){ send(inputText(), null); }
 
   // ---- 열기/닫기 (메모 서랍과 배타) ----
   // 'open'은 여러 경로에서 붙었다 뗀다(버튼·✕·Esc·메모 서랍). 한 곳에서 관찰해 body 클래스를
@@ -1907,7 +1989,7 @@ JS = r"""
     // 다시 열 때는 세션을 새로 읽는다 — 그사이 새 창(단독 창)에서 쌓인 턴이 있을 수 있다
     if (!loaded){ loadModels(); ensureSession(); }
     else { render(); if (!busy) refreshSession(); }
-    setTimeout(function(){ if (!input.disabled) input.focus(); }, 60);
+    setTimeout(function(){ if (input.isContentEditable) input.focus(); }, 60);
   }
   function closePanel(){ closeMenu(); if (!SA) panel.classList.remove('open'); }
   window.__md4Agent = {
@@ -1932,7 +2014,16 @@ JS = r"""
   panel.querySelector('.ag-x').addEventListener('click', closePanel);
   newBtn.addEventListener('click', newSession);
   sendBtn.addEventListener('click', ask);
-  input.addEventListener('input', autosize);
+  input.addEventListener('input', tidyInput);
+  input.addEventListener('paste', function(ev){
+    ev.preventDefault();
+    insertPlain(((ev.clipboardData || window.clipboardData).getData('text/plain') || '').replace(/\r\n?/g, '\n'));
+  });
+  input.addEventListener('drop', function(ev){
+    var t = ev.dataTransfer && ev.dataTransfer.getData('text/plain');
+    ev.preventDefault();
+    if (t){ input.focus(); insertPlain(t); }
+  });
   input.addEventListener('keydown', function(ev){
     if (atKey(ev)) return;               // @ 목록이 떠 있으면 위·아래·Enter·Tab·Esc는 목록 몫
     if (ev.key === 'Enter' && !ev.shiftKey && !ev.isComposing){ ev.preventDefault(); ask(); }
@@ -1944,14 +2035,19 @@ JS = r"""
   }, true);
   input.addEventListener('input', atWatch);
   input.addEventListener('click', atWatch);
+  input.addEventListener('keyup', function(ev){                    // 화살표로 커서를 옮겨도 @ 목록을 맞춘다
+    if (/^Arrow(Left|Right)$|^(Home|End)$/.test(ev.key)) atWatch();
+  });
   input.addEventListener('blur', function(){ setTimeout(function(){
     if (document.activeElement !== input && !atBox.contains(document.activeElement)) atClose(); }, 150); });
   atBtn.addEventListener('click', function(){      // '@' 단추 = 커서 자리에 @를 넣고 목록을 연다
-    var p = input.selectionStart == null ? input.value.length : input.selectionStart;
-    var pre = input.value.slice(0, p), lead = pre && !/\s$/.test(pre) ? ' @' : '@';
-    input.value = pre + lead + input.value.slice(p);
-    input.focus(); input.selectionStart = input.selectionEnd = p + lead.length;
-    autosize(); atWatch();
+    var s = window.getSelection();
+    input.focus();
+    if (!s.rangeCount || !input.contains(s.anchorNode)) caretEnd();
+    var n = s.anchorNode, o = s.anchorOffset;
+    var prev = n && n.nodeType === 3 ? n.nodeValue.slice(0, o) : (o > 0 && n.childNodes[o - 1] ? 'x' : '');
+    insertPlain(prev && !/\s$/.test(prev) ? ' @' : '@');
+    atWatch();
   });
   document.addEventListener('keydown', function(ev){
     if (ev.key !== 'Escape') return;
