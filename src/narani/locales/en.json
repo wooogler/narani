@@ -1445,6 +1445,6 @@
  " — 하위 컬렉션 {subs} 소속도 뗐습니다": " — also removed from subcollections: {subs}",
  "'{v}'에는 하위 컬렉션 {subs}에서 와서 보입니다 — 이 보기에서 빼려면 그 칸을 끄세요": "Shown in '{v}' because it is in subcollection {subs} — uncheck it to remove the paper from this view",
  "'{v}'에 직접 들지 않고 하위 컬렉션 '{sub}'에서 와서 보입니다": "Not directly in '{v}' — shown because it is in subcollection '{sub}'",
- "{n}편은 '{v}'에 직접 들지 않고 하위 컬렉션({subs})에서 와서 보입니다 — '이 컬렉션에서 빼기'는 그 하위 컬렉션에서 뺍니다": "Not directly in '{v}' ({n} selected) — they come from subcollections ({subs}), and 'Remove from this collection' removes them from those subcollections",
+ "{n}편은 '{v}'에 직접 들지 않고 하위 컬렉션({subs})에서 와서 보입니다 — '이 컬렉션에서 빼기'는 그 하위 컬렉션에서 뺍니다": "Selected papers not directly in '{v}': {n} — they come from subcollections ({subs}), and 'Remove from this collection' removes them there",
  "이 보기에서 사라지도록 '{v}' 소속과 그 하위 컬렉션 소속을 모두 뗍니다 — 다른 컬렉션 소속은 그대로": "Removes membership in '{v}' and its subcollections so the papers leave this view — other collections stay as they are"
 }
