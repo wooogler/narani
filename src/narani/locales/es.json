@@ -1441,5 +1441,10 @@
  "공유 링크 — 링크를 켜 둔 논문": "Enlace para compartir — se está compartiendo",
  "공유 링크 만들기": "Crear enlace para compartir",
  "웹 리더에 있는 논문의 공유 링크를 만들어 '제목 — 링크'로 한꺼번에 복사합니다": "Crea enlaces para compartir los artículos del lector web y los copia todos como 'título — enlace'",
- "웹 리더 목록에서 뺍니다 — 웹 리더에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 공유 링크도 꺼지고, 논문 파일은 그대로": "Los quita de la lista del lector web — las notas hechas en el lector web se fusionan antes en este equipo. También se desactivan los enlaces compartidos; los archivos del artículo no cambian"
+ "웹 리더 목록에서 뺍니다 — 웹 리더에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 공유 링크도 꺼지고, 논문 파일은 그대로": "Los quita de la lista del lector web — las notas hechas en el lector web se fusionan antes en este equipo. También se desactivan los enlaces compartidos; los archivos del artículo no cambian",
+ " — 하위 컬렉션 {subs} 소속도 뗐습니다": " — también se quitaron de las subcolecciones: {subs}",
+ "'{v}'에는 하위 컬렉션 {subs}에서 와서 보입니다 — 이 보기에서 빼려면 그 칸을 끄세요": "Aparece en '{v}' porque está en la subcolección {subs} — desmárcala para quitar el artículo de esta vista",
+ "'{v}'에 직접 들지 않고 하위 컬렉션 '{sub}'에서 와서 보입니다": "No está directamente en '{v}' — aparece porque está en la subcolección '{sub}'",
+ "{n}편은 '{v}'에 직접 들지 않고 하위 컬렉션({subs})에서 와서 보입니다 — '이 컬렉션에서 빼기'는 그 하위 컬렉션에서 뺍니다": "{n} no están directamente en '{v}', sino que vienen de subcolecciones ({subs}) — 'Quitar de esta colección' los quita de esas subcolecciones",
+ "이 보기에서 사라지도록 '{v}' 소속과 그 하위 컬렉션 소속을 모두 뗍니다 — 다른 컬렉션 소속은 그대로": "Quita la pertenencia a '{v}' y a sus subcolecciones para que los artículos salgan de esta vista — las demás colecciones no cambian"
 }
