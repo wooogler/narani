@@ -303,8 +303,8 @@ def test_pending_card_locks_into_history_and_send_skips_it():
 
 def test_pending_keeps_input_open_with_wait_placeholder():
     rend = _js_block(JS, "function render(")
-    assert "input.disabled = busy || !modelInfo.ready;" in rend      # 대기 중에도 그냥 보낼 수 있다
-    assert "input.placeholder = pending ? PH_WAIT : PH_IDLE;" in rend
+    assert "var off = busy || !modelInfo.ready;" in rend      # 대기 중에도 그냥 보낼 수 있다
+    assert "input.setAttribute('data-ph', pending ? PH_WAIT : PH_IDLE);" in rend
     assert "var PH_WAIT = md4T('승인을 기다리는 중 — 그냥 보내면 건너뜁니다');" in JS
     # 진행 중 말풍선 아래에, 그리고 세션을 다시 열면 서버의 pending으로 카드가 되살아난다
     assert rend.index("liveNode()") < rend.index("approvalNode(pending, true)")
@@ -626,11 +626,11 @@ def test_at_picker_owns_keys_while_open_and_sends_pointers():
     q = _js_block(JS, "function atQuery(")
     assert "!/\\s/.test(pre[i - 1])" in q                 # 메일 주소 속 @는 목록을 열지 않는다
     snd = _js_block(JS, "function send(")
-    assert "atPicked = []; autoOff = ''; atClose(); paintCtx();" in snd   # 보내면 비운다
-    assert "atPicked = gone.slice(); paintCtx();" in snd                    # 스트림 전 거절이면 되돌린다
+    assert "draft = clearInput(); lastSel = null; paintSel(); autoOff = ''; atClose(); paintCtx();" in snd   # 보내면 비운다
+    assert "if (draft && !inputText()) restoreInput(draft);" in snd          # 스트림 전 거절이면 글·알약을 되돌린다
     assert "body.context.mentions = keepAt" in snd                           # 비용 상한 재시도도 같은 맥락
     assert "mentions: ctxMentions()" in _js_block(JS, "function ctxNow(")
-    assert "ctxChips(t.mentions, false)" in _js_block(JS, "function turnNode(")
+    assert "qNode(t.text, t.mentions)" in _js_block(JS, "function turnNode(")
     assert 'class="ag-at-btn"' in HTML and 'class="ag-ctx"' in HTML and 'class="ag-at"' in HTML
 
 
@@ -657,7 +657,7 @@ def test_viewing_context_is_attached_by_default_and_removable():
     assert "out.unshift(a)" in _js_block(JS, "function ctxMentions(")
     assert "mentions: ctxMentions()" in _js_block(JS, "function ctxNow(")
     assert "autoOff = atKeyOf(a)" in _js_block(JS, "function paintCtx(")
-    assert "atPicked = []; autoOff = '';" in _js_block(JS, "function send(")
+    assert "autoOff = ''; atClose();" in _js_block(JS, "function send(")
     home = (Path(agent_panel.__file__).with_name("home.py")).read_text(encoding="utf-8")
     assert "row.props(f'data-pid=\"{value}\"')" in home
     assert ".ag-row:focus-within" in CSS                 # 입력 상자 전체가 초점을 보인다
@@ -674,5 +674,25 @@ def test_gear_menu_sets_text_size_and_model():
 
 
 def test_composer_row_cannot_overflow_the_drawer():
-    """textarea는 cols 기본 폭(약 20자)을 고집해 flex 줄을 서랍 밖으로 밀었다 — min-width·width를 0으로."""
+    """글칸(예전 textarea)이 제 폭을 고집해 flex 줄을 서랍 밖으로 밀었다 — min-width·width를 0으로."""
     assert "min-width: 0; width: 0;" in _rule(CSS, ".ag-input")
+
+
+def test_mentions_are_inline_pills_in_the_question():
+    """Cursor처럼 — @로 고른 맥락은 입력창 글 사이 알약이고, 질문 글에는 '@이름'으로 펴져 들어간다."""
+    assert 'class="ag-input" contenteditable="true"' in HTML and "<textarea" not in HTML
+    assert ".ag-input:empty::before { content: attr(data-ph);" in CSS     # 자리 글
+    pick = _js_block(JS, "function atPick(")
+    assert "pillNode(keep, true)" in pick and "splitText(at.from)" in pick and "caretTo(sp, 1)" in pick
+    assert "pills().length >= 8" in pick
+    assert "p.contentEditable = 'false'; p.setAttribute('data-m'" in _js_block(JS, "function pillNode(")
+    assert "out += atText(JSON.parse(" in _js_block(JS, "function inputText(")
+    assert "out = pills()" in _js_block(JS, "function ctxMentions(")
+    assert "pills().forEach" in _js_block(JS, "function atFetch(")
+    assert "send(inputText(), null)" in JS
+    # 붙여 넣기는 글자만
+    assert "getData('text/plain')" in JS and "insertText" in _js_block(JS, "function insertPlain(")
+    # 보낸 질문 — 글 속 '@이름'을 알약으로, 글에 없는 맥락(옛 세션)은 칩 줄로
+    q = _js_block(JS, "function qNode(")
+    assert "pillNode(tags[k].m, false)" in q and "ctxChips(rest)" in q
+    assert "qNode(live.q, live.mentions)" in _js_block(JS, "function liveNode(")
