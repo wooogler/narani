@@ -1994,7 +1994,7 @@ requires-dist = [
     { name = "anthropic", specifier = ">=1.12" },
     { name = "av", marker = "python_full_version < '3.12' and sys_platform != 'darwin'", specifier = ">=18,<19" },
     { name = "av", marker = "python_full_version >= '3.12' and sys_platform != 'darwin'", specifier = ">=18" },
-    { name = "bibtexparser", specifier = ">=1.4" },
+    { name = "bibtexparser", specifier = ">=1.4,<2" },
     { name = "click", specifier = ">=8.4" },
     { name = "docling", specifier = ">=2.140" },
     { name = "google-genai", specifier = ">=2.30" },
