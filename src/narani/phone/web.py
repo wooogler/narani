@@ -625,6 +625,7 @@ _APP_JS = r"""
           return api(GAPI + '/files/' + m[name], {method: 'DELETE'}).then(function(){ delete ids[name]; });
         });
       },
+      idOf: function(name){ return (ids && ids[name]) || null; },   // 데스크톱에서 만든 공유 링크도 알아보게
       // 공유 — 링크가 있는 사람 누구나 보기(검색·목록에는 안 뜬다). drive.file 권한으로 앱이 만든 파일에만 된다
       makePublic: function(fileId){
         return api(GAPI + '/files/' + fileId + '/permissions', {method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -1987,6 +1988,8 @@ _READER_JS = r"""
   function shareSheet(){
     if (!cur || !NOTE.fid) return;
     var e = entryOf(NOTE.fid), key = NOTE.key, name = 'share/' + NOTE.fid + '.json', have = shares()[key];
+    var known = !have && source.idOf && source.idOf(name);
+    if (known) have = {id: known, link: shareLink(known)};
     if (!e) return;
     var nodes = [para(md4T('링크를 받은 사람만 볼 수 있어요 — 검색되거나 공개 목록에 오르지 않아요. 번역·원문·내 하이라이트·메모(고른 메모 탭)가 담기고, 받는 사람은 로그인 없이 읽기 전용으로 열어요.')),
                  para(md4T('원문의 저작권은 저자·출판사에 있어요. 필요한 사람에게만 보내 주세요.'), 'more')];

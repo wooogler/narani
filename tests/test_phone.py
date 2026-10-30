@@ -365,3 +365,37 @@ def test_wide_toc_panel_can_close():
     js, html = files["app.js"][0].decode(), files["index.html"][0].decode()
     assert ".js.reading.toc-off #tocd { transform: translateX(-102%); }" in html and "function tocSide" in js
     assert ".js.reading #tocd { width: 300px;" in html   # 접어도(--sl=0) 칸 너비는 그대로 — 그래야 화면 밖으로 밀린다
+
+
+def test_desktop_share_file_matches_web_reader(tmp_path):
+    # 데스크톱에서 만든 공유 파일 — 웹 리더의 shareSource가 읽는 꼴, 같은 이름(share/<번들 이름>), 빼면 같이 지운다
+    from narani import notes as memo
+    from narani.ui import annotations
+
+    wd = _wd(tmp_path, "bots")
+    annotations.save(wd, [{"id": "h1", "color": "yellow", "note": "", "created": 100.0, "anchors": [
+        {"side": "en", "row": 1, "start": 50, "end": 61, "quote": "It matters.", "prefix": "", "suffix": ""}]}])
+    for name, text in (("요약", "핵심 정리"), ("개인", "남에게 보이지 않을 것")):
+        memo.write(wd, memo.add(wd, name), text)
+    store = LocalStore(tmp_path / "store")
+    sync.push([wd.root], store)
+    assert sync.share_id(store, "bots") is None
+    sid = sync.share(store, wd.root, memos=["요약"])
+    assert sync.share_name("bots") == "share/" + bundle.file_name("bots")[len("papers/"):]
+    assert sid == sync.share_id(store, "bots")
+    d = json.loads(store.read(sync.share_name("bots")))
+    assert d["kind"] == "narani-share" and d["entry"]["file"] == "papers/shared.json" and d["entry"]["key"] == "bots"
+    assert d["bundle"]["html"].startswith('<article class="paper has-ko"')
+    assert [m["name"] for m in d["notes"]["memos"]] == ["요약"]
+    assert [it["id"] for it in d["notes"]["items"]] == ["h1"]
+    if "speech" in d:
+        assert d["entry"]["speech"]["file"] == "speech/shared.json"
+    sync.remove(store, [wd.root])
+    assert sync.share_id(store, "bots") is None
+
+
+def test_desktop_share_links_and_copy_lines(tmp_path, monkeypatch):
+    from narani.phone import pages, service
+
+    assert service.share_link("abc") == pages.SITE + "#share=abc"
+    assert service.reader_link("bots") == pages.SITE + "#!" + bundle.file_name("bots")[len("papers/"):-len(".json")]

@@ -42,6 +42,10 @@ class LocalStore:
         tmp.write_bytes(data)
         os.replace(tmp, p)
 
+    def file_id(self, name: str) -> str | None:
+        """파일이 있으면 그 이름의 마지막 부분(확장자 뺀 것)을 id로 — 미리보기 서버의 공유 id와 같다."""
+        return Path(name).stem if self._path(name).is_file() else None
+
     def delete(self, name: str) -> None:
         try:
             self._path(name).unlink()

@@ -45,11 +45,17 @@ def load_cache() -> dict:
     return {"account": "", "synced": 0.0, "papers": {}}
 
 
-def _remember(index: dict | None = None, **kw: object) -> dict:
+def _remember(index: dict | None = None, store=None, **kw: object) -> dict:  # noqa: ANN001
+    """index를 주면 목록을 새로 기억한다 — store도 주면 논문마다 공유 링크 id(`share`)도 함께."""
     data = load_cache()
     if index is not None:
+        old = data.get("papers") or {}
         data["papers"] = {e["key"]: {k: e.get(k) for k in ("title", "title_ko", "hash", "size", "notes_hash", "audio")}
                           for e in index.get("papers", []) if isinstance(e, dict) and e.get("key")}
+        for key, e in data["papers"].items():
+            sid = sync.share_id(store, key) if store is not None else (old.get(key) or {}).get("share")
+            if sid:
+                e["share"] = sid
         data["synced"] = time.time()
     data.update(kw)
     p = _cache_path()
@@ -85,7 +91,7 @@ def connect(open_url=None) -> str:  # noqa: ANN001 — 브라우저 여는 함�
     store = gdrive.open_store()
     store.folder_id()
     who = store.account()
-    _remember(sync.read_index(store), account=who)
+    _remember(sync.read_index(store), store, account=who)
     return who
 
 
@@ -110,7 +116,7 @@ def send(roots: list[Path]) -> dict:
     """고른 논문들을 웹 리더로 — 더하거나 고치기만 한다(목록의 다른 논문은 그대로). 메모도 함께 오간다."""
     store = gdrive.open_store()
     out = sync.push(roots, store, prune=False, extra=_extra(_rows()))
-    _remember(sync.read_index(store))
+    _remember(sync.read_index(store), store)
     return out
 
 
@@ -118,8 +124,60 @@ def remove(roots: list[Path]) -> dict:
     """고른 논문들을 웹 리더에서 뺀다 — 폰 메모는 먼저 데스크톱에 합친다."""
     store = gdrive.open_store()
     out = sync.remove(store, roots)
-    _remember(sync.read_index(store))
+    _remember(sync.read_index(store), store)
     return out
+
+
+# ---- 공유 링크 ----
+def reader_link(key: str) -> str:
+    """웹 리더에서 이 논문을 바로 여는 주소."""
+    from narani.phone import bundle as bmod, pages
+
+    return pages.SITE + "#!" + bmod.file_name(key).split("/", 1)[1][:-5]
+
+
+def share_link(sid: str) -> str:
+    from narani.phone import pages
+
+    return pages.SITE + "#share=" + sid
+
+
+def memo_tabs(root: Path) -> list[str]:
+    """공유에 담을 수 있는 메모 탭 — 내용이 있는 것만."""
+    from narani.phone import notes as nmod
+    from narani.workdir import WorkDir
+
+    return [m["name"] for m in nmod.memo_snapshot(WorkDir(root)) if m["text"].strip()]
+
+
+def share(roots: list[Path], memos: list[str] | None = None, *, only_new: bool = False) -> dict[str, str]:
+    """논문들의 공유 링크 — 웹 리더 목록에 먼저 맞추고(폰 하이라이트·메모를 합쳐 담으려고) 공유 파일을 올려 연다.
+
+    memos는 담을 메모 탭(None = 전부, [] = 없음). only_new면 이미 공유한 논문은 다시 올리지 않고 있는 링크를 쓴다.
+    반환: 논문 키 → 링크 (고른 순서대로)."""
+    store = gdrive.open_store()
+    roots = [Path(r) for r in roots]
+    out: dict[str, str] = {}
+    todo = [r for r in roots if not (only_new and sync.share_id(store, r.stem))]
+    if todo:
+        sync.push(todo, store, prune=False, extra=_extra(_rows()))
+    for r in roots:
+        sid = sync.share(store, r, memos) if r in todo else sync.share_id(store, r.stem)
+        out[r.stem] = share_link(sid)
+    _remember(sync.read_index(store), store)
+    return out
+
+
+def unshare(roots: list[Path]) -> int:
+    """공유 끄기 — 공유 파일을 지워 링크가 더 이상 열리지 않게 한다."""
+    store = gdrive.open_store()
+    n = 0
+    for r in roots:
+        if sync.share_id(store, Path(r).stem):
+            sync.unshare(store, Path(r).stem)
+            n += 1
+    _remember(sync.read_index(store), store)
+    return n
 
 
 # ---- 듣기 음성 (§phone.tts) ----
@@ -334,7 +392,7 @@ def make_audio(roots: list[Path], voice: str | None = None, include: list[int] |
     c = load_cache()
     extra = {"gemini": gem} if gem else ({"qwen": qwen} if qwen else {})
     extra["audio_opts"] = {"captions": captions, "math": math}
-    _remember(sync.read_index(store), voices={**(c.get("voices") or {}), **chosen}, **extra)
+    _remember(sync.read_index(store), store, voices={**(c.get("voices") or {}), **chosen}, **extra)
     return out
 
 
@@ -381,7 +439,7 @@ def prepare_math(root: Path, captions: bool = True) -> int:
 def remove_audio(roots: list[Path]) -> int:
     store = gdrive.open_store()
     n = sync.remove_audio(store, [Path(r).stem for r in roots])
-    _remember(sync.read_index(store))
+    _remember(sync.read_index(store), store)
     return n
 
 
@@ -427,7 +485,7 @@ def refresh() -> dict:
     except Exception as e:  # noqa: BLE001 — 음성을 못 만들어도 본문·메모 동기화는 끝났다
         log.info("옛 음성을 다시 만들지 못함: %s", e)
         out["audio"] = 0
-    _remember(sync.read_index(store))
+    _remember(sync.read_index(store), store)
     return out
 
 
