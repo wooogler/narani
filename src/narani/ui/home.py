@@ -1502,6 +1502,103 @@ def build_home(state: dict) -> None:
         ui.notify(msg, type="positive")
         mobile_changed()
 
+    # ---- 웹 리더 바로가기 · 공유 링크 ----
+    def open_web_reader(key: str | None = None) -> None:
+        """기본 브라우저로 웹 리더를 — key를 주면 그 논문을 바로 연다."""
+        import webbrowser
+
+        webbrowser.open(phone_service.reader_link(key) if key else pages.SITE)
+
+    def share_of(p: Path) -> str:
+        return (data["mobile"].get(p.stem) or {}).get("share") or ""
+
+    async def copy_links(roots: list[Path], links: dict[str, str]) -> None:
+        """'제목 — 링크'를 한 줄에 한 편씩 클립보드로."""
+        lines = [f"{(data['by_root'].get(str(p)) or {}).get('title') or p.stem} — {links[p.stem]}"
+                 for p in roots if p.stem in links]
+        if not lines:
+            return
+        text = "\n".join(lines)
+        if not await run.io_bound(desktop.copy_text, text):
+            ui.clipboard.write(text)
+        ui.notify(t("공유 링크 {n}개를 제목과 함께 복사했습니다", n=len(lines)), type="positive")
+
+    async def make_share(roots: list[Path], memos: list[str] | None, only_new: bool) -> None:
+        links = await mobile_call(lambda rs: phone_service.share(rs, memos, only_new=only_new), roots,
+                                  t("공유 링크를 만드는 중… ({n}편)", n=len(roots)))
+        if links is None:
+            return
+        mobile_changed()
+        await copy_links(roots, links)
+
+    async def stop_share(roots: list[Path]) -> None:
+        n = await mobile_call(phone_service.unshare, roots, t("공유를 끄는 중… ({n}편)", n=len(roots)))
+        if n is None:
+            return
+        ui.notify(t("공유 {n}편을 껐습니다 — 링크가 더 이상 열리지 않습니다", n=n), type="positive")
+        mobile_changed()
+
+    async def share_dialog(roots: list[Path]) -> None:
+        """공유 링크 — 웹 리더에 있는 논문을 링크가 있는 사람 누구나 읽기 전용으로. 한 편이면 담을 메모 탭을
+        고르고, 여러 편이면 메모를 담을지만 고른다. 이미 링크가 있는 논문은 (여러 편일 때) 다시 올리지 않는다."""
+        roots = [Path(p) for p in roots if Path(p).stem in data["mobile"]]
+        if not roots:
+            ui.notify(t("웹 리더에 있는 논문만 공유할 수 있습니다 — 먼저 웹 리더로 보내세요."), type="warning")
+            return
+        single = len(roots) == 1
+        have = [p for p in roots if share_of(p)]
+        tabs = await run.io_bound(phone_service.memo_tabs, roots[0]) if single else []
+        checks: list = []
+
+        def memos() -> list[str] | None:
+            if single:
+                return [c.text for c in checks if c.value]
+            return None if (checks and checks[0].value) else []
+
+        async def go(only_new: bool) -> None:
+            dlg.close()
+            await make_share(roots, memos(), only_new)
+
+        async def off() -> None:
+            dlg.close()
+            await stop_share(have)
+
+        async def copy_have() -> None:
+            dlg.close()
+            await copy_links(roots, {p.stem: phone_service.share_link(share_of(p)) for p in have})
+
+        with host, ui.dialog() as dlg, ui.card().classes("gap-2").style("max-width:460px"):
+            ui.label(t("공유 링크") if single else t("공유 링크 — {n}편", n=len(roots))).classes("font-bold")
+            ui.label(t("링크를 받은 사람만 볼 수 있습니다 — 검색되거나 공개 목록에 오르지 않습니다. 번역·원문·하이라이트·메모가 "
+                       "담기고, 받는 사람은 로그인 없이 웹 리더에서 읽기 전용으로 엽니다.")).classes("text-xs text-gray-600")
+            ui.label(t("원문의 저작권은 저자·출판사에 있습니다. 필요한 사람에게만 보내 주세요.")).classes("text-xs text-gray-500")
+            if single and have:
+                ui.label(phone_service.share_link(share_of(roots[0]))).classes("text-xs break-all select-all")
+            elif not single:
+                ui.label(t("{a}편은 이미 링크가 있어 그대로 쓰고, {b}편은 새로 만듭니다.", a=len(have), b=len(roots) - len(have))
+                         if have else t("{n}편 모두 링크를 새로 만듭니다.", n=len(roots))).classes("text-xs")
+            if single and tabs:
+                ui.label(t("함께 담을 메모 탭")).classes("text-xs font-bold q-mt-xs")
+                for name in tabs:
+                    checks.append(ui.checkbox(name, value=True).props("dense"))
+            elif not single and len(have) < len(roots):
+                checks.append(ui.checkbox(t("메모 탭도 함께 담기"), value=True).props("dense"))
+            with ui.row().classes("justify-end w-full items-center gap-2 q-mt-sm"):
+                if have:
+                    ui.button(t("공유 끄기") if single else t("공유 끄기 ({n}편)", n=len(have)), on_click=off) \
+                        .props("flat no-caps color=negative")
+                ui.space()
+                ui.button(t("닫기"), on_click=dlg.close).props("flat no-caps")
+                if single and have:
+                    ui.button(t("지금 내용으로 다시 올리기"), on_click=lambda: go(False)).props("flat no-caps")
+                    ui.button(t("링크 복사"), icon="content_copy",
+                              on_click=copy_have) \
+                        .props("unelevated no-caps color=primary")
+                else:
+                    ui.button(t("링크 만들고 복사") if single else t("링크 복사 ({n}편)", n=len(roots)), icon="link",
+                              on_click=lambda: go(True)).props("unelevated no-caps color=primary")
+        dlg.open()
+
     async def sync_mobile_now() -> None:
         """웹 리더에 있는 논문 맞추기 — 바뀐 논문 다시 올리기, 메모 주고받기 (앱을 켤 때도 저절로 한다)."""
         s = await mobile_call(lambda _: phone_service.refresh(), [], t("웹 리더와 동기화하는 중…"))
@@ -1725,7 +1822,7 @@ def build_home(state: dict) -> None:
         return t("모든 논문") if s == projects.ALL else (t("미분류") if s == projects.NONE else name_of(s))
 
     def mobile_head() -> None:
-        """'웹 리더'을 고르면 머리에 — 연결 계정·편수·용량·마지막 동기화, 지금 맞추기·연결."""
+        """'웹 리더'를 고르면 머리에 — 연결 계정·편수·용량·마지막 동기화, 지금 맞추기·연결."""
         i = phone_service.info()
         with ui.row().classes("items-center gap-2 w-full md4-hpath"):
             ui.icon("cloud_done" if i["connected"] else "cloud_off", size="15px").classes("text-grey-5")
@@ -1740,6 +1837,9 @@ def build_home(state: dict) -> None:
                 ui.button(t("지금 동기화"), icon="sync", color=None, on_click=sync_mobile_now) \
                     .props("flat dense no-caps size=sm").classes("text-grey-7") \
                     .tooltip(t("바뀐 논문을 다시 올리고 하이라이트·메모를 주고받습니다 — 앱을 켤 때도 저절로 합니다"))
+                ui.button(t("웹 리더 열기"), icon="open_in_new", color=None, on_click=lambda: open_web_reader()) \
+                    .props("flat dense no-caps size=sm").classes("text-primary") \
+                    .tooltip(t("기본 브라우저에서 웹 리더({site})를 엽니다 — 데스크톱 브라우저에서도 읽을 수 있습니다", site=pages.DOMAIN))
                 ui.button(t("연결 끊기"), icon="link_off", color=None, on_click=disconnect_drive) \
                     .props("flat dense no-caps size=sm").classes("text-grey-7")
             else:
@@ -2709,6 +2809,14 @@ def build_home(state: dict) -> None:
                     .props("flat dense no-caps size=sm color=grey-8")
             if not ai_ok:
                 ai.disable()
+        if Path(root).stem in data["mobile"]:   # 웹 리더에 있는 논문 — 브라우저로 열기 · 공유 링크
+            shared = bool(share_of(Path(root)))
+            with foot, ui.row().classes("items-center gap-1 w-full no-wrap"):
+                ui.button(t("웹 리더에서 열기"), icon="language", on_click=lambda: open_web_reader(Path(root).stem)) \
+                    .props("flat dense no-caps size=sm color=grey-8").tooltip(t("웹 리더에서 열기 — 기본 브라우저로"))
+                ui.button(t("공유 링크"), icon="link" if shared else "share", on_click=lambda: share_dialog([Path(root)])) \
+                    .props("flat dense no-caps size=sm " + ("color=primary" if shared else "color=grey-8")) \
+                    .tooltip(t("공유 링크 — 링크를 켜 둔 논문") if shared else t("공유 링크 만들기"))
         with foot, ui.row().classes("items-center gap-1 w-full no-wrap"):
             ui.button(t("열기"), icon="menu_book", on_click=lambda: open_wd(r["root"])) \
                 .props("unelevated dense no-caps color=primary").classes("q-px-sm") \
@@ -2793,17 +2901,20 @@ def build_home(state: dict) -> None:
                         act(t("음성 만들기"), "headphones", lambda: make_mobile_audio(on_mobile), audio_tip)
                     act(t("동기화") if all_there else t("보내기"), "sync" if all_there else "smartphone",
                         lambda: send_to_mobile(paths), send_tip)
+                    if on_mobile:
+                        act(t("공유 링크"), "link", lambda: share_dialog(on_mobile),
+                            t("웹 리더에 있는 논문의 공유 링크를 만들어 '제목 — 링크'로 한꺼번에 복사합니다"))
                     if first:
                         if with_audio:
                             act(t("음성 지우기"), "headset_off", lambda: remove_mobile_audio(with_audio),
                                 t("웹 리더 음성만 지웁니다 — 논문은 웹 리더에 그대로"))
                         act(t("웹 리더에서 빼기"), "phonelink_erase", lambda: remove_from_mobile(on_mobile),
-                            t("웹 리더 목록에서 뺍니다 — 웹 리더에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 논문 파일은 그대로"))
+                            t("웹 리더 목록에서 뺍니다 — 웹 리더에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 공유 링크도 꺼지고, 논문 파일은 그대로"))
                 if not first and on_mobile:
                     with ui.element("div").classes("md4-act-links"):
                         ui.button(t("웹 리더에서 빼기"), on_click=lambda: remove_from_mobile(on_mobile), color=None) \
                             .props("flat dense no-caps") \
-                            .tooltip(t("웹 리더 목록에서 뺍니다 — 웹 리더에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 논문 파일은 그대로"))
+                            .tooltip(t("웹 리더 목록에서 뺍니다 — 웹 리더에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 공유 링크도 꺼지고, 논문 파일은 그대로"))
                         if with_audio:
                             ui.button(t("음성 지우기"), on_click=lambda: remove_mobile_audio(with_audio), color=None) \
                                 .props("flat dense no-caps").tooltip(t("웹 리더 음성만 지웁니다 — 논문은 웹 리더에 그대로"))

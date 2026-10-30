@@ -166,7 +166,8 @@ def remove(store: Store, roots: Iterable[Path]) -> dict:
         root = by_key[key]
         if root.is_dir():
             merged += nmod.sync_paper(store, root, e.get("notes_hash", ""))["merged"]
-        for name in (e.get("file"), nmod.notes_name(key), nmod.mobile_name(key), (e.get("speech") or {}).get("file")):
+        for name in (e.get("file"), nmod.notes_name(key), nmod.mobile_name(key), (e.get("speech") or {}).get("file"),
+                     share_name(key)):   # 공유 링크도 끈다 — 목록에서 빠지면 끌 곳이 없어진다
             if name:
                 store.delete(name)
         _delete_audio(store, e)
@@ -176,6 +177,62 @@ def remove(store: Store, roots: Iterable[Path]) -> dict:
         index["updated"] = time.time()
         store.write(INDEX, bmod.dumps(index))
     return {"removed": removed, "merged": merged}
+
+
+# ---- 공유 링크 (웹 리더의 공유와 같은 파일) ----
+# 논문 한 편을 파일 하나(share/<id>.json)에 담아 '링크가 있는 사람 누구나 보기'로 연다. 받는 사람은
+# <사이트>#share=<Drive 파일 id>로 로그인 없이 읽는다(§phone.web shareSource). 파일 이름이 웹 리더와 같아서
+# 어느 쪽에서 만들든 같은 파일을 고치고, 링크도 그대로다.
+def share_name(key: str) -> str:
+    return "share/" + bmod.file_name(key).split("/", 1)[1]
+
+
+def share_id(store: Store, key: str) -> str | None:
+    """공유 파일의 id(링크에 들어가는 값) — 공유하지 않았으면 None."""
+    find = getattr(store, "file_id", None)
+    return find(share_name(key)) if find else None
+
+
+def share_payload(root: Path, memos: Iterable[str] | None = None) -> dict:
+    """공유 파일 내용 — 목록 한 줄·번들·하이라이트·메모(memos로 고른 탭, None이면 전부)·폰 내장 음성이 읽을 목록."""
+    from narani.phone import tts
+    from narani.ui import annotations
+    from narani.workdir import WorkDir
+
+    wd = WorkDir(root)
+    digest = bmod.content_hash(root)
+    b = bmod.build_paper(root, digest)
+    now = time.time()
+    entry = {k: b[k] for k in ("key", "hash", "lang", "title", "title_ko", "authors", "year", "venue", "has_ko", "aligned")}
+    entry.update(file="papers/shared.json", notes_hash=f"s{int(now * 1000)}")
+    keep = None if memos is None else set(memos)
+    tabs = [{"name": m["name"], "text": m["text"], "stamp": ""} for m in nmod.memo_snapshot(wd)
+            if m["text"].strip() and (keep is None or m["name"] in keep)]
+    out = {"format": 1, "kind": "narani-share", "shared_at": now, "entry": entry, "bundle": b,
+           "notes": {"items": annotations.load(wd), "applied": 0, "memos": tabs}}
+    try:
+        out["speech"] = tts.speech_plan(b, tts.load_terms(root), tts.load_math(root))
+        entry["speech"] = {"file": "speech/shared.json", "sig": tts.speech_sig(digest, root)}
+    except Exception:  # noqa: BLE001 — 읽을 목록이 없어도 공유는 된다
+        pass
+    return out
+
+
+def share(store: Store, root: Path, memos: Iterable[str] | None = None) -> str:
+    """공유 파일을 (다시) 올리고 링크로 연다. 반환: 공유 id."""
+    name = share_name(root.stem)
+    store.write(name, bmod.dumps(share_payload(root, memos)))
+    fid = share_id(store, root.stem)
+    if not fid:
+        raise RuntimeError(f"공유 파일을 찾지 못했습니다: {name}")
+    publish = getattr(store, "make_public", None)
+    if publish:
+        publish(fid)
+    return fid
+
+
+def unshare(store: Store, key: str) -> None:
+    store.delete(share_name(key))
 
 
 def push_audio(store: Store, jobs: list[tuple[Path, object, list[int] | None]],

@@ -334,6 +334,16 @@ class DriveStore:
         if self._ids is not None:
             self._ids.pop(name, None)
 
+    def file_id(self, name: str) -> str | None:
+        """이름 → Drive 파일 id (없으면 None). 목록은 한 번 받아 둔 것을 쓴다."""
+        return self._id(name)
+
+    def make_public(self, fid: str) -> None:
+        """링크가 있는 사람 누구나 보기 — 검색·목록에는 안 뜬다. drive.file 권한으로 앱이 만든 파일에만 된다."""
+        r = self._req("POST", f"{API}/files/{fid}/permissions", params={"fields": "id"},
+                      json={"role": "reader", "type": "anyone", "allowFileDiscovery": False})
+        self._check(r, "공유")
+
     def account(self) -> str:
         """연결한 Google 계정(이메일) — 확인용."""
         r = self._req("GET", f"{API}/about", params={"fields": "user(emailAddress)"})

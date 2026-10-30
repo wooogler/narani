@@ -153,6 +153,28 @@ async def deliver(name: str, data: bytes, media_type: str = "application/zip") -
     ui.notify(t("저장됨: {target}", target=target), type="positive")
 
 
+def copy_text(text: str) -> bool:
+    """글을 OS 클립보드에 넣는다. 성공하면 True — copy_image처럼 브라우저 클립보드가 안 될 때(서버를 왕복하면
+    클릭 제스처가 끊겨 웹뷰가 거절한다)를 위한 길이다."""
+    if sys.platform == "darwin":
+        tools = [["pbcopy"]]
+    elif sys.platform.startswith("win"):
+        tools = [["clip"]]
+    else:
+        tools = [["wl-copy"], ["xclip", "-selection", "clipboard"], ["xsel", "--clipboard", "--input"]]
+    for tool in tools:
+        if not shutil.which(tool[0]):
+            continue
+        # Windows clip은 UTF-16을 받아야 한글이 깨지지 않는다
+        data = ("\ufeff" + text).encode("utf-16-le") if tool[0] == "clip" else text.encode("utf-8")
+        env = {**os.environ, "LC_CTYPE": "UTF-8"} if tool[0] == "pbcopy" else None   # 없으면 pbcopy가 UTF-8로 안 읽는다
+        try:
+            return subprocess.run(tool, input=data, check=False, timeout=15, env=env).returncode == 0
+        except (OSError, subprocess.TimeoutExpired):
+            continue
+    return False
+
+
 def copy_image(path: Path) -> bool:
     """그림 파일을 OS 클립보드에 이미지로 넣는다. 성공하면 True.
 
