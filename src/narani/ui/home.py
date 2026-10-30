@@ -190,6 +190,8 @@ html.md4-filedrag .md4-dropov { display: flex; }
   font-size: 11.5px; line-height: 1; color: #2383e2; background: rgba(35,131,226,.1); white-space: nowrap;
   max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
 .md4-ptag.none { color: #9a968e; background: transparent; box-shadow: inset 0 0 0 1px #dcdad5; }
+/* 상위 컬렉션 보기에서 하위 컬렉션으로만 들어온 논문 — 그 하위 태그 (채우지 않고 테두리만) */
+.md4-ptag.via { background: transparent; box-shadow: inset 0 0 0 1px rgba(35,131,226,.45); }
 .md4-ptags:hover .md4-ptag { background: rgba(35,131,226,.18); }
 .md4-ptags:hover .md4-ptag.none { color: #6b6862; background: rgba(0,0,0,.04); }
 .md4-ptag-add { opacity: 0; color: #9a968e; }
@@ -563,6 +565,24 @@ def _stored_pids(r: dict) -> list[str]:
     if raw is None:
         raw = [r["project"]] if r.get("project") else []
     return [str(p) for p in raw if p]
+
+
+def _via_subs(pids: list[str], scope: str, sub: dict[str, set[str]]) -> list[str]:
+    """상위 컬렉션 `scope`를 볼 때 이 논문이 **하위 컬렉션을 통해서만** 보이면 그 하위 컬렉션들(소속 순서).
+
+    직접 든 논문이거나, 컬렉션 보기가 아니거나(전체·미분류 — `sub`에 없다), 그 하위에도 없으면 []."""
+    if scope in pids:
+        return []
+    under = sub.get(scope) or set()
+    return [p for p in pids if p in under and p != scope]
+
+
+def _leave_scope(pids: list[str], scope: str, sub: dict[str, set[str]]) -> tuple[list[str], list[str]]:
+    """'이 컬렉션에서 빼기' — 그 컬렉션과 하위 컬렉션 소속을 모두 뗀다(그래야 이 보기에서 사라진다).
+
+    반환: (남길 소속, 뗀 소속). 다른 컬렉션 소속은 그대로."""
+    under = sub.get(scope) or {scope}
+    return [p for p in pids if p not in under], [p for p in pids if p in under]
 
 
 def _preview_module():  # noqa: ANN202 — narani.preview (없으면 None — 미리보기는 빈 값으로 그린다)
@@ -973,6 +993,28 @@ def build_home(state: dict) -> None:
         refresh_views()
         msg = (t("{changed}편을 '{v}'에 더했습니다", changed=changed, v=name_of(pid)) if add
                else t("{changed}편을 '{v}'에서 뺐습니다", changed=changed, v=name_of(pid)))
+        ui.notify(msg + (t(" · 사본 {copies}개", copies=copies) if copies else ""),
+                  type="positive" if changed else "info")
+
+    async def bulk_leave_scope(scope: str) -> None:
+        """상위 컬렉션 보기의 '이 컬렉션에서 빼기' — 직접 소속과 하위 컬렉션 소속을 함께 떼어 이 보기에서
+        사라지게 한다. 하위에서만 들어온 논문은 그 하위 컬렉션에서 빠진다(알림에 어디서 뺐는지 적는다).
+        선택이 범위를 바꿔도 남으므로 이 보기 밖의 논문은 건드리지 않는다."""
+        changed = 0
+        copies = 0
+        subs: list[str] = []  # 소속을 뗀 하위 컬렉션 (처음 나온 순서)
+        for root in sorted(selected):
+            cur = (data["by_root"].get(root) or {}).get("pids", [])
+            keep, gone = _leave_scope(cur, scope, data["sub"])
+            if not gone:
+                continue
+            changed += 1
+            subs += [p for p in gone if p != scope and p not in subs]
+            copies += await set_members([root], keep)
+        refresh_views()
+        msg = t("{changed}편을 '{v}'에서 뺐습니다", changed=changed, v=name_of(scope))
+        if subs:
+            msg += t(" — 하위 컬렉션 {subs} 소속도 뗐습니다", subs=", ".join(f"'{name_of(p)}'" for p in subs))
         ui.notify(msg + (t(" · 사본 {copies}개", copies=copies) if copies else ""),
                   type="positive" if changed else "info")
 
@@ -2101,10 +2143,20 @@ def build_home(state: dict) -> None:
             icon.name = "check_box" if now_in else "check_box_outline_blank"
             icon.classes(replace="text-primary" if now_in else "text-grey-6")
             paint_tags(tags_box, r)
+            paint_via()
+
+        def paint_via() -> None:
+            """상위 컬렉션 보기에서 하위로만 들어온 논문이면 어디서 왔는지 — 칸을 고칠 때마다 다시."""
+            subs = _via_subs(r["pids"], view["scope"], data["sub"])
+            via_lbl.text = t("'{v}'에는 하위 컬렉션 {subs}에서 와서 보입니다 — 이 보기에서 빼려면 그 칸을 끄세요",
+                             v=name_of(view["scope"]), subs=", ".join(f"'{name_of(p)}'" for p in subs)) if subs else ""
+            via_lbl.set_visibility(bool(subs))
 
         menu.clear()
         with menu:
             ui.label(t("컬렉션에 넣기")).classes("md4-menucap")
+            via_lbl = ui.label().classes("text-xs text-gray-500 q-px-md q-pb-xs").style("max-width:280px")
+            paint_via()
             for p, d in data["tree"]:  # 트리 순서, 하위는 들여 써서
                 on = p["id"] in r["pids"]
                 with ui.menu_item(auto_close=False).props("dense").style(f"padding-left:{16 + 14 * d}px") as item:
@@ -2128,9 +2180,17 @@ def build_home(state: dict) -> None:
 
     def paint_tags(tags_box, r: dict) -> None:  # noqa: ANN001 — ui.element
         tags_box.clear()
+        # 상위 컬렉션 보기에서 직접 들지 않고 하위 컬렉션으로만 보이는 논문 — 그 하위 태그를 '↳'로
+        # 갈라 왜 여기 보이는지 알린다(새 요소 없이 글자·class만 — 카드마다 그리므로 가볍게).
+        via = set(_via_subs(r["pids"], view["scope"], data["sub"]))
         with tags_box:
             if r["pids"]:
                 for p in r["pids"]:
+                    if p in via:
+                        ui.label("↳ " + name_of(p)).classes("md4-ptag via") \
+                            .tooltip(t("'{v}'에 직접 들지 않고 하위 컬렉션 '{sub}'에서 와서 보입니다",
+                                       v=name_of(view["scope"]), sub=path_of(p)))
+                        continue
                     tag = ui.label(name_of(p)).classes("md4-ptag")
                     if data["up"].get(p):  # 하위 컬렉션은 어디 밑인지
                         tag.tooltip(path_of(p))
@@ -2931,15 +2991,26 @@ def build_home(state: dict) -> None:
             def collection_part() -> None:
                 # 추가 = 다른 소속은 그대로 두고 더하기, 빼기 = 그 소속만 떼기(그 폴더의 사본도 정리)
                 ui.label(t("컬렉션")).classes("md4-act-h")
-                member_of = {p for root in selected for p in (data["by_root"].get(root) or {}).get("pids", [])}
+                member_of = {p for x in rows for p in x["pids"]}
+                # 이 컬렉션(하위 포함) 보기에 든 논문 — 하위 컬렉션에서만 들어온 것은 따로 세어 알린다
+                here = [x for x in rows if in_collection and in_scope(x, scope)]
+                via = {p for x in here for p in _via_subs(x["pids"], scope, data["sub"])}
+                n_via = sum(1 for x in here if _via_subs(x["pids"], scope, data["sub"]))
                 with ui.element("div").classes("md4-act-grid"):
                     with act(t("추가 ▾"), "playlist_add", None):
                         project_pick_menu(lambda v: bulk_member(v, True), with_new=True)
-                    if in_collection and scope in member_of:   # 이 컬렉션을 보는 중 — 여기서 빼기가 바로
-                        act(t("이 컬렉션에서 빼기"), "playlist_remove", lambda: bulk_member(scope, False))
-                    elif member_of:
+                    if here:   # 이 컬렉션을 보는 중 — 여기서 빼기가 바로 (하위에서 온 논문까지)
+                        act(t("이 컬렉션에서 빼기"), "playlist_remove", lambda: bulk_leave_scope(scope),
+                            t("이 보기에서 사라지도록 '{v}' 소속과 그 하위 컬렉션 소속을 모두 뗍니다 — 다른 컬렉션 소속은 그대로",
+                              v=name_of(scope)) if len(data["sub"].get(scope) or ()) > 1 else None)
+                    if member_of and (not here or member_of - {scope}):   # 한 컬렉션만 골라 빼기
                         with act(t("빼기 ▾"), "playlist_remove", None):
                             project_pick_menu(lambda v: bulk_member(v, False), only=member_of)
+                if n_via:
+                    ui.label(t("{n}편은 '{v}'에 직접 들지 않고 하위 컬렉션({subs})에서 와서 보입니다 — "
+                               "'이 컬렉션에서 빼기'는 그 하위 컬렉션에서 뺍니다",
+                               n=n_via, v=name_of(scope), subs=", ".join(p["name"] for p, _ in data["tree"] if p["id"] in via))) \
+                        .classes("md4-pv-bib")
 
             with ui.column().classes("md4-pv-bulk gap-0 w-full q-mt-sm"):
                 if scope == MOBILE:
