@@ -40,10 +40,11 @@ html { touch-action: pan-x pan-y; }
 .top button svg { display: block; }   /* 줄 높이 여백 없이 단추 한가운데 */
 .js.reading .top .tb.rd { display: inline-block; }
 .top .tb.rd, #fab.rd { display: none; }
-/* 제목 — 두 줄까지. 논문을 열었을 때는 누르면 목차(▾) */
+/* 제목 — 한 줄, 넘치면 말줄임. 논문을 열었을 때는 누르면 목차(▾). 두 줄 접기(-webkit-line-clamp)는 iOS Safari가
+   <button>에서 듣지 않아 긴 제목이 위 막대를 몇 줄씩 늘였다 */
 .top .top-title { border: 0; background: none; min-height: 0; padding: 2px 2px; text-align: left; color: var(--fg);
-  font: inherit; font-weight: 600; font-size: .92em; line-height: 1.25; white-space: normal; display: -webkit-box;
-  -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  font: inherit; font-weight: 600; font-size: .92em; line-height: 1.25; display: block; flex: 1 1 0; min-width: 0;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .js.reading .top .top-title { position: relative; }
 /* 목차 — 제목 왼쪽의 ☰ 단추(제목을 눌러도 열린다). 본문 머리의 접힌 목차는 이 서랍과 겹쳐 숨긴다(서랍이 그것을 읽어 그린다) */
 .top .tb.tocb { display: none; }
