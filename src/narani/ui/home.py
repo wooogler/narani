@@ -56,6 +56,19 @@ COLL_MIME = "text/x-md4-collection"  # 사이드바 컬렉션 행을 끌 때 —
 # 기억하지 않는다(projects.set_active가 모르는 값은 '모든 논문'으로 돌린다) — 다음 실행엔 모든 논문부터.
 MOBILE = "__mobile__"
 
+
+def _saved_scope() -> str:
+    """홈을 다시 그릴 때 볼 범위 — 컬렉션은 projects가 기억하고, '웹 리더'는 컬렉션이 아니라 거기 안 적히므로
+    [ui].home_scope에 따로 둔다(논문을 보다 홈으로 와도, 앱을 다시 켜도 웹 리더 목록 그대로)."""
+    if config.load_config().get("ui", {}).get("home_scope") == "mobile":
+        return MOBILE
+    return projects.active()
+
+
+def _remember_mobile_scope(on: bool) -> None:
+    if on != (config.load_config().get("ui", {}).get("home_scope") == "mobile"):
+        config.set_section_value("ui", "home_scope", "mobile" if on else None)
+
 HOME_CSS = """
 /* 홈 = 뷰어와 같은 2단. 높이·여백은 _CHROME_CSS의 .md4-body 규칙이 맡는다(창 전체는 스크롤되지 않는다). */
 .md4-hside { flex: 0 0 var(--md4-side-w); width: var(--md4-side-w); height: 100%; background: #f4f3f1;
@@ -678,7 +691,7 @@ def build_home(state: dict) -> None:
 
     backend_ready = bool(available_backends())
     # 고른 범위(scope)는 목록 필터 + 새로 올릴 논문의 소속 — 앱을 다시 켜도 같은 묶음을 보게 기억한다.
-    view = {"q": "", "sort": "recent", "show_hidden": False, "scope": projects.active()}
+    view = {"q": "", "sort": "recent", "show_hidden": False, "scope": _saved_scope()}
     selected: set[str] = set()  # 체크박스로 고른 워크디렉토리 root (문자열) — 일괄 동작용
     # 한 번 클릭으로 고른 논문(미리보기) — 홈 인스턴스에만 둔다. seq는 미리보기를 그릴 때마다 올라
     # 늦게 도착한 초록·이미지를 버리는 데 쓴다. bulk: 마지막 동작이 체크박스였는지(미리보기 자리를 일괄
@@ -805,7 +818,8 @@ def build_home(state: dict) -> None:
     def pick_scope(value: str) -> None:
         """범위 고르기 — 목록 필터·새 논문의 소속·드롭 안내가 한 번에 따라온다."""
         view["scope"] = value
-        projects.set_active(value)  # 다음 실행에도 같은 묶음을 보게
+        projects.set_active(value)  # 다음 실행에도 같은 묶음을 보게 (웹 리더는 '전체'로 적힌다 — 새 논문은 미분류)
+        _remember_mobile_scope(value == MOBILE)
         refresh_views()
 
     def new_project(for_root: str | None = None, parent: str | None = None) -> None:
