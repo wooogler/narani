@@ -331,6 +331,16 @@ CSS = """
 #md-listen .mdl-note span { background: #fff; border: 1px solid #e4e1da; border-radius: 8px; padding: 3px 8px; }
 #md-listen .mdl-note:empty { display: none; }
 ::highlight(md-listen) { background-color: rgba(255, 214, 77, .55); }
+#mdl-here { position: fixed; z-index: 9991; display: none; align-items: center; gap: 4px; padding: 5px 11px 5px 8px;
+  border: none; border-radius: 999px; background: #2383e2; color: #fff; font-size: 12.5px; font-weight: 600;
+  cursor: pointer; box-shadow: 0 4px 14px rgba(35,131,226,.35); }
+#mdl-here.on { display: inline-flex; }
+#mdl-here:hover, #md-sent-tip .st-play:hover { background: #1b74cf; }
+#mdl-here svg, #md-sent-tip .st-play svg { display: block; }
+#md-sent-tip.act { pointer-events: auto; }
+#md-sent-tip .st-play { display: inline-flex; align-items: center; gap: 3px; margin-top: 6px; padding: 3px 10px 3px 6px;
+  border: none; border-radius: 999px; background: #2383e2; color: #fff; font: inherit; font-size: 12px;
+  font-weight: 600; cursor: pointer; }
 .sbs-cell.mdl-now { box-shadow: inset 3px 0 0 #f2b705; }
 body.md-listening #md-jump-back { bottom: 82px !important; }
 body.md-listening .sbs-grid, body.md-listening .vpane { scroll-padding-bottom: 90px; }
@@ -345,6 +355,7 @@ body.md-listening .sbs-grid, body.md-listening .vpane { scroll-padding-bottom: 9
 """
 
 HTML = f"""
+<button id="mdl-here" type="button">{_svg("play")}⦃여기부터 재생⦄</button>
 <div id="md-listen" role="region" aria-label="⦃듣기⦄">
   <audio id="mdl-au" preload="auto"></audio>
   <div class="mdl-note"></div>
@@ -608,7 +619,113 @@ JS = r"""
     else if (has && L.tl && L.cur >= 0 && (!L.cell || !L.cell.isConnected)) mark(L.cur);
   }, 1000);
 
+  // ---- 여기부터 재생 — 듣기 막대가 열려 있을 때 문장을 클릭하면 ----
+  // 한 언어만 볼 때는 짝 문장 툴팁(app.py showTip) 안에 단추가 붙고, 툴팁이 안 뜨는 경우(원문|번역 두 칸, 짝 툴팁 꺼짐,
+  // 짝 없는 문장)엔 클릭한 자리 옆에 알약을 띄운다. 읽는 쪽이 아닌 칸을 누르면 짝 문장(span[data-pair], §sentpair)으로 건너간다.
+  function sideCell(row, side){   // 그 행·쪽의 셀 — 숨은 짝 셀(.sbs-ghost)도 (글은 같다)
+    var all = document.querySelectorAll('.sbs-cell[data-row="' + row + '"][data-side="' + side + '"], .anno-scope[data-row="' + row + '"][data-side="' + side + '"]');
+    for (var i = 0; i < all.length; i++) if (!all[i].closest('.sbs-clone')) return all[i];
+    return null;
+  }
+  function offsetIn(cell, node, off){
+    var r = document.createRange(); r.selectNodeContents(cell);
+    try { r.setEnd(node, off); } catch (x) { return -1; }
+    return r.toString().length;
+  }
+  function caretAt(x, y){
+    if (document.caretPositionFromPoint){ var p = document.caretPositionFromPoint(x, y); return p ? {node: p.offsetNode, off: p.offset} : null; }
+    if (document.caretRangeFromPoint){ var r = document.caretRangeFromPoint(x, y); return r ? {node: r.startContainer, off: r.startOffset} : null; }
+    return null;
+  }
+  // 클릭한 셀 안 위치 → 읽는 쪽 셀 안 위치 {row, off}
+  function toReadSide(cell, node, off){
+    var row = +cell.getAttribute('data-row'), side = cell.getAttribute('data-side');
+    var at = offsetIn(cell, node, off);
+    if (side === L.side) return {row: row, off: at};
+    var tgt = sideCell(row, L.side);
+    if (!tgt) return {row: row, off: 0};
+    // 짝 문장 span은 행에 마우스를 올려야 생긴다(app.py prepareRow) — 아직이면 만들게 하고, 클릭 위치를 담은 span을 찾는다
+    if (!cell.querySelector('[data-pair]')) cell.dispatchEvent(new MouseEvent('mouseover', {bubbles: true}));
+    var pe = null, sp = cell.querySelectorAll('[data-pair]');
+    for (var i = 0; i < sp.length && !pe; i++){ var a = offsetIn(cell, sp[i], 0); if (at >= a && at < a + sp[i].textContent.length) pe = sp[i]; }
+    var twin = pe ? tgt.querySelector('[data-pair="' + pe.getAttribute('data-pair') + '"]') : null;
+    if (twin) return {row: row, off: offsetIn(tgt, twin, 0)};
+    var n = cell.textContent.length || 1;   // 짝을 모르면 셀 안 비율로
+    return {row: row, off: Math.round(Math.max(0, at) / n * tgt.textContent.length)};
+  }
+  function sentFor(row, off){   // 그 위치를 담은(또는 바로 앞에서 시작한) 문장 — 그 행에 읽을 문장이 없으면 다음 행의 첫 문장
+    var S = L.tl.sents, best = -1, cell = sideCell(row, L.side);
+    for (var k = 0; k < S.length; k++){
+      if (S[k][1] < row) continue;
+      if (S[k][1] > row) return best >= 0 ? best : k;
+      var said = L.said[S[k][1] + ':' + S[k][2]], a = said && cell ? snap(cell, S[k][2], S[k][3], said)[0] : S[k][2];
+      if (a <= off + 1 || best < 0) best = k;
+      if (a > off + 1) return best;
+    }
+    return best;
+  }
+  function playFrom(cell, node, off){
+    if (!L.tl || !cell) return false;
+    var p = toReadSide(cell, node, off), k = sentFor(p.row, p.off);
+    if (k < 0) return false;
+    hideHere();
+    L.userScroll = 0;
+    au.currentTime = L.tl.sents[k][0] + 0.01;
+    if (au.paused) play();
+    return true;
+  }
+  var here = document.getElementById('mdl-here'), hereAt = null, hereTimer = null;
+  function hideHere(){ clearTimeout(hereTimer); hereTimer = null; if (here) here.classList.remove('on'); }
+  function isOpen(){ return bar.classList.contains('on') && !!L.tl; }
+  if (here){
+    here.addEventListener('mousedown', function(e){ e.preventDefault(); e.stopPropagation(); });
+    here.addEventListener('click', function(e){ e.stopPropagation(); if (hereAt) playFrom(hereAt.cell, hereAt.node, hereAt.off); hideHere(); hereAt = null; });
+    document.addEventListener('mousedown', function(e){ if (e.target !== here && !here.contains(e.target)) hideHere(); }, true);
+    document.addEventListener('scroll', function(){ hideHere(); }, true);
+    document.addEventListener('keydown', function(e){ if (e.key === 'Escape') hideHere(); });
+    document.addEventListener('dblclick', function(){ hideHere(); });
+    document.addEventListener('click', function(e){
+      if (!isOpen() || e.detail !== 1 || !e.target.closest) return;
+      if (e.target.closest('a, img, button, input, textarea, select, mark.md-anno, #md-listen, #md-sent-tip')) return;
+      var cell = e.target.closest('.anno-scope');
+      if (!cell) return;
+      var sel = window.getSelection();
+      if (sel && !sel.isCollapsed) return;   // 드래그 선택 — 색 막대 몫
+      var c = caretAt(e.clientX, e.clientY);
+      if (!c || !cell.contains(c.node)) return;
+      var x = e.clientX, y = e.clientY;
+      hereAt = {cell: cell, node: c.node, off: c.off};
+      clearTimeout(hereTimer);
+      hereTimer = setTimeout(function(){   // 더블클릭(메모)이면 두 번째 클릭이 물린다. 짝 툴팁이 떴으면 그 안의 단추로
+        hereTimer = null;
+        var tip = document.getElementById('md-sent-tip');
+        if (tip && tip.classList.contains('open')) return;
+        here.style.left = '0px'; here.style.top = '0px'; here.classList.add('on');
+        var w = here.offsetWidth, h = here.offsetHeight;
+        here.style.left = Math.min(Math.max(8, x - w / 2), innerWidth - w - 8) + 'px';
+        here.style.top = (y - h - 14 > 8 ? y - h - 14 : y + 16) + 'px';
+      }, 320);
+    });
+  }
+
   window.__mdListen = {
+    isOpen: isOpen,
+    // 시험·진단용 — 클릭한 자리가 읽을 목록의 어느 문장으로 가는지 (재생하지 않는다)
+    probe: function(cell, node, off){ var p = toReadSide(cell, node, off), k = sentFor(p.row, p.off); return {row: p.row, off: p.off, k: k, said: k >= 0 ? L.said[L.tl.sents[k][1] + ':' + L.tl.sents[k][2]] : null}; },
+    // 짝 문장 툴팁(app.py showTip)이 부른다 — 툴팁에 붙일 단추(듣기 막대가 닫혀 있으면 null)
+    tipButton: function(el){
+      if (!isOpen() || !el) return null;
+      var cell = el.closest('.anno-scope'); if (!cell) return null;
+      var b = document.createElement('button'); b.type = 'button'; b.className = 'st-play';
+      b.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path fill="currentColor" d="' + ICON.play + '"/></svg>';
+      b.appendChild(document.createTextNode(md4T('여기부터 재생')));
+      b.addEventListener('mousedown', function(e){ e.preventDefault(); e.stopPropagation(); });
+      b.addEventListener('click', function(e){
+        e.stopPropagation(); playFrom(cell, el, 0);
+        var t = document.getElementById('md-sent-tip'); if (t) t.classList.remove('open', 'act');
+      });
+      return b;
+    },
     setPaper: function(tok){ if (tok === L.tok) return; if (L.tok) close(); L.tok = tok; },
     toggle: toggle, open: open, playPause: pp
   };
