@@ -22,7 +22,7 @@ from narani import notes as notes_io
 from narani.ir import Flavor, GlossaryEntry
 from narani.ui import (
     agent_panel, annotations, desktop, figrefs, figure_crop, figure_ko, find_bar, formula_pop, jobs,
-    jump_back, live_preview, md_keys, split_view, mdrender, pdf_zoom, reanchor,
+    jump_back, listen, live_preview, md_keys, split_view, mdrender, pdf_zoom, reanchor,
     scroll_memory, sentpair, spa, tabstore, term_examples, translate_job, update_banner, wordcount_view,
 )
 from narani.ui.controller import UIController
@@ -3259,6 +3259,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     spa.add_body_html(f"<script>{agent_panel.init_js(tok)}</script>")  # 에이전트 창(셸에 붙음)에 지금 논문을 알린다
     spa.add_body_html(f"<script>{jump_back.init_js(tok)}</script>")  # 읽던 자리는 이 논문의 것 — 바뀌면 비운다
     spa.add_body_html(f"<script>{split_view.init_js(tok)}</script>")  # 두 뷰어도 논문마다 (창 안 기억)
+    spa.add_body_html(f"<script>{listen.init_js(tok)}</script>")  # 듣기도 논문마다 — 바뀌면 닫는다
 
     def push_cite_tips() -> None:
         """참고문헌을 (재)파싱한 뒤 클라이언트 툴팁 맵을 갱신한다."""
@@ -4355,6 +4356,11 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                     .tooltip(t("문장을 클릭하면 {side} 문장 보기 ({state})",
                                side=t("번역") if viewer_state["en"] else t("원문"),
                                state=t("켜짐") if viewer_state["stip"] else t("꺼짐")))
+            if not edit_state["on"] and any(shown_panels(has_ko, has_pdf)[:2]):  # 듣기 — 읽기 모드 본문에서
+                ui.button(icon="headphones", on_click=lambda: ui.run_javascript(
+                    f"window.{listen.LISTEN_API} && window.{listen.LISTEN_API}.toggle()")) \
+                    .props("flat dense round color=grey-7") \
+                    .tooltip(t("듣기 — 소리 내어 읽고 읽는 문장을 칠합니다 (Alt+Space 재생·멈춤, Alt+[ ] 섹션)"))
             ui.button(icon="sticky_note_2", on_click=lambda: ui.run_javascript(
                 "window.__mdAnnoTogglePanel && window.__mdAnnoTogglePanel()")) \
                 .props("flat dense round color=grey-7").classes("md4-anno-btn") \
@@ -6539,6 +6545,7 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
         workspace=lambda: state["upload_dir"])
     formula_pop.register_routes(fastapi_app, _wd_for)
     figure_ko.register_routes(fastapi_app, _wd_for)  # 그림 속 글자 번역 — /figko/{token}/{name}
+    listen.register_routes(fastapi_app, lambda tv: state["wd_by_token"].get(tv))  # 듣기 — /listen/{token}
     figure_crop.register_routes(fastapi_app, _wd_for)  # 그림 영역 다시 지정 — /figure/{token}/{name}  # 수식 원본 크롭·다시 생성 — /formula/{token}/{id}
     fastapi_app.add_static_files(CREPE_URL, CREPE_DIR)  # 메모 패널 위지윅 편집기 번들
 
@@ -6586,6 +6593,7 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
         # 읽던 자리 알약·위아래 두 뷰어도 하위 화면보다 먼저 — 첫 화면이 부르는 setPaper가 닿게
         jump_back.install()  # '읽던 자리로' 알약 — 본문을 옮기는 모든 길이 함께 쓴다
         split_view.install()  # 같은 논문을 위아래 두 뷰어로 (알약의 '같이 보기'·툴바 단추)
+        listen.install()  # 듣기 — 본문 아래 재생 막대 (웹 리더와 같은 읽을 목록·말하기 엔진)
         # w-full: 없으면 sub_pages 상자가 내용 폭으로 줄어(큰 화면에서 1275px) 변환·번역 탭 splitter가 좁아진다
         ui.sub_pages({"/": index_view, "/home": home_view, "/review": review_view}).classes("w-full")
         update_banner.install(state)  # 새 버전 알림 — 셸에 붙어 탭을 옮겨도 남는다

@@ -1446,5 +1446,20 @@
  "'{v}'에는 하위 컬렉션 {subs}에서 와서 보입니다 — 이 보기에서 빼려면 그 칸을 끄세요": "Shown in '{v}' because it is in subcollection {subs} — uncheck it to remove the paper from this view",
  "'{v}'에 직접 들지 않고 하위 컬렉션 '{sub}'에서 와서 보입니다": "Not directly in '{v}' — shown because it is in subcollection '{sub}'",
  "{n}편은 '{v}'에 직접 들지 않고 하위 컬렉션({subs})에서 와서 보입니다 — '이 컬렉션에서 빼기'는 그 하위 컬렉션에서 뺍니다": "Selected papers not directly in '{v}': {n} — they come from subcollections ({subs}), and 'Remove from this collection' removes them there",
- "이 보기에서 사라지도록 '{v}' 소속과 그 하위 컬렉션 소속을 모두 뗍니다 — 다른 컬렉션 소속은 그대로": "Removes membership in '{v}' and its subcollections so the papers leave this view — other collections stay as they are"
+ "이 보기에서 사라지도록 '{v}' 소속과 그 하위 컬렉션 소속을 모두 뗍니다 — 다른 컬렉션 소속은 그대로": "Removes membership in '{v}' and its subcollections so the papers leave this view — other collections stay as they are",
+ "듣기 — 소리 내어 읽고 읽는 문장을 칠합니다 (Alt+Space 재생·멈춤, Alt+[ ] 섹션)": "Listen — reads aloud and highlights the sentence being read (Alt+Space play/pause, Alt+[ ] sections)",
+ "듣기": "Listen",
+ "이전 섹션 (Alt+[)": "Previous section (Alt+[)",
+ "재생 · 일시정지 (Alt+Space)": "Play · pause (Alt+Space)",
+ "다음 섹션 (Alt+])": "Next section (Alt+])",
+ "읽을 쪽": "Side to read",
+ "컴퓨터 목소리": "Computer voice",
+ "읽을 목록을 만드는 중…": "Preparing the reading list…",
+ "읽을 목록을 받지 못했어요.": "Couldn't get the reading list.",
+ "본문이 바뀐 뒤의 옛 음성이에요 — 문장 칠하기가 어긋날 수 있어요": "This audio is from before the text changed — sentence highlighting may be off",
+ "이 화면은 컴퓨터 목소리(내장 음성)를 지원하지 않아요.": "This screen doesn't support the computer's built-in voice.",
+ "이 컴퓨터에 이 언어의 목소리가 없어요 — 시스템 설정의 손쉬운 사용 → 읽기 및 말하기에서 받을 수 있어요.": "This computer has no voice for this language — you can download one in System Settings → Accessibility → Spoken Content.",
+ "읽을 글이 없어요.": "Nothing to read.",
+ "만든 음성": "Made audio",
+ "재생을 시작하지 못했어요 — ▶를 다시 눌러 보세요.": "Couldn't start playback — try pressing ▶ again."
 }
