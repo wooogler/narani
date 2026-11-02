@@ -1076,7 +1076,7 @@ _ANNO_HTML = """
       '.sbs-grid.sbs-two .sbs-cell[data-row="' + row + '"], .sbs-grid.sbs-tip .sbs-cell[data-row="' + row + '"]'));
   }
   // hideTip = 보이는 툴팁만 내린다(누르는 순간 — 드래그 시작에도). closeTip = 짝 기억까지 지운다.
-  function hideTip(){ clearTimeout(stipTimer); stipTimer = null; stip.classList.remove('open'); }
+  function hideTip(){ clearTimeout(stipTimer); stipTimer = null; stip.classList.remove('open', 'act'); }
   function closeTip(){ hideTip(); tipPair = null; }
   // 클릭한 문장(el)의 짝을 숨은 셀에서 찾아 (x, y) 근처에 툴팁으로. 짝을 못 찾은 문장(solo)은
   // 띄우지 않는다. 실제로 띄웠을 때만 true.
@@ -1092,6 +1092,10 @@ _ANNO_HTML = """
     if (!txt) return false;
     stip.innerHTML = '<span class="st-side">' + (ghost.getAttribute('data-side') === 'ko' ? md4T('번역') : md4T('원문')) + '</span>';
     stip.appendChild(document.createTextNode(txt));
+    // 듣기 막대가 열려 있으면 '여기부터 재생' 단추 (§ui/listen.py) — 단추를 누를 수 있게 툴팁이 포인터를 받는다
+    var play = window.__mdListen && window.__mdListen.tipButton ? window.__mdListen.tipButton(el) : null;
+    stip.classList.toggle('act', !!play);
+    if (play){ stip.appendChild(document.createElement('br')); stip.appendChild(play); }
     // 문장 첫 줄 아래(자리가 없으면 위)에 — 문장이 여러 줄이면 클릭한 줄 기준
     var rs = el.getClientRects(), r = rs[0] || el.getBoundingClientRect();
     for (i = 0; i < rs.length; i++) if (y0 >= rs[i].top && y0 <= rs[i].bottom){ r = rs[i]; break; }
@@ -1166,6 +1170,7 @@ _ANNO_HTML = """
   }
   document.addEventListener('scroll', closeTip, true);
   document.addEventListener('mousedown', function(e){   // 짝 기억(tipPair)은 click에서 판정
+    if (stip.contains(e.target)) return;   // 툴팁 안 단추(듣기 '여기부터 재생')를 누르는 중
     hideTip();
     if (e.button !== 0) tipPair = null;   // 오른쪽 클릭 등은 click이 안 온다 — 여기서 잊는다
   }, true);

@@ -73,3 +73,12 @@ def test_rebuild_local_copy_from_section_cache(tmp_path):
     next(p for p in listen.audio_dir(wd.root).glob("*.m4a")).unlink()  # 섹션 하나가 빠지면
     assert not listen.rebuild_local(wd.root, rec) and listen.local_audio(wd.root) is None
     assert not listen.rebuild_local(wd.root, None)
+
+
+def test_play_from_clicked_sentence():
+    # 듣기 막대가 열려 있으면 — 짝 문장 툴팁 안 단추, 툴팁이 안 뜨면(두 칸·짝 없음) 클릭한 자리 옆 알약
+    assert 'id="mdl-here"' in listen.HTML and "tipButton" in listen.JS and "function playFrom" in listen.JS
+    assert "function isOpen()" in listen.JS and "if (!isOpen()" in listen.JS            # 닫혀 있으면 지금 동작 그대로
+    from narani.ui import app
+    assert "window.__mdListen.tipButton(el)" in app._ANNO_HTML
+    assert "if (stip.contains(e.target)) return;" in app._ANNO_HTML                       # 툴팁 안 단추를 누를 수 있게

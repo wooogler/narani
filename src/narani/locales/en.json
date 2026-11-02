@@ -1461,5 +1461,6 @@
  "이 컴퓨터에 이 언어의 목소리가 없어요 — 시스템 설정의 손쉬운 사용 → 읽기 및 말하기에서 받을 수 있어요.": "This computer has no voice for this language — you can download one in System Settings → Accessibility → Spoken Content.",
  "읽을 글이 없어요.": "Nothing to read.",
  "만든 음성": "Made audio",
- "재생을 시작하지 못했어요 — ▶를 다시 눌러 보세요.": "Couldn't start playback — try pressing ▶ again."
+ "재생을 시작하지 못했어요 — ▶를 다시 눌러 보세요.": "Couldn't start playback — try pressing ▶ again.",
+ "여기부터 재생": "Play from here"
 }
