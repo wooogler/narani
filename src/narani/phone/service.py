@@ -437,6 +437,10 @@ def prepare_math(root: Path, captions: bool = True) -> int:
 
 
 def remove_audio(roots: list[Path]) -> int:
+    from narani.ui import listen
+
+    for r in roots:   # 이 컴퓨터의 사본(데스크톱 뷰어의 듣기)도 함께
+        listen.drop_local(Path(r))
     store = gdrive.open_store()
     n = sync.remove_audio(store, [Path(r).stem for r in roots])
     _remember(sync.read_index(store), store)

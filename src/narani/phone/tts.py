@@ -233,13 +233,15 @@ def _sentences(chars: list[tuple[str, int]]) -> list[tuple[str, int, int]]:
     return out
 
 
-def plan(bundle: dict, captions: bool = False) -> tuple[str, list[Section]]:
+def plan(bundle: dict, captions: bool = False, side: str | None = None) -> tuple[str, list[Section]]:
     """번들 → (읽는 쪽 ko|en, 섹션들). 섹션 0은 제목과 초록(첫 섹션 제목 앞의 긴 문단들).
+
+    side를 주지 않으면 번역이 있으면 번역 쪽을 읽는다. 'en'이면 번역이 있어도 원문을(데스크톱 뷰어의 듣기).
 
     captions면 그림·표 설명("Figure 3: …")도 읽는다. 긴 수식은 표식(⟦M…⟧)으로 남는다 — apply_math가 바꾼다."""
     p = _Cells()
     p.feed(bundle["html"])
-    side = "ko" if bundle.get("has_ko") else "en"
+    side = "ko" if bundle.get("has_ko") and side != "en" else "en"
     secs: list[Section] = []
     cur: Section | None = None
     front = False
@@ -251,7 +253,7 @@ def plan(bundle: dict, captions: bool = False) -> tuple[str, list[Section]]:
         heads = [(t, s) for t, s in blocks if t.startswith("h")]
         if row == p.order[0] and heads:                         # 논문 제목
             text, s, e = heads[0][1][0]
-            cur = Section(title=bundle.get("title_ko") or bundle.get("title") or text, row=row,
+            cur = Section(title=(bundle.get("title_ko") if side == "ko" else None) or bundle.get("title") or text, row=row,
                           units=[Unit(row, s, e, text, head=True, end_of_block=True)])
             secs.append(cur)
             continue
@@ -499,13 +501,13 @@ SPEECH_FORMAT = 1
 
 
 def speech_plan(bundle: dict, terms: dict[str, str] | None = None, math: dict[str, str] | None = None,
-                captions: bool = True) -> dict:
+                captions: bool = True, side: str | None = None) -> dict:
     """번들 → 폰 브라우저 내장 음성(Web Speech)이 읽을 목록. 데스크톱 음성과 **같은 규칙**(plan·apply_math·
     apply_terms)으로 고른 글을 그대로 담아, 폰은 문장마다 말하기만 한다 — 규칙을 JS로 옮겨 갈라지지 않게.
 
     units: [행, s, e, 읽을 글, 쉼 종류(0 문장 · 1 문단 끝 · 2 제목)] — s·e는 음성 시간표와 같은 셀 안 위치.
     """
-    side, secs = plan(bundle, captions)
+    side, secs = plan(bundle, captions, side)
     secs = apply_terms(apply_math(secs, math), terms)
     return {"format": SPEECH_FORMAT, "key": bundle["key"], "src": bundle.get("hash", ""), "side": side,
             "lang": bundle.get("lang") if side == "ko" else "en",

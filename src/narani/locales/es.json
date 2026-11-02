@@ -1446,5 +1446,20 @@
  "'{v}'에는 하위 컬렉션 {subs}에서 와서 보입니다 — 이 보기에서 빼려면 그 칸을 끄세요": "Aparece en '{v}' porque está en la subcolección {subs} — desmárcala para quitar el artículo de esta vista",
  "'{v}'에 직접 들지 않고 하위 컬렉션 '{sub}'에서 와서 보입니다": "No está directamente en '{v}' — aparece porque está en la subcolección '{sub}'",
  "{n}편은 '{v}'에 직접 들지 않고 하위 컬렉션({subs})에서 와서 보입니다 — '이 컬렉션에서 빼기'는 그 하위 컬렉션에서 뺍니다": "{n} no están directamente en '{v}', sino que vienen de subcolecciones ({subs}) — 'Quitar de esta colección' los quita de esas subcolecciones",
- "이 보기에서 사라지도록 '{v}' 소속과 그 하위 컬렉션 소속을 모두 뗍니다 — 다른 컬렉션 소속은 그대로": "Quita la pertenencia a '{v}' y a sus subcolecciones para que los artículos salgan de esta vista — las demás colecciones no cambian"
+ "이 보기에서 사라지도록 '{v}' 소속과 그 하위 컬렉션 소속을 모두 뗍니다 — 다른 컬렉션 소속은 그대로": "Quita la pertenencia a '{v}' y a sus subcolecciones para que los artículos salgan de esta vista — las demás colecciones no cambian",
+ "듣기 — 소리 내어 읽고 읽는 문장을 칠합니다 (Alt+Space 재생·멈춤, Alt+[ ] 섹션)": "Escuchar — lee en voz alta y resalta la frase que se está leyendo (Alt+Espacio reproducir/pausa, Alt+[ ] secciones)",
+ "듣기": "Escuchar",
+ "이전 섹션 (Alt+[)": "Sección anterior (Alt+[)",
+ "재생 · 일시정지 (Alt+Space)": "Reproducir · pausa (Alt+Espacio)",
+ "다음 섹션 (Alt+])": "Sección siguiente (Alt+])",
+ "읽을 쪽": "Lado que leer",
+ "컴퓨터 목소리": "Voz del ordenador",
+ "읽을 목록을 만드는 중…": "Preparando la lista de lectura…",
+ "읽을 목록을 받지 못했어요.": "No se pudo obtener la lista de lectura.",
+ "본문이 바뀐 뒤의 옛 음성이에요 — 문장 칠하기가 어긋날 수 있어요": "Este audio es de antes de que cambiara el texto — el resaltado de frases puede desajustarse",
+ "이 화면은 컴퓨터 목소리(내장 음성)를 지원하지 않아요.": "Esta pantalla no admite la voz integrada del ordenador.",
+ "이 컴퓨터에 이 언어의 목소리가 없어요 — 시스템 설정의 손쉬운 사용 → 읽기 및 말하기에서 받을 수 있어요.": "Este ordenador no tiene una voz para este idioma — puedes descargarla en Ajustes del Sistema → Accesibilidad → Contenido leído.",
+ "읽을 글이 없어요.": "No hay nada que leer.",
+ "만든 음성": "Audio creado",
+ "재생을 시작하지 못했어요 — ▶를 다시 눌러 보세요.": "No se pudo iniciar la reproducción — prueba a pulsar ▶ otra vez."
 }

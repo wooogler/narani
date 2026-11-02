@@ -25,7 +25,7 @@ from pathlib import Path
 
 from narani import i18n
 from narani.phone import pages
-from narani.ui import mobile, sentpair
+from narani.ui import listen, mobile, sentpair
 
 APP_NAME = "Narani"
 
@@ -2316,123 +2316,15 @@ _AUDIO_JS = r"""
   // 시각은 글자 수로 어림한 것이라 ±15초는 대략 그 근처 문장으로 간다. iOS·Android 모두 화면이 꺼지거나 앱을
   // 떠나면 멈추고, 잠금 화면·CarPlay 단추는 듣지 않는다. iOS는 긴 말을 중간에 끊고 pause/resume이 어긋나서 —
   // 문장 하나씩 말하고, 멈춤은 cancel, 이어 듣기는 그 문장 처음부터.
-  var SS = window.speechSynthesis || null;
-  var WCPS = {ko: 7.4, ja: 8, zh: 5.5};   // 1배속 초당 글자 수 어림(그 밖은 14) — 막대·남은 시간에만
-  var WGAP = [0.25, 0.6, 0.9];            // 쉼(초): 문장 · 문단 끝 · 제목 (§tts.GAP)
+""" + listen.ENGINE_JS + r"""
   function speechOf(e){ return e && e.speech && e.speech.file ? e.speech : null; }
-  function langBase(l){ return String(l || 'en').toLowerCase().replace('_', '-').split('-')[0]; }
-  function webTl(plan){   // 읽을 목록 → 음성 시간표와 같은 꼴 (+ durs: 문장마다 어림 길이)
-    var cps = WCPS[langBase(plan.lang)] || 14, t = 0, k = 0, sents = [], durs = [], sections = [];
-    plan.sections.forEach(function(sec){
-      var start = t;
-      for (var j = 0; j < sec.n; j++, k++){
-        var u = plan.units[k], d = Math.max(0.6, u[3].length / cps);
-        sents.push([Math.round(t * 100) / 100, u[0], u[1], u[2]]); durs.push(d);
-        t += d + WGAP[u[4]] ;
-      }
-      sections.push({title: sec.title, row: sec.row, start: Math.round(start * 100) / 100, end: Math.round(t * 100) / 100});
-    });
-    return {side: plan.side, lang: plan.lang, duration: Math.round(t * 100) / 100, sections: sections, sents: sents, durs: durs, web: true};
-  }
-  function webVoices(lang){
-    if (!SS) return [];
-    var b = langBase(lang);
-    return SS.getVoices().filter(function(v){ return langBase(v.lang) === b; });
-  }
   function webVoice(lang){   // 고른 목소리 — 처음이면 좋은 것(Premium·Enhanced·기본) 먼저
     var vs = webVoices(lang), name = lsGet('narani:wvoice:' + langBase(lang), '');
     for (var i = 0; i < vs.length; i++) if (vs[i].name === name) return vs[i];
     var rank = function(v){ return /premium|enhanced|natural|neural/i.test(v.name) ? 0 : (v.default ? 1 : (v.localService ? 2 : 3)); };
     return vs.slice().sort(function(a, b){ return rank(a) - rank(b); })[0] || null;
   }
-  function SpeechAudio(){
-    var me = this, et = doc.createElement('span'), P = null, tl = null, i = 0, pos = 0, began = 0, tok = 0, tick = null, wait = null;
-    function fire(t){ et.dispatchEvent(new Event(t)); }
-    me.addEventListener = function(t, f, o){ et.addEventListener(t, f, o); };
-    me.removeEventListener = function(t, f, o){ et.removeEventListener(t, f, o); };
-    me.src = ''; me.paused = true; me.playbackRate = me.defaultPlaybackRate = 1; me.duration = 0; me.unlocked = false;
-    me.load = function(){}; me.removeAttribute = function(){};
-    me.setPlan = function(plan, t){ me.pause(); P = plan; tl = t; i = 0; pos = 0; me.duration = t.duration; };
-    function idxAt(t){
-      var S = tl.sents, lo = 0, hi = S.length - 1;
-      while (lo < hi){ var m = (lo + hi + 1) >> 1; if (S[m][0] <= t + 0.05) lo = m; else hi = m - 1; }
-      return lo;
-    }
-    Object.defineProperty(me, 'currentTime', {
-      get: function(){
-        if (!tl) return 0;
-        if (me.paused || !began) return pos;
-        return tl.sents[i][0] + Math.min((Date.now() - began) / 1000 * me.playbackRate, tl.durs[i] * 0.95);
-      },
-      set: function(t){
-        if (!tl) return;
-        var was = i, now = me.currentTime;
-        i = idxAt(Math.max(0, Math.min(tl.duration, t || 0)));
-        if (i === was && t > now + 1 && i < tl.sents.length - 1) i++;   // 긴 문장 안에서 앞으로(+15초) — 다음 문장으로
-        pos = tl.sents[i][0];   // 문장 처음으로
-        if (!me.paused) speak();
-        fire('seeked'); fire('timeupdate');
-      }
-    });
-    me.unlock = function(){   // iOS: 처음 말하기는 손가락 누르기 안에서 — 빈 말 한 번으로 길을 연다
-      if (!SS || me.unlocked) return;
-      me.unlocked = true;
-      try { var u = new SpeechSynthesisUtterance(' '); u.volume = 0; SS.speak(u); } catch (x) {}
-    };
-    function stopTick(){ if (tick){ clearInterval(tick); tick = null; } }
-    function speak(){
-      clearTimeout(wait);
-      var my = ++tok, u = P && P.units[i];
-      if (!u){ finish(); return; }
-      began = Date.now(); pos = tl.sents[i][0];
-      // 말하는 중에 끊고 곧바로 새로 말하면 Chrome이 새 말을 삼킨다 — 끊은 뒤 잠깐 두고 말한다
-      if (SS.speaking || SS.pending){ try { SS.cancel(); } catch (x) {} wait = setTimeout(function(){ if (my === tok && !me.paused) say(my, u); }, 120); }
-      else say(my, u);
-    }
-    function say(my, u){
-      var ut = new SpeechSynthesisUtterance(u[3]), v = webVoice(P.lang);
-      ut.lang = v ? v.lang : P.lang; if (v) ut.voice = v;
-      ut.rate = Math.max(0.5, Math.min(2, me.playbackRate));
-      ut.onend = function(){ if (my === tok) next(); };
-      ut.onerror = function(ev){ if (my === tok && ev.error !== 'interrupted' && ev.error !== 'canceled') next(); };
-      began = Date.now();
-      SS.speak(ut);
-      // onend가 안 오는 때(iOS가 말을 삼킬 때) — 어림 길이의 두 배가 지나도 조용하면 다음 문장으로
-      var guard = (tl.durs[i] / me.playbackRate * 2 + 4) * 1000;
-      setTimeout(function(){ if (my === tok && !me.paused && !SS.speaking && !SS.pending) next(); }, guard);
-    }
-    function next(){
-      var u = P.units[i], gap = WGAP[u ? u[4] : 0] / me.playbackRate;
-      tok++; i++; began = 0;
-      if (i >= P.units.length){ finish(); return; }
-      pos = tl.sents[i][0];
-      var my = tok;
-      wait = setTimeout(function(){ if (my === tok && !me.paused) speak(); }, gap * 1000);
-    }
-    function finish(){
-      tok++; stopTick(); me.paused = true; began = 0; i = Math.max(0, tl.sents.length - 1); pos = tl.duration;
-      fire('pause'); fire('ended');
-    }
-    me.play = function(){
-      if (!SS || !P) return Promise.reject(new Error('no speech'));
-      me.unlock();
-      if (!me.paused) return Promise.resolve();
-      if (pos >= tl.duration - 0.05){ i = 0; pos = 0; }
-      me.paused = false;
-      speak();
-      stopTick(); tick = setInterval(function(){ fire('timeupdate'); }, 250);
-      fire('play');
-      return Promise.resolve();
-    };
-    me.pause = function(){
-      if (me.paused) return;
-      pos = me.currentTime; tok++; clearTimeout(wait); stopTick(); began = 0; me.paused = true;
-      try { SS.cancel(); } catch (x) {}
-      pos = tl.sents[i][0];   // 다시 ▶하면 그 문장 처음부터
-      fire('pause');
-    };
-  }
-  var SA = new SpeechAudio();
+  var SA = new SpeechAudio(webVoice);
   if (SS && SS.addEventListener) SS.addEventListener('voiceschanged', function(){});   // 목소리 목록을 미리 채워 둔다
   if (SS) try { SS.getVoices(); } catch (x) {}
   // 처음 말하기는 누르기 안에서만 된다(iOS) — 내장 음성 논문을 연 동안의 첫 누르기에서 길을 연다
@@ -2747,16 +2639,6 @@ _AUDIO_JS = r"""
   onAu('ended', function(){ savePos(); });
 
   // ---- 지금 문장 칠하기 (CSS Custom Highlight — DOM을 바꾸지 않는다; 없으면 행째로) ----
-  function cellRange(cell, s, e){
-    var w = doc.createTreeWalker(cell, NodeFilter.SHOW_TEXT), n, pos = 0, r = doc.createRange(), started = false;
-    while ((n = w.nextNode())){
-      var len = n.data.length;
-      if (!started && s < pos + len){ r.setStart(n, s - pos); started = true; }
-      if (started && e <= pos + len){ r.setEnd(n, e - pos); return r; }
-      pos += len;
-    }
-    return started ? (r.setEnd(cell, cell.childNodes.length), r) : null;
-  }
   var nowRow = null, hlCell = null;
   function unmarkNow(){
     if (HL) try { CSS.highlights.delete('tts'); } catch (x) {}

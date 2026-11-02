@@ -246,6 +246,7 @@ def push_audio(store: Store, jobs: list[tuple[Path, object, list[int] | None]],
     on_progress(논문 순번, 논문 수, 만든 문장, 만들 문장, 섹션 제목). 반환: {made, seconds, bytes, missing}.
     """
     from narani.phone import tts
+    from narani.ui import listen
     from narani.workdir import WorkDir
 
     index = read_index(store)
@@ -267,6 +268,7 @@ def push_audio(store: Store, jobs: list[tuple[Path, object, list[int] | None]],
         data, tl = tts.build(b, engine, WorkDir(root).root / "audio", include, prog, terms=tts.load_terms(root),
                              captions=captions, math=tts.load_math(root) if math else None)
         a_name, t_name = audio_names(root.stem)
+        listen.keep_local(root, data, tl)   # 데스크톱 뷰어의 '듣기'도 이 음성을 쓴다
         store.write(a_name, data, "audio/mp4")
         store.write(t_name, bmod.dumps(tl))
         e["audio"] = {"file": a_name, "tl": t_name, "hash": hashlib.sha256(data).hexdigest()[:16],
