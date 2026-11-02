@@ -51,3 +51,25 @@ def test_viewer_has_listen_bar_and_shortcuts():
     assert 'id="md-listen"' in listen.HTML and 'id="mdl-au"' in listen.HTML
     assert "e.code === 'Space'" in listen.JS and "BracketRight" in listen.JS
     assert listen.init_js("abc") == 'window.__mdListen&&window.__mdListen.setPaper("abc");'
+
+
+def test_rebuild_local_copy_from_section_cache(tmp_path):
+    """사본을 남기기 전에 만든 음성 — 섹션 캐시로 다시 잇는다(목소리를 다시 돌리지 않고). 빠진 섹션이 있으면 못 잇는다."""
+    from narani.phone import bundle, tts
+    from tests.test_phone_tts import FakeVoice
+
+    if not tts.codec_available():
+        pytest.skip("m4a 인코더(afconvert·PyAV) 필요")
+    wd = _wd(tmp_path, "bots")
+    _, made = tts.build(bundle.build_paper(wd.root), FakeVoice(), listen.audio_dir(wd.root))
+    rec = {"voice": "fake:test", "include": None, "captions": False, "math": False}
+    assert listen.local_audio(wd.root) is None
+    got = listen.info(wd.root, made["side"])
+    assert got["audio"] is None                                     # 웹 리더 기록이 없으면 그대로
+    assert listen.rebuild_local(wd.root, rec)
+    m4a, tl = listen.local_audio(wd.root)
+    assert m4a.read_bytes()[4:8] == b"ftyp" and tl["sents"] == made["sents"] and tl["voice"] == "fake:test"
+    listen.drop_local(wd.root)
+    next(p for p in listen.audio_dir(wd.root).glob("*.m4a")).unlink()  # 섹션 하나가 빠지면
+    assert not listen.rebuild_local(wd.root, rec) and listen.local_audio(wd.root) is None
+    assert not listen.rebuild_local(wd.root, None)

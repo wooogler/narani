@@ -56,6 +56,50 @@ def local_audio(root: Path) -> tuple[Path, dict] | None:
     return (m4a, tl) if isinstance(tl, dict) and m4a.is_file() else None
 
 
+class _CachedVoice:
+    """섹션 캐시만으로 잇는 엔진 자리 — 이름(id)과 쉼(gaps)이 섹션 키에 들어가므로 만들 때와 같아야 한다.
+    새로 말해야 할 섹션이 하나라도 있으면 실패한다(잇기만 하고 목소리를 다시 돌리지 않는다)."""
+
+    def __init__(self, voice: str) -> None:
+        from narani.phone import tts
+
+        self.id = voice
+        self.gaps = tts.GeminiVoice.gaps if voice.startswith("gemini:") else tts.GAP
+
+    def synth(self, texts, tick):  # noqa: ANN001, ANN201
+        raise LookupError("섹션 캐시에 없는 섹션")
+
+
+def rebuild_local(root: Path, rec: dict | None) -> bool:
+    """이 컴퓨터 사본이 없을 때 — 웹 리더용으로 만든 음성을 섹션 캐시(audio/<키>.m4a)로 다시 잇는다.
+
+    사본을 남기기 전에 만든 음성(Drive에만 완성본)도 Qwen·Gemini를 다시 돌리지 않고 뷰어에서 듣게.
+    rec은 그 음성의 기록(목소리·넣은 섹션·캡션·수식) — 만들 때와 같은 설정으로 이어야 같은 키가 나온다.
+    본문이 그 뒤에 바뀌어 캐시에 없는 섹션이 있으면 False(앱을 켤 때 무료 음성은 다시 만들어지며 사본도 생긴다)."""
+    from narani.phone import bundle as bmod
+    from narani.phone import tts
+
+    voice = str((rec or {}).get("voice") or "")
+    if not voice:
+        return False
+    root = Path(root)
+    try:
+        data, tl = tts.build(bmod.build_paper(root, bmod.content_hash(root)), _CachedVoice(voice), audio_dir(root),
+                             rec.get("include"), terms=tts.load_terms(root), captions=bool(rec.get("captions")),
+                             math=tts.load_math(root) if rec.get("math") else None)
+    except (LookupError, ValueError, OSError):
+        return False
+    keep_local(root, data, tl)
+    return True
+
+
+def _mobile_audio_record(root: Path) -> dict | None:
+    from narani.phone import service
+
+    e = service.load_cache()["papers"].get(Path(root).stem) or {}
+    return e.get("audio") if isinstance(e, dict) else None
+
+
 def speech_plan(root: Path, side: str | None = None) -> dict:
     """이 논문의 읽을 목록(§tts.speech_plan) — 본문·용어집·수식 읽는 말이 그대로면 저장해 둔 것을 쓴다."""
     from narani.phone import bundle as bmod
@@ -90,6 +134,8 @@ def info(root: Path, side: str | None = None) -> dict:
     plan = speech_plan(root, side)
     out: dict = {"side": plan["side"], "has_ko": has_ko, "plan": plan, "audio": None}
     got = local_audio(root)
+    if got is None and rebuild_local(root, _mobile_audio_record(root)):
+        got = local_audio(root)
     if got and got[1].get("side") == plan["side"]:
         m4a, tl = got
         out["audio"] = {"tl": tl, "stale": tl.get("src") != bmod.content_hash(root),
