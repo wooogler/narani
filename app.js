@@ -603,6 +603,7 @@
           return api(GAPI + '/files/' + m[name], {method: 'DELETE'}).then(function(){ delete ids[name]; });
         });
       },
+      idOf: function(name){ return (ids && ids[name]) || null; },   // 데스크톱에서 만든 공유 링크도 알아보게
       // 공유 — 링크가 있는 사람 누구나 보기(검색·목록에는 안 뜬다). drive.file 권한으로 앱이 만든 파일에만 된다
       makePublic: function(fileId){
         return api(GAPI + '/files/' + fileId + '/permissions', {method: 'POST', headers: {'Content-Type': 'application/json'},
@@ -1952,6 +1953,8 @@
   function shareSheet(){
     if (!cur || !NOTE.fid) return;
     var e = entryOf(NOTE.fid), key = NOTE.key, name = 'share/' + NOTE.fid + '.json', have = shares()[key];
+    var known = !have && source.idOf && source.idOf(name);
+    if (known) have = {id: known, link: shareLink(known)};
     if (!e) return;
     var nodes = [para(md4T('링크를 받은 사람만 볼 수 있어요 — 검색되거나 공개 목록에 오르지 않아요. 번역·원문·내 하이라이트·메모(고른 메모 탭)가 담기고, 받는 사람은 로그인 없이 읽기 전용으로 열어요.')),
                  para(md4T('원문의 저작권은 저자·출판사에 있어요. 필요한 사람에게만 보내 주세요.'), 'more')];
@@ -2275,10 +2278,11 @@
   // 시각은 글자 수로 어림한 것이라 ±15초는 대략 그 근처 문장으로 간다. iOS·Android 모두 화면이 꺼지거나 앱을
   // 떠나면 멈추고, 잠금 화면·CarPlay 단추는 듣지 않는다. iOS는 긴 말을 중간에 끊고 pause/resume이 어긋나서 —
   // 문장 하나씩 말하고, 멈춤은 cancel, 이어 듣기는 그 문장 처음부터.
+
+  // ---- 말하기 엔진 (§ui/listen.py ENGINE_JS) — 웹 리더·데스크톱 뷰어 공통 ----
   var SS = window.speechSynthesis || null;
   var WCPS = {ko: 7.4, ja: 8, zh: 5.5};   // 1배속 초당 글자 수 어림(그 밖은 14) — 막대·남은 시간에만
   var WGAP = [0.25, 0.6, 0.9];            // 쉼(초): 문장 · 문단 끝 · 제목 (§tts.GAP)
-  function speechOf(e){ return e && e.speech && e.speech.file ? e.speech : null; }
   function langBase(l){ return String(l || 'en').toLowerCase().replace('_', '-').split('-')[0]; }
   function webTl(plan){   // 읽을 목록 → 음성 시간표와 같은 꼴 (+ durs: 문장마다 어림 길이)
     var cps = WCPS[langBase(plan.lang)] || 14, t = 0, k = 0, sents = [], durs = [], sections = [];
@@ -2298,14 +2302,8 @@
     var b = langBase(lang);
     return SS.getVoices().filter(function(v){ return langBase(v.lang) === b; });
   }
-  function webVoice(lang){   // 고른 목소리 — 처음이면 좋은 것(Premium·Enhanced·기본) 먼저
-    var vs = webVoices(lang), name = lsGet('narani:wvoice:' + langBase(lang), '');
-    for (var i = 0; i < vs.length; i++) if (vs[i].name === name) return vs[i];
-    var rank = function(v){ return /premium|enhanced|natural|neural/i.test(v.name) ? 0 : (v.default ? 1 : (v.localService ? 2 : 3)); };
-    return vs.slice().sort(function(a, b){ return rank(a) - rank(b); })[0] || null;
-  }
-  function SpeechAudio(){
-    var me = this, et = doc.createElement('span'), P = null, tl = null, i = 0, pos = 0, began = 0, tok = 0, tick = null, wait = null;
+  function SpeechAudio(pickVoice){
+    var me = this, et = document.createElement('span'), P = null, tl = null, i = 0, pos = 0, began = 0, tok = 0, tick = null, wait = null;
     function fire(t){ et.dispatchEvent(new Event(t)); }
     me.addEventListener = function(t, f, o){ et.addEventListener(t, f, o); };
     me.removeEventListener = function(t, f, o){ et.removeEventListener(t, f, o); };
@@ -2349,7 +2347,7 @@
       else say(my, u);
     }
     function say(my, u){
-      var ut = new SpeechSynthesisUtterance(u[3]), v = webVoice(P.lang);
+      var ut = new SpeechSynthesisUtterance(u[3]), v = pickVoice(P.lang);
       ut.lang = v ? v.lang : P.lang; if (v) ut.voice = v;
       ut.rate = Math.max(0.5, Math.min(2, me.playbackRate));
       ut.onend = function(){ if (my === tok) next(); };
@@ -2391,7 +2389,25 @@
       fire('pause');
     };
   }
-  var SA = new SpeechAudio();
+  function cellRange(cell, s, e){
+    var w = document.createTreeWalker(cell, NodeFilter.SHOW_TEXT), n, pos = 0, r = document.createRange(), started = false;
+    while ((n = w.nextNode())){
+      var len = n.data.length;
+      if (!started && s < pos + len){ r.setStart(n, s - pos); started = true; }
+      if (started && e <= pos + len){ r.setEnd(n, e - pos); return r; }
+      pos += len;
+    }
+    return started ? (r.setEnd(cell, cell.childNodes.length), r) : null;
+  }
+
+  function speechOf(e){ return e && e.speech && e.speech.file ? e.speech : null; }
+  function webVoice(lang){   // 고른 목소리 — 처음이면 좋은 것(Premium·Enhanced·기본) 먼저
+    var vs = webVoices(lang), name = lsGet('narani:wvoice:' + langBase(lang), '');
+    for (var i = 0; i < vs.length; i++) if (vs[i].name === name) return vs[i];
+    var rank = function(v){ return /premium|enhanced|natural|neural/i.test(v.name) ? 0 : (v.default ? 1 : (v.localService ? 2 : 3)); };
+    return vs.slice().sort(function(a, b){ return rank(a) - rank(b); })[0] || null;
+  }
+  var SA = new SpeechAudio(webVoice);
   if (SS && SS.addEventListener) SS.addEventListener('voiceschanged', function(){});   // 목소리 목록을 미리 채워 둔다
   if (SS) try { SS.getVoices(); } catch (x) {}
   // 처음 말하기는 누르기 안에서만 된다(iOS) — 내장 음성 논문을 연 동안의 첫 누르기에서 길을 연다
@@ -2706,16 +2722,6 @@
   onAu('ended', function(){ savePos(); });
 
   // ---- 지금 문장 칠하기 (CSS Custom Highlight — DOM을 바꾸지 않는다; 없으면 행째로) ----
-  function cellRange(cell, s, e){
-    var w = doc.createTreeWalker(cell, NodeFilter.SHOW_TEXT), n, pos = 0, r = doc.createRange(), started = false;
-    while ((n = w.nextNode())){
-      var len = n.data.length;
-      if (!started && s < pos + len){ r.setStart(n, s - pos); started = true; }
-      if (started && e <= pos + len){ r.setEnd(n, e - pos); return r; }
-      pos += len;
-    }
-    return started ? (r.setEnd(cell, cell.childNodes.length), r) : null;
-  }
   var nowRow = null, hlCell = null;
   function unmarkNow(){
     if (HL) try { CSS.highlights.delete('tts'); } catch (x) {}
