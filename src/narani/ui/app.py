@@ -23,7 +23,7 @@ from narani.ir import Flavor, GlossaryEntry
 from narani.ui import (
     agent_panel, annotations, desktop, figrefs, figure_crop, figure_ko, find_bar, formula_pop, jobs,
     jump_back, listen, live_preview, md_keys, split_view, mdrender, pdf_zoom, reanchor,
-    scroll_memory, sentpair, spa, tabstore, term_examples, translate_job, update_banner, wordcount_view,
+    scroll_memory, sentpair, spa, sticky_head, tabstore, term_examples, translate_job, update_banner, wordcount_view,
 )
 from narani.ui.controller import UIController
 from narani.workdir import WorkDir, left_panel, paper_title, set_left_panel, set_project
@@ -4209,6 +4209,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             else:
                 text_area(solo=True)
         ui.run_javascript("window.__mdAnnoApply && window.__mdAnnoApply()")  # 하이라이트 다시 얹기
+        ui.run_javascript(sticky_head.refresh_js())  # 지금 섹션 띠 — 복원된 자리에서도 스크롤 전에 맞춘다
         # 번역 언어 — 그림 글자를 그릴 수 없는 언어(이어 쓰는 문자)면 확대 뷰어의 '그림 속 글자 번역' 단추를 숨긴다
         from narani import figure_translate
 
@@ -6725,6 +6726,7 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
             if desktop.active() else None)
         # 읽던 자리 알약·위아래 두 뷰어도 하위 화면보다 먼저 — 첫 화면이 부르는 setPaper가 닿게
         jump_back.install()  # '읽던 자리로' 알약 — 본문을 옮기는 모든 길이 함께 쓴다
+        sticky_head.install()  # 내려 읽을 때 지금 섹션 제목(경로) 띠 — 그리드마다 위에 붙는다
         split_view.install()  # 같은 논문을 위아래 두 뷰어로 (알약의 '같이 보기'·툴바 단추)
         listen.install()  # 듣기 — 본문 아래 재생 막대 (웹 리더와 같은 읽을 목록·말하기 엔진)
         # w-full: 없으면 sub_pages 상자가 내용 폭으로 줄어(큰 화면에서 1275px) 변환·번역 탭 splitter가 좁아진다
