@@ -1489,5 +1489,14 @@
  "이 논문을 두고 나눈 대화가 따로 있습니다: {t}": "There is a separate conversation about this paper: {t}",
  "이 컬렉션을 두고 나눈 대화가 따로 있습니다: {t}": "There is a separate conversation about this collection: {t}",
  "그 대화로": "Go to it",
- "이전 대화로": "Back to previous"
+ "이전 대화로": "Back to previous",
+ "서지": "Info",
+ "레일에서 숨긴 탭 — 지금 열려 있어 잠깐 보입니다": "Hidden from the rail — shown for now because it is open",
+ "레일 탭 — 보이기·순서": "Rail tabs — show & order",
+ "탭은 적어도 하나는 남겨야 합니다": "Keep at least one tab",
+ "레일 탭 보이기·순서 바꾸기": "Show or reorder rail tabs",
+ "메모 패널의 하이라이트 목록에서 이 항목 보기": "Show this item in the highlight list in the Notes panel",
+ "목록": "List",
+ "첫 섹션 앞": "Before the first section",
+ "하이라이트": "Highlights"
 }

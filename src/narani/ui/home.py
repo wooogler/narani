@@ -48,7 +48,7 @@ from narani.ui import (
     listen, scroll_memory, settings_dialog, setup_wizard, spa, split_view, translate_job, update_banner,
 )
 from narani.ui import meta_card
-# 서지 칸 글자·소속 규칙은 뷰어 ⓘ 팝오버와 같이 쓰려고 meta_card로 옮겼다 — 테스트·옛 호출자는 여기서 가져간다
+# 서지 칸 글자·소속 규칙은 뷰어 서지 패널와 같이 쓰려고 meta_card로 옮겼다 — 테스트·옛 호출자는 여기서 가져간다
 from narani.ui.meta_card import field_text, parse_field  # noqa: F401
 from narani.ui.meta_card import same_base as _same_base  # noqa: F401
 from narani.ui.meta_card import via_subs as _via_subs
@@ -563,7 +563,7 @@ def build_home(state: dict) -> None:
 
     spa.add_css(_CHROME_CSS)  # 헤더 탭 줄 + .md4-body 틀 + 사이드바 색 토큰
     spa.add_css(HOME_CSS)
-    spa.add_css(meta_card.CSS)  # 미리보기 서지 칸·태그 (뷰어 ⓘ 팝오버와 같은 스타일)
+    spa.add_css(meta_card.CSS)  # 미리보기 서지 칸·태그 (뷰어 서지 패널와 같은 스타일)
     spa.add_css(settings_dialog.CSS)
     spa.add_css(setup_wizard.CSS)
     spa.add_body_html(_EXTLINK_HTML)  # 바깥 링크는 새 창(앱 창이면 시스템 브라우저)으로
@@ -573,11 +573,9 @@ def build_home(state: dict) -> None:
     spa.add_body_html(f"<script>{jump_back.init_js(None)}</script>")  # 논문의 읽던 자리는 홈에서 비운다
     spa.add_body_html(f"<script>{split_view.init_js(None)}</script>")  # 두 뷰어도 홈에서는 닫는다
     spa.add_body_html(f"<script>{listen.init_js(None)}</script>")  # 듣기도 홈에서는 닫는다
-    # 논문 화면에서 열어 둔 서랍·툴팁(본문 밖 오버레이라 화면을 갈아 끼워도 남는다)은 홈에서 닫는다
+    # 논문 화면에서 띄운 툴팁(본문 밖 오버레이라 화면을 갈아 끼워도 남는다)은 홈에서 닫는다
     # (에이전트 창은 닫지 않는다 — 논문을 가로지르는 대화라 홈에서도 이어 쓴다)
-    ui.run_javascript("document.querySelectorAll('#md-anno-panel.open')"
-                      ".forEach(function(e){ e.classList.remove('open'); });"
-                      "var t = document.getElementById('md-cite-tip'); if (t) t.style.opacity = '0';"
+    ui.run_javascript("var t = document.getElementById('md-cite-tip'); if (t) t.style.opacity = '0';"
                       "document.documentElement.classList.remove('md4-filedrag');")
     # 홈도 탭 하나다 — 맨 앞 '홈' 탭이 활성, 연 논문 탭들과 '+'(논문 골라 열기)가 그대로 보인다
     with spa.header():
@@ -2294,7 +2292,7 @@ def build_home(state: dict) -> None:
         with box:
             ui.element("img").props(f'src="/wdthumb/{wd_token(Path(root))}?v={ver}" alt="" draggable=false')
 
-    # ----- 미리보기에서 서지·초록 고치기 — 칸·저장·다시 받기·이름 바꾸기는 뷰어 ⓘ 팝오버와 같은 meta_card -----
+    # ----- 미리보기에서 서지·초록 고치기 — 칸·저장·다시 받기·이름 바꾸기는 뷰어 서지 패널와 같은 meta_card -----
     def update_card(r: dict) -> None:
         """목록 카드의 제목·서지 줄만 고친다 (목록을 다시 그리지 않는다)."""
         refs = card_refs.get(str(r["root"]))
@@ -2433,7 +2431,7 @@ def build_home(state: dict) -> None:
                     .on("click", show_bulk)
             thumb = ui.element("div").classes("md4-pv-thumb")
             load_into(thumb, root, "thumb", "", draw_thumb, lambda: ui.skeleton("rect"))
-            # 서지 — 칸마다 눌러서 바로 고친다(§meta_card — 뷰어 ⓘ 팝오버와 같은 칸·같은 저장).
+            # 서지 — 칸마다 눌러서 바로 고친다(§meta_card — 뷰어 서지 패널와 같은 칸·같은 저장).
             card = pv["card"] = card_for(r)
             vals = meta_card.values(wd)
             card.fields(vals)

@@ -92,6 +92,10 @@ def test_ui_server_renders(tmp_path):
 
     wd = WorkDir(tmp_path / "paper.md4")
     pipeline.convert(CORPUS / "sample_arxiv.md", wd)
+    # 서지 탭이 열린 채로 — 서지 카드는 그 탭이 열려 있을 때만 짓는다(§app.py 서지 패널)
+    from narani.workdir import set_left_panel
+
+    set_left_panel(wd.root, "info")
     # 리뷰는 이제 워크디렉토리를 URL 쿼리에 담는다 (브라우저 뒤로가기 지원)
     body = _serve_and_get(
         ["--upload-dir", str(tmp_path)], _free_port(),
@@ -110,10 +114,15 @@ def test_ui_server_renders(tmp_path):
     assert "레이아웃 자동 수정" in body
     assert "추가 지시 (선택)" in body
     assert "직전 상태로 되돌리기" in body
-    # 헤더 ⓘ 서지 카드 — 홈 미리보기와 같은 칸(§meta_card)
-    assert "md4-infobtn" in body and "md4-info-body" in body
-    assert "서지 정보 — 제목·저자·연도·DOI·컬렉션·초록" in body
+    # 왼쪽 레일 '서지' 탭 — 홈 미리보기와 같은 칸(§meta_card). 헤더 ⓘ 팝오버는 없앴다.
+    assert "md4-infobtn" not in body and "md4-info-body" in body
+    assert '"서지"' in body and "서지 정보 — 제목·저자·연도·DOI·컬렉션·초록" in body
     assert "md4-pv-kv" in body and "온라인에서 다시 찾기" in body
+    # 메모 패널 맨 위 전환 — 하이라이트 (n) | 내 메모. 목록 상자는 JS가 annohost에 옮겨 붙인다(오른쪽 서랍 없음)
+    assert "md4-annohost" in body and "md4-annocount" in body and "내 메모" in body
+    assert "md4-anno-btn" not in body
+    # 레일 맨 아래 ⋯ — 탭 보이기·순서 메뉴
+    assert "md4-railcfg" in body and "레일 탭 보이기·순서 바꾸기" in body
     # 내려 읽을 때 지금 섹션 띠 (§sticky_head) — 셸이 스크립트를 싣는다
     assert "__md4Sticky" in body and ".sbs-stick" in body
 

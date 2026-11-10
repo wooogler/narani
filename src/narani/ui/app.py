@@ -428,22 +428,22 @@ mark.md-anno.md-anno-flash { animation: mdAnnoFlash 1.3s ease-out; }
   background: #fff; color: inherit; outline: none; }
 #md-anno-pop textarea:focus { border-color: #2383e2; }
 
-/* 오른쪽 목록 서랍 — 에이전트 창과 같은 규칙: 본문을 덮지 않고 오른쪽을 차지한다.
-   (--ma-top은 헤더를 실제로 재서 넣는다. 헤더 높이가 고정이 아니라 상수로 두면 탭 라벨을 가린다.) */
-:root { --ma-w: 360px; --ma-top: 50px; }
-#md-anno-panel { position: fixed; top: var(--ma-top); right: 0; bottom: 0; width: var(--ma-w); z-index: 9000;
-  display: none; flex-direction: column; background: #fff; border-left: 1px solid #e6e4e0;
-  color: #37352f; }
-#md-anno-panel.open { display: flex; }
-body.ma-open .md4-steps { padding-right: var(--ma-w); }
-.ap-head { display: flex; align-items: center; gap: 7px; padding: 10px 12px;
-  border-bottom: 1px solid #ecebe8; font-size: 14.5px; }
-.ap-count { font-size: 12px; padding: 1px 7px; border-radius: 9px; background: #f0efec; color: #6b6862; }
-.ap-x { border: none; background: none; font-size: 14px; color: #8a8780; cursor: pointer;
-  padding: 3px 6px; border-radius: 7px; }
-.ap-x:hover { background: #f0efec; }
-.ap-list { flex: 1 1 auto; overflow-y: auto; padding: 6px; }
-.ap-foot { padding: 8px 12px; border-top: 1px solid #ecebe8; font-size: 12.5px; color: #97948d; }
+/* 하이라이트 목록 — 왼쪽 메모 패널의 '하이라이트' 쪽(§notes_panel의 .md4-annohost)에 JS가 이 상자를 옮겨 붙인다.
+   (예전엔 오른쪽 고정 서랍이라 에이전트 창과 자리를 다퉜다.) 목록만 안에서 스크롤한다. */
+#md-anno-panel { display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; color: #37352f; }
+.md4-annohost { flex: 1 1 0; min-height: 0; display: flex; flex-direction: column; width: 100%; }
+body > #md-anno-panel { display: none; }  /* 붙을 자리(메모 패널)가 아직 없을 때 */
+.ap-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 2px 0 6px; }
+.ap-foot { padding: 8px 4px 0; border-top: 1px solid #ecebe8; font-size: 12px; color: #97948d; }
+/* 섹션 묶음 — 제목 한 줄 + 그 섹션의 항목들. 내려 읽는 동안 지금 섹션 묶음은 제목에 파란 표시(§sticky_head) */
+.ap-grp + .ap-grp { margin-top: 8px; }
+.ap-gh { position: sticky; top: 0; z-index: 1; padding: 4px 6px 3px; font-size: 11.5px; font-weight: 700;
+  color: #9a968e; background: var(--md4-panel-bg, #fff); white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  border-left: 2px solid transparent; cursor: pointer; }
+.ap-gh:hover { color: #37352f; }
+.ap-grp.cur > .ap-gh { color: #2383e2; border-left-color: #2383e2; }
+.ap-item.ap-flash { animation: ap-flash 1.4s ease; }
+@keyframes ap-flash { 0%, 40% { background: rgba(35,131,226,.16); } 100% { background: transparent; } }
 .ap-empty { padding: 22px 14px; font-size: 13.5px; color: #97948d; text-align: center; line-height: 1.6; }
 .ap-item { padding: 8px 9px; border-radius: 9px; cursor: pointer; }
 .ap-item:hover { background: #f7f6f3; }
@@ -464,7 +464,7 @@ body.ma-open .md4-steps { padding-right: var(--ma-w); }
   border-left: 2px solid #2383e2; white-space: pre-wrap; }
 .ap-lost .ap-q { opacity: .55; }
 /* 위치를 못 찾은 곳이 있을 때만 — 다시 찾기 단추와 결과 알림 */
-.ap-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 8px 12px;
+.ap-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 4px 4px 8px;
   border-bottom: 1px solid #ecebe8; font-size: 12.5px; color: #8a8780; }
 .ap-refind { border: 1px solid #d9d7d2; background: #fff; color: #37352f; font-size: 12.5px;
   padding: 3px 10px; border-radius: 7px; cursor: pointer; }
@@ -474,11 +474,8 @@ body.ma-open .md4-steps { padding-right: var(--ma-w); }
   padding: 0 5px; border-radius: 6px; cursor: pointer; }
 .ap-guessb:hover { background: rgba(214,150,0,.26); }
 
-/* 툴바의 메모 버튼에 개수 배지 (JS가 data-count를 갱신) */
-.md4-anno-btn[data-count]:not([data-count="0"])::after { content: attr(data-count);
-  position: absolute; top: -2px; right: -2px; min-width: 15px; height: 15px; padding: 0 3px;
-  border-radius: 8px; background: #2383e2; color: #fff; font-size: 10px; line-height: 15px;
-  font-weight: 600; }
+/* 메모 패널 전환의 '하이라이트 (n)' — 개수는 JS가 data-count로 갱신(처음 값은 서버가 넣는다) */
+.md4-annocount::after { content: " (" attr(data-count) ")"; font-weight: 500; }
 
 @media (prefers-color-scheme: dark) {
   .sbs-grid.sbs-two .sbs-cell.sbs-hl { box-shadow: inset 2px 0 0 rgba(90,150,230,.45); }
@@ -486,14 +483,17 @@ body.ma-open .md4-steps { padding-right: var(--ma-w); }
   .sent[data-solo].sent-hl { background: rgba(150,150,150,.20); }
   #md-sent-tip { background: #262624; color: #e2e0da; border-color: #3a3935; }
   #md-sent-tip .st-side { color: #8d8a82; }
-  #md-anno-pop, #md-anno-panel { background: #1f1f1f; border-color: #3a3a3a; color: #d4d4d4; }
+  #md-anno-pop { background: #1f1f1f; border-color: #3a3a3a; color: #d4d4d4; }
+  #md-anno-panel { color: #d4d4d4; }
+  .ap-gh { color: #8a8a8a; background: var(--md4-panel-bg, #121212); }
+  .ap-gh:hover { color: #e0e0e0; }
+  .ap-grp.cur > .ap-gh { color: #7bb7ff; border-left-color: #7bb7ff; }
   #md-anno-pop textarea { background: #262626; border-color: #3a3a3a; }
   .apop-quote, .ap-side, .ap-foot, .ap-empty { color: #8f8f8f; }
-  .ap-head, .ap-foot, .ap-tools { border-color: #2c2c2c; }
+  .ap-foot, .ap-tools { border-color: #2c2c2c; }
   .ap-refind { background: #262626; border-color: #3a3a3a; color: #d4d4d4; }
   .ap-guessb { color: #e0b450; }
-  .ap-count { background: #2c2c2c; color: #b8b8b8; }
-  .ap-item:hover, .ap-x:hover { background: #2c2c2c; }
+  .ap-item:hover { background: #2c2c2c; }
   .ap-q { color: #b8b8b8; }
   .ap-q.ap-ko { color: #8f8f8f; }
   .apop-quote.apop-ko, .ap-q.ap-ko { border-left-color: #3a3a3a; }
@@ -507,8 +507,6 @@ _ANNO_HTML = """
 <div id="md-anno-bar"></div>
 <div id="md-anno-pop"></div>
 <div id="md-anno-panel">
-  <div class="ap-head"><b>⦃하이라이트 · 메모⦄</b><span class="ap-count">0</span>
-    <span class="apop-sp"></span><button class="ap-x" title="⦃닫기 (Esc)⦄">&#10005;</button></div>
   <div class="ap-tools" style="display:none"></div>
   <div class="ap-list"></div>
   <div class="ap-foot">⦃드래그 = 끌어 둔 그 자리에 · 더블클릭 = 그 문장 통째로 (원문·번역 함께)⦄</div>
@@ -894,7 +892,8 @@ _ANNO_HTML = """
     editing = id;
     var en = quoteOf(a, 'en'), ko = quoteOf(a, 'ko');
     pop.innerHTML = '<div class="apop-row">' + dots(a.color)
-      + '<span class="apop-sp"></span><button class="apop-del">' + md4T('삭제') + '</button></div>'
+      + '<span class="apop-sp"></span><button class="apop-list" title="' + md4T('메모 패널의 하이라이트 목록에서 이 항목 보기') + '">'
+      + md4T('목록') + '</button><button class="apop-del">' + md4T('삭제') + '</button></div>'
       + (en ? '<div class="apop-quote">' + esc(cut(en, 130)) + '</div>' : '')
       + (ko ? '<div class="apop-quote apop-ko">' + esc(cut(ko, 130)) + '</div>' : '')
       + '<textarea placeholder="' + md4T('메모 (자동 저장)') + '"></textarea>';
@@ -909,10 +908,15 @@ _ANNO_HTML = """
   function remove(id){
     for (var i = 0; i < items.length; i++) if (items[i].id === id){ items.splice(i, 1); break; }
     applyAll(); flush();
-    renderPanel();   // 목록 서랍에서도 바로 빠지게 — 안 그리면 지운 항목이 남아 한 번 더 눌러야 사라졌다
+    renderPanel();   // 목록에서도 바로 빠지게 — 안 그리면 지운 항목이 남아 한 번 더 눌러야 사라졌다
   }
   pop.addEventListener('click', function(e){
     var a = find(editing); if (!a) return;
+    if (e.target.closest('.apop-list')){   // 왼쪽 메모 패널의 하이라이트 목록을 열고 이 항목으로 (서버가 패널을 연다)
+      var lid = a.id; closePop();
+      if (typeof emitEvent === 'function') emitEvent('md4-anno-list', {id: lid});
+      return;
+    }
     var d = e.target.closest('.ab-dot');
     if (d){ a.color = lastColor = d.getAttribute('data-color'); applyAll(); flush(); openPop(a.id); return; }
   });
@@ -930,7 +934,7 @@ _ANNO_HTML = """
     save();
   });
 
-  // ---- 목록 서랍 ----
+  // ---- 하이라이트 목록 (왼쪽 메모 패널) ----
   var refindMsg = '';
   function isGuess(a){ for (var i = 0; i < a.anchors.length; i++) if (a.anchors[i].guess) return true; return false; }
   function origText(a){   // 추정 배지 툴팁 — 고치기 전 원래 문장
@@ -939,11 +943,46 @@ _ANNO_HTML = """
       out += '\\n\\n' + (a.anchors[i].side === 'ko' ? md4T('원래 번역') : md4T('원래 원문')) + ': ' + cut(a.anchors[i].orig.quote, 200);
     return out;
   }
+  // 목록 상자는 왼쪽 메모 패널의 자리(.md4-annohost)에 옮겨 붙인다 — 그 자리는 논문 화면을 지을 때마다
+  // 새로 생기고(옛 자리는 상자째 DOM에서 빠진다), 이 상자는 한 번만 만들어 리스너를 그대로 지닌다.
+  function mount(){
+    var hs = document.querySelectorAll('.md4-annohost'), h = null;
+    for (var i = hs.length - 1; i >= 0; i--) if (hs[i].isConnected){ h = hs[i]; break; }  // 갈아 끼우는 중이면 새 쪽
+    if (h && panel.parentNode !== h) h.appendChild(panel);
+    return h;
+  }
+  // 섹션 묶음 — 지금 섹션 띠(§sticky_head)와 같은 헤더: 보이는 첫 칸(원문 우선)의 h1~h6, 첫 행(논문 제목) 빼고.
+  // 반환: 행 번호 순 [{row, text}]. 그리드가 없으면(편집 모드 등) 빈 목록 → 묶지 않고 한 줄로.
+  function sectionHeads(){
+    var g = null, gs = document.querySelectorAll('.sbs-grid');
+    for (var i = 0; i < gs.length; i++) if (!gs[i].closest('.sbs-clone')){ g = gs[i]; break; }
+    if (!g) return [];
+    var side = g.querySelector('.sbs-cell[data-side="en"]:not(.sbs-ghost)') ? 'en' : 'ko';
+    var sel = ['h1','h2','h3','h4','h5','h6'].map(function(h){
+      return '.sbs-cell[data-side="' + side + '"]:not(.sbs-ghost) > .sbs-md > ' + h; }).join(',');
+    var out = [];
+    [].forEach.call(g.querySelectorAll(sel), function(h){
+      var c = h.closest('.sbs-cell'), r = c ? +c.getAttribute('data-row') : 0;
+      if (!r) return;
+      var t = h.textContent, a = h.querySelector('.md-sec-jump');
+      if (a) t = t.replace(a.textContent, '');
+      out.push({row: r, text: t.replace(/\\s+/g, ' ').trim()});
+    });
+    return out;
+  }
+  var curSecRow = null;   // 지금 읽는 섹션의 헤더 행 (sticky_head가 알려 준다)
+  function markCur(){
+    [].forEach.call(panel.querySelectorAll('.ap-grp'), function(gp){
+      gp.classList.toggle('cur', curSecRow != null && gp.getAttribute('data-row') === String(curSecRow));
+    });
+  }
+  document.addEventListener('md4-cursec', function(e){
+    curSecRow = e.detail && e.detail.row != null ? e.detail.row : null; markCur();
+  });
   function renderPanel(){
+    mount();
     var list = panel.querySelector('.ap-list');
-    panel.querySelector('.ap-count').textContent = items.length;
-    var btn = document.querySelector('.md4-anno-btn');
-    if (btn) btn.setAttribute('data-count', items.length);
+    [].forEach.call(document.querySelectorAll('.md4-annocount'), function(c){ c.setAttribute('data-count', items.length); });
     function key(a){   // 문서 순서 — 원문 앵커 기준, 없으면 번역 앵커
       var an = a.anchors[0];
       for (var i = 0; i < a.anchors.length; i++) if (a.anchors[i].side === 'en') an = a.anchors[i];
@@ -962,7 +1001,29 @@ _ANNO_HTML = """
       list.innerHTML = '<div class="ap-empty">' + md4T('아직 표시한 곳이 없습니다.') + '<br>' + md4T('본문을 드래그해 색을 고르면 여기에 쌓입니다.') + '</div>';
       return;
     }
-    list.innerHTML = sorted.map(function(a){
+    var heads = sectionHeads();
+    function secOf(a){   // 그 항목 행 이전의 마지막 헤더 (없으면 null = 첫 섹션 앞)
+      var r = key(a)[0], k = null;
+      for (var i = 0; i < heads.length && heads[i].row <= r; i++) k = heads[i];
+      return k;
+    }
+    var html = '', curKey;
+    sorted.forEach(function(a){
+      if (heads.length){
+        var sec = secOf(a), kk = sec ? String(sec.row) : '-';
+        if (kk !== curKey){
+          html += (curKey === undefined ? '' : '</div>') + '<div class="ap-grp" data-row="' + kk + '">'
+            + '<div class="ap-gh" title="' + esc(sec ? sec.text : '').replace(/"/g, '&quot;') + '">'
+            + esc(sec ? sec.text : md4T('첫 섹션 앞')) + '</div>';
+          curKey = kk;
+        }
+      }
+      html += itemHtml(a);
+    });
+    list.innerHTML = html + (curKey === undefined ? '' : '</div>');
+    markCur();
+  }
+  function itemHtml(a){
       var en = quoteOf(a, 'en'), ko = quoteOf(a, 'ko');
       return '<div class="ap-item' + (lost[a.id] ? ' ap-lost' : '') + '" data-id="' + esc(a.id) + '">'
         + '<div class="ap-top"><span class="ap-dot" style="background:' + (SWATCH[a.color] || SWATCH.yellow) + '"></span>'
@@ -976,11 +1037,33 @@ _ANNO_HTML = """
         + (ko ? '<div class="ap-q ap-ko">' + esc(cut(ko, 170)) + '</div>' : '')
         + ((a.note || '').trim() ? '<div class="ap-n">' + esc(a.note) + '</div>' : '')
         + '</div>';
-    }).join('');
   }
+  // 바깥(본문 팝오버의 '목록', 서버가 패널을 연 뒤)에서 — 그 항목으로 목록을 굴리고 잠깐 칠한다
+  window.__mdAnnoReveal = function(id){
+    renderPanel();
+    if (!id) return;
+    setTimeout(function(){
+      var it = null, its = panel.querySelectorAll('.ap-item');
+      for (var i = 0; i < its.length; i++) if (its[i].getAttribute('data-id') === id){ it = its[i]; break; }
+      if (!it) return;
+      it.scrollIntoView({block: 'center', behavior: 'smooth'});
+      it.classList.remove('ap-flash'); void it.offsetWidth; it.classList.add('ap-flash');
+    }, 140);
+  };
   panel.addEventListener('click', function(e){
-    if (e.target.closest('.ap-x')){ panel.classList.remove('open'); return; }
-    if (e.target.closest('.ap-refind')){   // 행 창 없이 문서 전체에서 다시 찾기 — 결과를 서랍에 알린다
+    var gh = e.target.closest('.ap-gh');
+    if (gh){   // 섹션 제목 → 본문의 그 헤더로 (읽던 자리를 쌓는다)
+      var row = gh.parentNode.getAttribute('data-row');
+      var cell = null, cs = row && row !== '-' ? document.querySelectorAll(
+        '.sbs-grid .sbs-cell[data-row="' + row + '"]:not(.sbs-ghost)') : [];
+      for (var ci = 0; ci < cs.length; ci++) if (!cs[ci].closest('.sbs-clone')){ cell = cs[ci]; break; }
+      if (cell){
+        if (window.__mdJumpBack) window.__mdJumpBack.go(cell, 'start', 'smooth');
+        else cell.scrollIntoView({behavior: 'smooth', block: 'start'});
+      }
+      return;
+    }
+    if (e.target.closest('.ap-refind')){   // 행 창 없이 문서 전체에서 다시 찾기 — 결과를 목록에 알린다
       var before = missCount();
       wideNext = true; applyAll();
       var after = missCount();
@@ -1007,24 +1090,6 @@ _ANNO_HTML = """
     }
     afterScroll(function(){ openPop(id); });
   });
-  // 'open'은 여러 경로에서 붙었다 뗀다(버튼·✕·Esc·에이전트 창이 열릴 때). 한 곳에서 관찰해
-  // body 클래스를 맞춰야 본문 자리 비우기가 어느 경로로 닫아도 따라온다.
-  function syncBody(){ document.body.classList.toggle('ma-open', panel.classList.contains('open')); }
-  function syncTop(){
-    var h = document.querySelector('.q-header');
-    document.documentElement.style.setProperty(
-      '--ma-top', (h ? Math.max(0, h.getBoundingClientRect().bottom) : 0) + 'px');
-  }
-  window.addEventListener('resize', syncTop);
-  syncTop();
-  if (window.MutationObserver)
-    new MutationObserver(syncBody).observe(panel, {attributes: true, attributeFilter: ['class']});
-  syncBody();
-  window.__mdAnnoTogglePanel = function(){
-    panel.classList.toggle('open');
-    if (panel.classList.contains('open')){ syncTop(); renderPanel(); }
-  };
-
   // ---- 닫기·정리 ----
   document.addEventListener('mouseup', function(e){
     if (bar.contains(e.target) || pop.contains(e.target) || panel.contains(e.target)) return;
@@ -1056,7 +1121,6 @@ _ANNO_HTML = """
     if (e.key !== 'Escape') return;
     if (stip.classList.contains('open') || stipTimer) closeTip();
     else if (pop.classList.contains('open')) closePop();
-    else if (panel.classList.contains('open')) panel.classList.remove('open');
   });
 
   // ---- 문장 단위 호버 (원문 ↔ 번역 1:1) ----
@@ -1757,6 +1821,57 @@ def save_panels(state: dict) -> None:
         config.set_section_value("ui", "panels", on)
 
 
+# 왼쪽 작업 패널 레일의 탭 — (키, 이름, 아이콘). 이 순서가 기본값이다.
+SIDE_PANELS = (("toc", N_("목차"), "toc"), ("structure", N_("구조"), "account_tree"),
+               ("translate", N_("번역"), "translate"), ("settings", N_("설정"), "tune"),
+               ("notes", N_("메모"), "edit_note"), ("info", N_("서지"), "info_outline"))
+SIDE_KEYS = tuple(k for k, _l, _i in SIDE_PANELS)
+
+
+def side_tabs(cfg: dict | None = None) -> list[str]:
+    """레일에 보이는 탭(순서대로) — 전역 설정 [ui].side_tabs(보이는 것의 순서)·side_tabs_hidden(숨긴 것).
+
+    모르는 키·겹친 키는 버리고, 두 목록 어디에도 없는 탭(뒤 버전에 새로 생긴 탭)은 기본 순서대로 뒤에 붙인다
+    — 보이는 것만 적어 두면 '사용자가 숨긴 탭'과 '새 탭'을 가를 수 없어서 숨긴 것도 따로 적는다.
+    하나도 안 남으면(깨진 값) 기본값.
+    """
+    ui_cfg = (config.load_config() if cfg is None else cfg).get("ui", {})
+    saved, hidden = ui_cfg.get("side_tabs"), ui_cfg.get("side_tabs_hidden")
+    hidden = {k for k in hidden if isinstance(k, str)} if isinstance(hidden, list) else set()
+    out: list[str] = []
+    for k in (saved if isinstance(saved, list) else []):
+        if k in SIDE_KEYS and k not in out and k not in hidden:
+            out.append(k)
+    out += [k for k in SIDE_KEYS if k not in out and k not in hidden]
+    return out or list(SIDE_KEYS)
+
+
+def save_side_tabs(visible: list[str]) -> list[str]:
+    """레일에 보일 탭(순서대로)을 전역 설정에 — 다른 논문·다음 실행에도. 적어도 하나는 남긴다(빈 목록은 무시)."""
+    vis = [k for k in dict.fromkeys(visible) if k in SIDE_KEYS]
+    if not vis:
+        return side_tabs()
+    config.set_section_value("ui", "side_tabs", vis)
+    config.set_section_value("ui", "side_tabs_hidden", [k for k in SIDE_KEYS if k not in vis])
+    return vis
+
+
+def side_mode_or_visible(mode: str | None, visible: list[str]) -> str | None:
+    """기억해 둔 패널이 숨긴 탭이면 보이는 첫 탭으로. None(접힘)은 그대로."""
+    return mode if mode is None or mode in visible else visible[0]
+
+
+NOTES_VIEWS = ("highlights", "memo")  # 메모 패널 전환: 하이라이트 목록 | 내 메모(자유 메모)
+
+
+def notes_view(cfg: dict | None = None, n_highlights: int | None = None) -> str:
+    """메모 패널을 열 때의 쪽 — 전역 [ui].notes_view(마지막으로 고른 쪽), 없거나 깨졌으면 하이라이트.
+    하이라이트가 하나도 없는 논문은 내 메모로 시작한다(저장된 값은 그대로 둔다 — 다음 논문엔 다시 그 쪽)."""
+    v = (config.load_config() if cfg is None else cfg).get("ui", {}).get("notes_view")
+    v = v if v in NOTES_VIEWS else "highlights"
+    return "memo" if v == "highlights" and n_highlights == 0 else v
+
+
 def wd_token(root: Path) -> str:
     """워크디렉토리별 짧은 토큰 — 이미지/PDF URL에 넣어 논문 간 캐시 충돌을 막는다.
 
@@ -2270,11 +2385,24 @@ _CHROME_CSS = """
 .md4-chip.todo { background: #fff; color: #2383e2; font-weight: 600; }
 .md4-chip.todo:hover { background: #f3f8ff; }
 .md4-chip.warn { background: #f59e0b; color: #fff; }
-/* ⓘ 서지 카드 — 상태 칩 옆 동그란 칩, 누르면 팝오버(§meta_card). 팝오버는 홈 미리보기 열처럼 흰 바탕. */
-.md4-chip.md4-infobtn { width: 26px; padding: 0; justify-content: center; margin-right: 6px; }
-.md4-info-pop { width: 400px; max-width: calc(100vw - 24px); background: #fff; }
-.md4-info-body { padding: 14px 16px 12px; flex-wrap: nowrap; }
+/* 서지 패널(§meta_card) — 작업 패널 안이라 여백은 .md4-panel 것을 쓴다 */
+.md4-info-body { flex-wrap: nowrap; padding: 0 2px; }
 .md4-info-body > * { flex-shrink: 0; }
+/* 레일 맨 아래 ⋯ — 탭 보이기·순서 메뉴. 숨긴 탭이 다른 곳에서 열려 잠깐 보일 땐 흐리게 */
+.md4-railcfg { display: flex; align-items: center; justify-content: center; width: 34px; height: 26px; flex: 0 0 auto;
+  margin-bottom: 4px; border-radius: 8px; cursor: pointer; color: #9a968e; }
+.md4-railcfg:hover { background: rgba(0,0,0,.06); color: #37352f; }
+.md4-railbtn.md4-railtmp:not(:hover) { opacity: .62; }
+.md4-railcfg-menu { padding: 6px 8px 6px; min-width: 230px; }
+.md4-railcfg-row { width: 100%; padding: 0 2px; font-size: 13px; color: #37352f; }
+.md4-railcfg-row.off { color: #9a968e; }
+.md4-railcfg-ic { color: #8a867e; }
+@media (prefers-color-scheme: dark) {
+  .md4-railcfg { color: #777; }
+  .md4-railcfg:hover { background: rgba(255,255,255,.08); color: #e0e0e0; }
+  .md4-railcfg-row { color: #e0e0e0; }
+  .md4-railcfg-row.off, .md4-railcfg-ic { color: #8a8a8a; }
+}
 /* 헤더 맨 오른쪽 에이전트 단추 — 홈·뷰어 같은 자리. 상태 칩과 같은 높이·바닥선, 서랍이 열리면
    흰 바닥(활성 탭과 같은 말)으로 '지금 열려 있다'를 보인다. */
 .md4-agentbtn { align-self: flex-end; margin: 0 2px 3px 0; display: inline-flex; align-items: center;
@@ -2337,6 +2465,9 @@ body.ag-open .md4-agentbtn { background: #fff; color: #2383e2; }
    .md4-notes-ed를 붙여 구체도로 덮는다 — Crepe CSS는 나중에 <link>로 붙어 순서로는 이기지 못한다. */
 .md4-notes { flex: 1 1 0; min-height: 0; flex-wrap: nowrap; overflow: hidden; }  /* 패널을 넘지 않고 안에서만 스크롤 */
 .md4-notes .md4-notes-status { font-size: 11px; color: #9a968e; }
+/* 메모 패널 맨 위 전환 — 하이라이트 (n) | 내 메모. 아래 두 쪽은 패널 높이를 나눠 갖지 않고 하나만 보인다 */
+.md4-noteseg span { font-size: 12.5px; padding: 4px 10px; }
+.md4-notememo { flex: 1 1 0; min-height: 0; flex-wrap: nowrap; }
 /* 메모 탭 — 패널 제목 아래 작은 글자 줄. 고른 탭만 옅은 바탕에 진하게, 넘치면 가로로 스크롤. */
 .md4-notetabs { overflow-x: auto; overflow-y: hidden; scrollbar-width: none; flex-shrink: 0; margin-top: -4px; }
 .md4-notetabs::-webkit-scrollbar { height: 0; }
@@ -2588,7 +2719,7 @@ def tab_bar(state: dict, here: Path | None, here_title: str | Callable[[], str] 
     (한 창에 한 화면), 나란히 보려면 리뷰 화면의 ⧉로 새 창을 띄운다. 고정(pin)과는 별개다.
     백그라운드 작업(번역 등)이 도는 논문은 탭 아이콘이 돈다. tools()는 탭 줄 끝 단추(고정·새 창)를
     그린다. 반환값은 refreshable — .refresh()로 다시 그린다. here_title이 함수면 그릴 때마다 부른다
-    (뷰어 ⓘ 팝오버에서 제목을 고치면 활성 탭 제목도 따라가게).
+    (뷰어 서지 패널에서 제목을 고치면 활성 탭 제목도 따라가게).
     """
     from nicegui import ui
 
@@ -2838,7 +2969,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     m = ctrl.manifest
     tok = wd_token(ctrl.wd.root)  # 이미지·PDF URL에 넣는 논문별 토큰 (캐시 충돌 방지)
     _title = m.title or ctrl.wd.root.name
-    title_ref = {"v": _title}  # 헤더 활성 탭 제목 — ⓘ 서지 카드에서 제목을 고치면 바뀐다
+    title_ref = {"v": _title}  # 헤더 활성 탭 제목 — 서지 패널에서 제목을 고치면 바뀐다
 
     spa.add_css(_CHROME_CSS)
     find_bar.install()  # Cmd/Ctrl+F 페이지 찾기 — 앱 창에는 브라우저 찾기 바가 없다
@@ -4374,10 +4505,8 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                     f"window.{listen.LISTEN_API} && window.{listen.LISTEN_API}.toggle()")) \
                     .props("flat dense round color=grey-7") \
                     .tooltip(t("듣기 — 소리 내어 읽고 읽는 문장을 칠합니다 (Alt+Space 재생·멈춤, Alt+[ ] 섹션)"))
-            ui.button(icon="sticky_note_2", on_click=lambda: ui.run_javascript(
-                "window.__mdAnnoTogglePanel && window.__mdAnnoTogglePanel()")) \
-                .props("flat dense round color=grey-7").classes("md4-anno-btn") \
-                .tooltip(t("하이라이트 · 메모 목록 — 드래그하면 그 자리에, 문장을 더블클릭하면 원문·번역 양쪽에"))
+            # 하이라이트 목록은 왼쪽 메모 패널의 '하이라이트' 쪽에 있다(예전 오른쪽 서랍과 그 여는 단추는 없앴다 —
+            # 오른쪽은 에이전트 창만 쓴다). 본문 하이라이트 팝오버의 '목록'이 그 항목으로 연다.
             ui.space()
             library_button()
             if ctrl.source_pdf():  # 내보내기와 같은 '이 논문 파일을 바깥으로' 묶음 — 앱 안 PDF 칸은 왼쪽 토글
@@ -5049,14 +5178,14 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     # ---------- 왼쪽 작업 패널 — 목차 / 구조 / 번역 / 설정 / 메모 ----------
     # 옛 '변환 탭 왼쪽 열'과 '번역 탭 왼쪽 열'이 여기로 들어왔다. 모드를 모두 지어 두고(작업 재부착·
     # refreshable 참조가 살아 있어야 한다) 보이는 것만 바꾼다. 레일의 같은 단추를 다시 누르면 접힌다.
-    _PANELS = (("toc", N_("목차"), "toc"), ("structure", N_("구조"), "account_tree"),
-               ("translate", N_("번역"), "translate"), ("settings", N_("설정"), "tune"),
-               ("notes", N_("메모"), "edit_note"))
+    # 레일에 보일 탭·순서는 사용자가 고른다(§side_tabs — 전역 [ui].side_tabs). 숨긴 탭은 레일 단추만 빠질 뿐
+    # 다른 곳(✎ 섹션 구조 점프 → 구조, 상태 칩 → 번역)에서 여는 건 그대로 된다 — 열려 있는 동안은 단추도 잠깐 보인다.
+    _PANELS = SIDE_PANELS
     root_key = str(ctrl.wd.root.resolve())
     panel_state: dict = {"mode": None, "splitter": None, "boxes": {}}
     # 패널 폭(%)은 모드마다 따로 — 목차는 한 줄짜리 제목 목록이라 좁게, 섹션 트리·설정은 넓게 시작한다.
     # 드래그한 폭은 모드별로 전역 설정([ui].panel_width_<모드>)에 기억해 다른 논문·다음 실행에도 그대로.
-    _DEFAULT_PANEL_W = {"toc": 20, "structure": 30, "translate": 30, "settings": 30, "notes": 34}
+    _DEFAULT_PANEL_W = {"toc": 20, "structure": 30, "translate": 30, "settings": 30, "notes": 34, "info": 28}
 
     def panel_width(mode: str) -> float:
         v = config.load_config().get("ui", {}).get(f"panel_width_{mode}")
@@ -5147,6 +5276,8 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         prev = panel_state["mode"]
         if prev == "notes" and mode != "notes":
             notes_flush()
+        if prev == "info" and mode != "info":
+            background_tasks.create(info_flush(), name="md4-info-flush")  # 고치던 서지 칸 (blur가 늦게 올 수 있다)
         panel_state["mode"] = mode
         if mode is not None:
             panel_state["last"] = mode  # 끌어서 다시 열 때 돌아갈 패널
@@ -5154,6 +5285,10 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         set_left_panel(ctrl.wd.root, mode)  # 앱을 다시 켜도 이 논문은 이 패널로
         for key, box in panel_state["boxes"].items():
             box.set_visibility(key == mode)
+        if mode == "notes" and prev != "notes" and notes_state.get("view") == "highlights":
+            ui.run_javascript("window.__mdAnnoReveal && window.__mdAnnoReveal(null)")  # 목록을 지금 상태로
+        if mode == "info" and prev != "info":
+            info_body.refresh()  # 홈 창 등에서 고쳤을 수 있다 — 열 때마다 디스크에서 새로 (닫혀 있는 동안은 짓지 않는다)
         sp = panel_state["splitter"]
         if sp is not None:
             if prev is not None and sp.value > 1:
@@ -5167,21 +5302,80 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
 
     ui.on("md4-open-side", lambda _: open_side())
 
+    def open_highlight(e) -> None:  # noqa: ANN001 — 본문 하이라이트 팝오버의 '목록' → 메모 패널 하이라이트 쪽, 그 항목으로
+        aid = e.args.get("id") if isinstance(e.args, dict) else None
+        set_panel("notes", toggle=False)
+        sv = notes_state.get("set_view")
+        if sv is not None:
+            sv("highlights")
+        ui.run_javascript(f"window.__mdAnnoReveal && window.__mdAnnoReveal({json.dumps(aid)})")
+
+    ui.on("md4-anno-list", open_highlight)
+
+    _rail_tips = {"toc": N_("목차 — 섹션으로 이동 (원문·번역 제목)"),
+                  "structure": N_("구조 — 헤더 레벨·섹션 트리·레이아웃 수정·다시 변환"),
+                  "translate": N_("번역 — 번역할 섹션·용어집·실행"),
+                  "settings": N_("설정 — 인용 표기·캡션·저자"),
+                  "notes": N_("메모 — 논문 전체에 대한 자유 메모 (위지윅, 자동 저장)"),
+                  "info": N_("서지 정보 — 제목·저자·연도·DOI·컬렉션·초록 (눌러서 고치기)")}
+    _panel_meta = {k: (label, icon) for k, label, icon in _PANELS}
+
     @ui.refreshable
     def rail() -> None:
-        for key, label, icon in _PANELS:
+        vis = side_tabs()
+        keys = vis + ([panel_state["mode"]] if panel_state["mode"] and panel_state["mode"] not in vis else [])
+        for key in keys:
+            label, icon = _panel_meta[key]
             on = panel_state["mode"] == key
-            b = ui.element("div").classes("md4-railbtn" + (" on" if on else ""))
+            b = ui.element("div").classes("md4-railbtn" + (" on" if on else "") + ("" if key in vis else " md4-railtmp"))
             with b:
                 ui.icon(icon, size="20px")
                 ui.label(t(label))
             b.on("click", lambda _, k=key: set_panel(k))
-            b.tooltip({"toc": t("목차 — 섹션으로 이동 (원문·번역 제목)"),
-                       "structure": t("구조 — 헤더 레벨·섹션 트리·레이아웃 수정·다시 변환"),
-                       "translate": t("번역 — 번역할 섹션·용어집·실행"),
-                       "settings": t("설정 — 인용 표기·캡션·저자"),
-                       "notes": t("메모 — 논문 전체에 대한 자유 메모 (위지윅, 자동 저장)")}[key]
-                      + (t(" (누르면 접힘)") if on else ""))
+            b.tooltip(t(_rail_tips[key]) + (t(" (누르면 접힘)") if on else "")
+                      + ("" if key in vis else " · " + t("레일에서 숨긴 탭 — 지금 열려 있어 잠깐 보입니다")))
+
+    def rail_tabs_set(vis: list[str]) -> None:
+        """레일 탭 보이기·순서 저장 → 레일 다시 그리기. 지금 열린 탭을 숨겼으면 보이는 첫 탭으로 옮긴다."""
+        vis = save_side_tabs(vis)
+        rail_cfg_list.refresh()
+        mode = panel_state["mode"]
+        if mode is not None and mode not in vis:
+            set_panel(vis[0], toggle=False)  # rail.refresh()까지 — notes_flush 등 떠날 때 일도 거친다
+        else:
+            rail.refresh()
+
+    @ui.refreshable
+    def rail_cfg_list() -> None:
+        """레일 맨 아래 ⋯ 메뉴 안 — 탭마다 보이기 체크 + 위/아래. 보이는 탭이 위, 숨긴 탭은 아래(기본 순서)."""
+        vis = side_tabs()
+        rows = vis + [k for k in SIDE_KEYS if k not in vis]
+        ui.label(t("레일 탭 — 보이기·순서")).classes("md4-menucap")
+        for key in rows:
+            label, icon = _panel_meta[key]
+            shown = key in vis
+            i = vis.index(key) if shown else -1
+            with ui.row().classes("md4-railcfg-row items-center no-wrap gap-1" + ("" if shown else " off")):
+                cb = ui.checkbox(value=shown).props("dense size=sm")
+                if shown and len(vis) == 1:
+                    cb.disable()  # 적어도 하나는 남긴다
+                    cb.tooltip(t("탭은 적어도 하나는 남겨야 합니다"))
+                cb.on_value_change(lambda e, k=key: rail_tabs_set(
+                    [x for x in side_tabs() if x != k] + ([k] if e.value else [])))
+                ui.icon(icon, size="17px").classes("md4-railcfg-ic")
+                ui.label(t(label)).classes("md4-railcfg-name")
+                ui.space()
+                up = ui.button(icon="keyboard_arrow_up", on_click=lambda k=key, j=i: rail_tabs_set(
+                    vis[:j - 1] + [k, vis[j - 1]] + vis[j + 1:])).props("flat dense round size=sm color=grey-7")
+                dn = ui.button(icon="keyboard_arrow_down", on_click=lambda k=key, j=i: rail_tabs_set(
+                    vis[:j] + [vis[j + 1], k] + vis[j + 2:])).props("flat dense round size=sm color=grey-7")
+                if not shown or i == 0:
+                    up.disable()
+                if not shown or i == len(vis) - 1:
+                    dn.disable()
+        with ui.row().classes("w-full justify-end q-mt-xs"):
+            ui.button(t("기본값으로"), on_click=lambda: rail_tabs_set(list(SIDE_KEYS))) \
+                .props("flat dense no-caps size=sm").classes("md4-linkbtn")
 
     @ui.refreshable
     def status_chip() -> None:
@@ -6140,12 +6334,48 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
 
         ui.on(agent_panel.NOTES_REFRESH_EVENT, on_agent_refresh)
 
+        # 맨 위 전환 — 하이라이트 (n) | 내 메모. 두 쪽 다 지어 두고 보이는 것만 바꾼다(메모 편집기는 얹힌 채로
+        # 있어야 저장 기록(mem·stamp)이 맞는다). 하이라이트 목록 상자는 JS가 annohost에 옮겨 붙인다(§_ANNO_HTML).
+        view = notes_view(n_highlights=len(annotations.load(ctrl.wd)))
+        notes_state["view"] = view
         with ui.row().classes("w-full items-center no-wrap gap-2 shrink-0"):
-            ui.label(t("메모")).classes("md4-panel-title")
+            with ui.element("div").classes("md4-seg md4-noteseg"):
+                seg = {}
+                for k, label in (("highlights", t("하이라이트")), ("memo", t("내 메모"))):
+                    sp = ui.element("span").classes("on" if k == view else "")
+                    with sp:
+                        lbl = ui.label(label)
+                    if k == "highlights":
+                        lbl.classes("md4-annocount").props(f'data-count="{len(annotations.load(ctrl.wd))}"')
+                    sp.on("click", lambda _, k=k: notes_set_view(k))
+                    seg[k] = sp
+            ui.space()
             notes_state["status"] = ui.label(t("저장됨")).classes("md4-notes-status")
             dlg_host = ui.element("div").style("display:none")  # 탭 이름 바꾸기·지우기 대화상자 자리
-        note_tabs()
-        note_layout()
+        with ui.column().classes("w-full gap-2 md4-notememo") as memo_box:
+            note_tabs()
+            note_layout()
+        anno_host = ui.element("div").classes("md4-annohost")  # 자식은 JS만 단다 — refreshable 밖, 비워 둔다
+
+        def show_view(v: str) -> None:
+            notes_state["view"] = v
+            memo_box.set_visibility(v == "memo")
+            anno_host.set_visibility(v == "highlights")
+            notes_state["status"].set_visibility(v == "memo")
+            for k, sp in seg.items():
+                sp.classes(add="on") if k == v else sp.classes(remove="on")
+
+        def notes_set_view(v: str, remember: bool = True) -> None:
+            if v == "highlights" and notes_state["view"] == "memo":
+                notes_flush()  # 쓰던 메모는 바로 — 보이지 않는 동안 늦게 쓰이지 않게
+            show_view(v)
+            if remember:
+                config.set_section_value("ui", "notes_view", v)  # 다음 논문·다음 실행도 이 쪽으로
+            if v == "highlights":
+                ui.run_javascript("window.__mdAnnoReveal && window.__mdAnnoReveal(null)")
+
+        notes_state["set_view"] = notes_set_view
+        show_view(view)
         ui.on("md4-notes", on_notes)
 
     # ===== 본문: 레일 + (작업 패널 | 캔버스) =====
@@ -6155,14 +6385,16 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     _seen_mode = state.get("panel_by_root", {}).get(root_key, "?")
     if _seen_mode == "?":
         _seen_mode = left_panel(ctrl.wd.root)
-    _valid_modes = (None, *(k for k, _l, _i in _PANELS))
-    panel_state["mode"] = _seen_mode if _seen_mode in _valid_modes else ("toc" if ctrl.ko_markdown() else "structure")
+    _valid_modes = (None, *SIDE_KEYS)
+    _vis = side_tabs()
+    panel_state["mode"] = side_mode_or_visible(
+        _seen_mode if _seen_mode in _valid_modes else ("toc" if ctrl.ko_markdown() else "structure"), _vis)
     panel_state["last"] = panel_state["mode"]
 
     def _on_split(e) -> None:  # noqa: ANN001 — 패널 폭 드래그. 끝까지 밀어 닫으면 레일도 '접힘'으로
         if e.value > 1:
             if panel_state["mode"] is None:  # 닫힌 패널을 끌어 열었다 → 마지막 모드로 (없으면 목차)
-                set_panel(panel_state.get("last") or "toc", toggle=False)
+                set_panel(side_mode_or_visible(panel_state.get("last") or side_tabs()[0], side_tabs()), toggle=False)
             else:
                 remember_width(panel_state["mode"], e.value)
         elif panel_state["mode"] is not None:
@@ -6173,10 +6405,11 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                 box.set_visibility(False)
             rail.refresh()
 
-    # ---------- ⓘ 서지 카드 — 홈 미리보기와 같은 칸·같은 저장(§meta_card) ----------
-    # 헤더 상태 칩 옆 ⓘ를 누르면 팝오버로: 제목·저자·연도·venue·DOI·약칭(눌러서 고치기), 이름 규칙 힌트,
-    # 컬렉션 태그(체크 메뉴), 초록 EN/번역, 다시 찾기·다시 추출. 열 때마다 디스크에서 다시 읽는다(홈 창에서
-    # 고쳤을 수 있다). 대화상자(이름 바꾸기·새 컬렉션)는 팝오버 밖 자리에 — 닫히면 팝오버 내용이 빠진다.
+    # ---------- 서지 패널 — 홈 미리보기와 같은 칸·같은 저장(§meta_card) ----------
+    # 레일의 '서지' 탭: 제목·저자·연도·venue·DOI·약칭(눌러서 고치기), 이름 규칙 힌트, 컬렉션 태그(체크 메뉴),
+    # 초록 EN/번역, 다시 찾기·다시 추출. 탭을 열 때마다 디스크에서 다시 읽는다(홈 창에서 고쳤을 수 있다).
+    # 닫혀 있는 동안은 짓지 않는다 — 초록 읽기까지 논문을 열 때마다 돌 일이 없게.
+    # (예전엔 헤더 상태 칩 옆 ⓘ 팝오버였는데 눈에 잘 띄지 않아 레일 탭으로 옮겼다.)
     from nicegui import background_tasks
     from nicegui import run as info_run  # 'run'은 이 모듈의 run()과 겹친다
 
@@ -6210,12 +6443,16 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
 
     @ui.refreshable
     def info_body() -> None:
+        if panel_state["mode"] != "info":
+            info_state["card"] = None
+            return
         wd = ctrl.wd
         card = info_state["card"] = info_card()
         vals = meta_card.values(wd)
         coll = meta_card.collections()
         has_ko = wd.ko_md.exists()
         with ui.column().classes("md4-info-body gap-3 w-full"):
+            ui.label(t("서지")).classes("md4-panel-title")
             card.fields(vals)
             card.hint()
             with ui.row().classes("items-center gap-x-2 gap-y-1 w-full"):
@@ -6282,18 +6519,6 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             pick_lang(lang)
 
     with chip_slot:  # 헤더 상태 칩 — 패널보다 먼저 그린다(번역 중에 돌아온 화면은 패널을 짓다가 칩을 갱신한다)
-        info_btn = ui.element("div").classes("md4-chip md4-infobtn")
-        with info_btn:
-            ui.icon("info_outline", size="16px")
-            info_tip = ui.tooltip(t("서지 정보 — 제목·저자·연도·DOI·컬렉션·초록 (눌러서 고치기)"))
-            with ui.menu().props("anchor='bottom right' self='top right' max-height=80vh") \
-                    .classes("md4-info-pop") as info_menu:
-                info_body()
-        info_menu.on("before-show", lambda: info_body.refresh())  # 홈 창 등에서 고쳤을 수 있다 — 열 때마다 새로
-        info_menu.on("show", lambda: info_tip.run_method("hide"))  # 단추 툴팁이 열린 팝오버를 가리지 않게
-        # 고치던 칸이 있는데 바깥을 눌러 닫히면 — QMenu의 포커스 가두기가 칸에 포커스를 돌려놓아 칸의 blur가
-        # 서버에 오지 않고 글자를 잃는다. 닫히기 직전 서버 쪽에서 그 칸을 저장한다(홈의 '칸 밖 클릭 = 저장'과 같게).
-        info_menu.on("before-hide", lambda: info_flush())
         status_chip()
 
     wc_host = ui.element("div").style("display:none")  # 단어 수 대화상자 자리 (목차 refreshable 밖)
@@ -6301,6 +6526,15 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     with ui.row().classes("w-full no-wrap gap-0 md4-steps md4-body"):
         with ui.column().classes("md4-rail gap-0"):
             rail()
+            # 레일 맨 아래 — 탭 보이기·순서. rail() 밖에 둔다: 레일은 패널을 바꿀 때마다 다시 그려져
+            # 안에 두면 열린 메뉴가 그때마다 닫힌다. md4-railbtn 클래스도 쓰지 않는다(에이전트 창의 '지금 패널' 읽기).
+            ui.space()
+            with ui.element("div").classes("md4-railcfg"):
+                ui.icon("more_horiz", size="18px")
+                cfg_tip = ui.tooltip(t("레일 탭 보이기·순서 바꾸기"))
+                with ui.menu().props("anchor='top right' self='bottom left'").classes("md4-railcfg-menu") as cfg_menu:
+                    rail_cfg_list()
+            cfg_menu.on("show", lambda: cfg_tip.run_method("hide"))  # 툴팁이 열린 메뉴를 가리지 않게
         with ui.splitter(value=panel_width(panel_state["mode"]) if panel_state["mode"] else 0, limits=(0, 60)) \
                 .classes("md4-split").style("flex:1 1 auto; min-width:0; height:100%") as sp:
             panel_state["splitter"] = sp
@@ -6381,6 +6615,11 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                     with ui.column().classes("w-full gap-2 md4-notes") as box:
                         notes_panel()
                     panel_state["boxes"]["notes"] = box
+
+                    # ---------- 서지 (홈 미리보기와 같은 카드 — §meta_card) ----------
+                    with ui.column().classes("w-full gap-2") as box:
+                        info_body()  # 이 탭이 열려 있을 때만 짓는다(초록 읽기 등) — 열 때 set_panel이 다시 그린다
+                    panel_state["boxes"]["info"] = box
 
                     for key, box in panel_state["boxes"].items():
                         box.set_visibility(key == panel_state["mode"])

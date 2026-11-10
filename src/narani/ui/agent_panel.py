@@ -18,7 +18,7 @@
   완료 알림(토스트)은 이 창이 하지 않는다 — 작업을 띄울 때 `watch_job` 동작으로 뷰어 번역 패널에
   붙여 두면 뷰어가 자기 작업처럼 다시 그리고 알린다(다른 화면에 있으면 헤더 탭 줄이 알린다).
 
-메모 서랍(`#md-anno-panel`)과 같은 자리·같은 시각 언어를 쓰고 둘은 번갈아 열린다. 칩이 본문을 옮기기
+오른쪽 자리는 이 창만 쓴다(하이라이트 목록은 왼쪽 메모 패널로 옮겼다). 칩이 본문을 옮기기
 직전에 `window.__mdJumpBack.mark`로 읽던 자리를 쌓는다 — 알약은 뷰어 전체가 함께 쓴다(§ui/jump_back.py).
 
 - **새 창으로**(머리의 ⧉): 같은 창 UI를 단독 페이지 `/agent?session=…&paper=…`(`standalone_page`)로
@@ -41,7 +41,7 @@ from urllib.parse import urlencode
 from narani import i18n
 
 PANEL_ID = "md4-agent"           # body 직속 서랍 id — spa.add_body_html이 같은 id를 다시 넣지 않는다
-PANEL_Z = 9000                   # 메모 서랍(#md-anno-panel)과 같은 층 — 둘은 번갈아 열린다
+PANEL_Z = 9000                   # 오른쪽 서랍 층 (예전 메모 서랍과 같은 층이었다)
 NAV_EVENT = "md4-agent-nav"      # JS → 서버: SPA 화면 이동 요청 (JS는 ui.sub_pages 이동을 직접 못 한다)
 NOTES_REFRESH_EVENT = "md4-notes-refresh"   # JS → 서버: 에이전트가 메모 파일을 고쳤다 — 뷰어 메모 패널
 GLOSSARY_REFRESH_EVENT = "md4-glossary-refresh"   # JS → 서버: 컬렉션 용어집이 바뀌었다 — 뷰어 용어집·원문 바뀜
@@ -2077,20 +2077,8 @@ JS = r"""
     if (agDrag){ agDrag = false; document.body.style.userSelect = ''; }
   });
 
-  // 메모 서랍은 뷰어가 지을 때 생긴다(홈에서 시작하면 아직 없다) → 논문이 바뀔 때마다 다시 붙는다
-  var annoSeen = null;
-  function watchAnno(){
-    var ap = document.getElementById('md-anno-panel');
-    if (!ap || ap === annoSeen || !window.MutationObserver) return;
-    annoSeen = ap;
-    new MutationObserver(function(){             // 메모 서랍이 열리면 에이전트 창은 닫는다
-      if (ap.classList.contains('open')) panel.classList.remove('open');
-    }).observe(ap, {attributes: true, attributeFilter: ['class']});
-  }
   function openPanel(){
     syncTopSoon(); paintCtx();
-    var ap = document.getElementById('md-anno-panel');
-    if (ap) ap.classList.remove('open');          // 없을 수도 있다 (홈)
     panel.classList.add('open');
     // 다시 열 때는 세션을 새로 읽는다 — 그사이 새 창(단독 창)에서 쌓인 턴이 있을 수 있다
     if (!loaded){ loadModels(); ensureSession(); }
@@ -2112,7 +2100,7 @@ JS = r"""
       var prev = paper;
       paper = tok || null;
       window.__md4AgentTok = paper;
-      watchAnno(); syncTopSoon();
+      syncTopSoon();
       consumeGoto();
       if (prev !== paper) autoOff = '';
       // 보는 중 칩 — 새 화면(제목 탭·사이드바)이 붙은 뒤에. 화면 갈아 끼우기가 늦을 때를 위해 한 번 더
@@ -2213,7 +2201,6 @@ JS = r"""
     document.body.classList.add('ag-standalone');
     setInterval(saPoll, SA_POLL_MS);
   }
-  watchAnno();
   syncBody();
   render();
   if (wasOpen || SA) openPanel();              // 다시 켜도 열어 두었던 창은 연 채로 (단독 창은 늘)

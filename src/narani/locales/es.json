@@ -1489,5 +1489,14 @@
  "이 논문을 두고 나눈 대화가 따로 있습니다: {t}": "Hay otra conversación sobre este artículo: {t}",
  "이 컬렉션을 두고 나눈 대화가 따로 있습니다: {t}": "Hay otra conversación sobre esta colección: {t}",
  "그 대화로": "Ir a ella",
- "이전 대화로": "Volver a la anterior"
+ "이전 대화로": "Volver a la anterior",
+ "서지": "Ficha",
+ "레일에서 숨긴 탭 — 지금 열려 있어 잠깐 보입니다": "Oculta en la barra — se ve por ahora porque está abierta",
+ "레일 탭 — 보이기·순서": "Pestañas de la barra — mostrar y ordenar",
+ "탭은 적어도 하나는 남겨야 합니다": "Debe quedar al menos una pestaña",
+ "레일 탭 보이기·순서 바꾸기": "Mostrar u ordenar las pestañas de la barra",
+ "메모 패널의 하이라이트 목록에서 이 항목 보기": "Ver este elemento en la lista de resaltados del panel de notas",
+ "목록": "Lista",
+ "첫 섹션 앞": "Antes de la primera sección",
+ "하이라이트": "Resaltados"
 }
