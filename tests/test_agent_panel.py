@@ -185,11 +185,11 @@ def test_width_clamps_to_viewport_on_open_resize_and_drag():
     assert "window.innerWidth - AG_KEEP" in _js_block(JS, "function agCap(")
 
 
-def test_panel_z_matches_memo_drawer():
-    """메모 서랍과 같은 층 — 번갈아 열리는 같은 자리다."""
+def test_panel_z_and_right_side_is_agent_only():
+    """오른쪽은 에이전트 창만 — 하이라이트 목록은 왼쪽 메모 패널로 옮겨 번갈아 닫을 서랍이 없다."""
     z = int(re.search(r"z-index:\s*(\d+)", _rule(CSS, "#md4-agent")).group(1))
     assert z == agent_panel.PANEL_Z == 9000
-    assert "getElementById('md-anno-panel')" in JS
+    assert "md-anno-panel" not in JS
 
 
 def test_dark_mode_covers_panel():

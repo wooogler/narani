@@ -13,6 +13,7 @@
 - 경로 = 그 헤더 앞쪽에서 단계가 더 높은(숫자가 작은) 헤더들.
 - 그리드마다 따로 — 위아래 두 뷰어(§split_view의 `.sbs-clone`)도 제 띠를 가진다. 복제본에 딸려 온 띠도
   그 칸의 스크롤로 다시 채운다. 숨은 짝 셀(`.sbs-ghost`)·편집 모드(그리드가 없다)는 건드리지 않는다.
+- 지금 섹션이 바뀌면 문서에 `md4-cursec`({row}) 이벤트 — 메모 패널의 하이라이트 목록이 그 섹션 묶음을 칠한다.
 - 스크롤 이벤트는 문서에 capture로 한 번만 건다(그리드를 다시 지어도 다시 걸 일이 없다).
   읽던 자리 알약·듣기 막대는 화면 아래, 찾기 바는 창 오른쪽 위 fixed라 이 띠와 겹치지 않는다.
 """
@@ -114,13 +115,14 @@ JS = """
   function update(g){
     if (!g.isConnected || !g.querySelector('.sbs-cell[data-row]')) return;
     var b = band(g), top = g.getBoundingClientRect().top + EDGE;
-    var ss = sides(g), parts = [], key = [], show = false;
+    var ss = sides(g), parts = [], key = [], show = false, curRow = null;
     b.__refs = [];
     ss.forEach(function(side, si){
       var hs = heads(g, side), k = hs.length ? lastAbove(hs, top) : -1;
       if (k < 0){ parts.push(''); key.push(side + ':-'); b.__refs.push([]); return; }
       if (hs[k].getBoundingClientRect().bottom <= top) show = true;  // 그 머리가 이미 위로 지나갔다
       var p = pathOf(hs, k);
+      if (si === 0) curRow = +hs[k].closest('.sbs-cell').getAttribute('data-row');
       b.__refs.push(p);
       key.push(side + ':' + k);
       parts.push(p.map(function(h, i){
@@ -131,6 +133,9 @@ JS = """
     var k2 = key.join('|') + '|' + ss.join(',');
     if (b.__key !== k2){
       b.__key = k2;
+      // 지금 섹션이 바뀌었다 — 하이라이트 목록이 그 섹션 묶음을 칠한다(§app._ANNO_HTML). 아래 칸(복제)은 빼고.
+      if (!g.closest('.sbs-clone'))
+        document.dispatchEvent(new CustomEvent('md4-cursec', {detail: {row: curRow}}));
       b.firstChild.innerHTML = parts.map(function(h, i){
         return '<div class="sbs-stick-p" lang="' + (ss[i] === 'ko' ? (window.__md4TrLang || 'ko') : 'en') +
           '">' + h + '</div>'; }).join('');

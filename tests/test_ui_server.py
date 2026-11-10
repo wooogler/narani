@@ -118,6 +118,9 @@ def test_ui_server_renders(tmp_path):
     assert "md4-infobtn" not in body and "md4-info-body" in body
     assert '"서지"' in body and "서지 정보 — 제목·저자·연도·DOI·컬렉션·초록" in body
     assert "md4-pv-kv" in body and "온라인에서 다시 찾기" in body
+    # 메모 패널 맨 위 전환 — 하이라이트 (n) | 내 메모. 목록 상자는 JS가 annohost에 옮겨 붙인다(오른쪽 서랍 없음)
+    assert "md4-annohost" in body and "md4-annocount" in body and "내 메모" in body
+    assert "md4-anno-btn" not in body
     # 레일 맨 아래 ⋯ — 탭 보이기·순서 메뉴
     assert "md4-railcfg" in body and "레일 탭 보이기·순서 바꾸기" in body
     # 내려 읽을 때 지금 섹션 띠 (§sticky_head) — 셸이 스크립트를 싣는다

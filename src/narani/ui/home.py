@@ -573,11 +573,9 @@ def build_home(state: dict) -> None:
     spa.add_body_html(f"<script>{jump_back.init_js(None)}</script>")  # 논문의 읽던 자리는 홈에서 비운다
     spa.add_body_html(f"<script>{split_view.init_js(None)}</script>")  # 두 뷰어도 홈에서는 닫는다
     spa.add_body_html(f"<script>{listen.init_js(None)}</script>")  # 듣기도 홈에서는 닫는다
-    # 논문 화면에서 열어 둔 서랍·툴팁(본문 밖 오버레이라 화면을 갈아 끼워도 남는다)은 홈에서 닫는다
+    # 논문 화면에서 띄운 툴팁(본문 밖 오버레이라 화면을 갈아 끼워도 남는다)은 홈에서 닫는다
     # (에이전트 창은 닫지 않는다 — 논문을 가로지르는 대화라 홈에서도 이어 쓴다)
-    ui.run_javascript("document.querySelectorAll('#md-anno-panel.open')"
-                      ".forEach(function(e){ e.classList.remove('open'); });"
-                      "var t = document.getElementById('md-cite-tip'); if (t) t.style.opacity = '0';"
+    ui.run_javascript("var t = document.getElementById('md-cite-tip'); if (t) t.style.opacity = '0';"
                       "document.documentElement.classList.remove('md4-filedrag');")
     # 홈도 탭 하나다 — 맨 앞 '홈' 탭이 활성, 연 논문 탭들과 '+'(논문 골라 열기)가 그대로 보인다
     with spa.header():
