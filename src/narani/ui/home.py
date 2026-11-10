@@ -45,8 +45,13 @@ from narani.phone import pages
 from narani.phone import service as phone_service
 from narani.ui import (
     agent_panel, batch_translate_dialog, collection_glossary_dialog, desktop, find_bar, jobs, jump_back,
-    listen, scroll_memory, settings_dialog, setup_wizard, spa, split_view, tabstore, translate_job, update_banner,
+    listen, scroll_memory, settings_dialog, setup_wizard, spa, split_view, translate_job, update_banner,
 )
+from narani.ui import meta_card
+# 서지 칸 글자·소속 규칙은 뷰어 ⓘ 팝오버와 같이 쓰려고 meta_card로 옮겼다 — 테스트·옛 호출자는 여기서 가져간다
+from narani.ui.meta_card import field_text, parse_field  # noqa: F401
+from narani.ui.meta_card import same_base as _same_base  # noqa: F401
+from narani.ui.meta_card import via_subs as _via_subs
 from narani.workdir import WorkDir
 
 # 카드를 사이드바로 끌 때 dataTransfer에 싣는 형식 — 파일 끌기('Files')와 섞이지 않게 따로 둔다
@@ -197,18 +202,6 @@ html.md4-filedrag .md4-dropov { display: flex; }
 .md4-pincard { box-shadow: inset 3px 0 0 #2383e2 !important; }
 .md4-listcap { font-size: 11px; font-weight: 700; letter-spacing: .05em; color: #9a968e;
   display: flex; align-items: center; gap: 4px; padding: 6px 2px 0; }
-/* 소속 프로젝트 태그 — 여러 개. 누르면 체크 메뉴로 넣고 뺀다. */
-.md4-ptags { display: inline-flex; flex-wrap: wrap; gap: 4px; cursor: pointer; border-radius: 10px; }
-.md4-ptag { display: inline-flex; align-items: center; gap: 3px; height: 19px; padding: 0 7px; border-radius: 10px;
-  font-size: 11.5px; line-height: 1; color: #2383e2; background: rgba(35,131,226,.1); white-space: nowrap;
-  max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
-.md4-ptag.none { color: #9a968e; background: transparent; box-shadow: inset 0 0 0 1px #dcdad5; }
-/* 상위 컬렉션 보기에서 하위 컬렉션으로만 들어온 논문 — 그 하위 태그 (채우지 않고 테두리만) */
-.md4-ptag.via { background: transparent; box-shadow: inset 0 0 0 1px rgba(35,131,226,.45); }
-.md4-ptags:hover .md4-ptag { background: rgba(35,131,226,.18); }
-.md4-ptags:hover .md4-ptag.none { color: #6b6862; background: rgba(0,0,0,.04); }
-.md4-ptag-add { opacity: 0; color: #9a968e; }
-.md4-pcard:hover .md4-ptag-add { opacity: 1; }
 /* 오른쪽 미리보기 열 — 뷰어 패널처럼 흰 바탕 + 왼쪽 경계선, 본문만 스크롤하고 단추 줄은 바닥에 고정 */
 .md4-hprev { flex: 0 0 var(--md4-prev-w); width: var(--md4-prev-w); height: 100%; background: #fff;
   border-left: 1px solid #e6e4e0; flex-wrap: nowrap; position: relative; }
@@ -224,51 +217,8 @@ html.md4-filedrag .md4-dropov { display: flex; }
   justify-content: center; background: #f7f6f3; border-radius: 8px; overflow: hidden; }
 .md4-pv-thumb img { display: block; width: 100%; max-height: 220px; object-fit: contain; }
 .md4-pv-thumb .q-skeleton { width: 100%; height: 150px; }
-.md4-pv-title { font-size: 16px; font-weight: 700; line-height: 1.35; color: #37352f; overflow-wrap: anywhere; }
-.md4-pv-auth { font-size: 12.5px; line-height: 1.45; color: #6b6862; }
-.md4-pv-bib { font-size: 12.5px; color: #9a968e; }
-.md4-pv-abs { font-size: 13.5px; line-height: 1.55; color: #37352f; white-space: pre-line; overflow-wrap: anywhere; }
-.md4-pv-abs.none { color: #9a968e; }
 .md4-pv-notes { font-size: 12.5px; line-height: 1.5; color: #6b6862; background: #fbfaf9; border-radius: 6px;
   padding: 8px 10px; white-space: pre-line; overflow-wrap: anywhere; }
-.md4-pv-ok { font-size: 11.5px; color: #21ba45; }
-/* 고칠 수 있는 서지·초록 칸 — 누르면 그 자리에서 입력칸(Enter·칸 밖 클릭 = 저장, Esc = 취소). 보일 때는 글자
-   그대로이고 hover 때만 옅은 바탕 + 오른쪽 끝 연필. 편집 중에는 메모 탭 이름 바꾸기(.md4-notetab.editing)처럼
-   흰 바탕에 1.5px 파란 테두리. 입력칸 글꼴은 칸의 것(제목 16px 굵게 · 본문 13.5px …)을 그대로 물려받는다. */
-.md4-pv-ed { position: relative; min-width: 0; margin: 0 -5px; padding: 1px 20px 1px 5px; border-radius: 5px;
-  cursor: text; transition: background .12s ease; }
-.md4-pv-ed:hover { background: rgba(55,53,47,.05); }
-.md4-pv-ed-v { overflow-wrap: anywhere; }
-.md4-pv-ed-v.ph { color: #b4b0a8; font-weight: 400; font-size: 12.5px; }
-.md4-pv-pen { position: absolute; right: 4px; top: 4px; color: #9a968e; opacity: 0; transition: opacity .12s ease;
-  pointer-events: none; }
-.md4-pv-ed:hover .md4-pv-pen { opacity: .75; }
-.md4-pv-ed.editing, .md4-pv-ed.editing:hover { background: #fff; box-shadow: 0 0 0 1.5px #2383e2; padding-right: 5px; }
-.md4-pv-ed.editing .md4-pv-pen { display: none; }
-.md4-pv-ed .q-field__control, .md4-pv-ed .q-field__control-container, .md4-pv-ed .q-field__marginal {
-  height: auto !important; min-height: 0 !important; padding: 0 !important; }
-.md4-pv-ed .q-field__control { color: inherit !important; }  /* Quasar는 포커스 칸 글자를 파랗게 칠한다 */
-.md4-pv-ed .q-field__native { min-height: 0 !important; padding: 0 !important; font: inherit; color: inherit;
-  line-height: inherit; letter-spacing: inherit; }
-.md4-pv-ed input.q-field__native { height: 1.45em; }
-.md4-pv-ed textarea.q-field__native { resize: none; }
-/* 연도 · venue · DOI · 약칭 — 이름표 | 값 두 칸 (Zotero 정보 칸처럼) */
-.md4-pv-kv { display: grid; grid-template-columns: max-content minmax(0, 1fr); column-gap: 12px; row-gap: 1px;
-  align-items: start; }
-.md4-pv-k { font-size: 11.5px; line-height: 1.45; color: #9a968e; padding-top: 2px; white-space: nowrap; }
-.md4-pv-v { font-size: 12.5px; line-height: 1.45; color: #6b6862; }
-/* 이름 규칙 힌트 — 서지를 고쳐 기준명이 폴더 이름과 달라지면 한 줄 */
-.md4-pv-hint { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; font-size: 12px; color: #9a968e;
-  line-height: 1.5; }
-.md4-pv-hint-n { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; color: #6b6862;
-  background: rgba(55,53,47,.06); border-radius: 4px; padding: 0 5px; overflow-wrap: anywhere; }
-.md4-pv-hint .q-btn { min-height: 0; padding: 0 4px; font-size: 12px; }
-.md4-pv-foot .md4-pv-redo .q-btn { font-size: 12px; }
-/* EN/KO — 작은 세그먼트 */
-.md4-seg { display: inline-flex; gap: 2px; padding: 2px; border-radius: 6px; background: rgba(55,53,47,.06); }
-.md4-seg span { font-size: 11px; font-weight: 600; line-height: 1; padding: 3px 8px; border-radius: 4px; cursor: pointer;
-  color: #9a968e; user-select: none; }
-.md4-seg span.on { background: #fff; color: #37352f; box-shadow: 0 1px 2px rgba(0,0,0,.1); cursor: default; }
 /* 단일 선택을 보는 중에 체크해 둔 논문이 있으면 — 일괄 동작으로 돌아가는 한 줄 */
 .md4-pv-selnote { font-size: 12px; color: #2383e2; background: rgba(35,131,226,.08); border-radius: 6px;
   padding: 5px 9px; cursor: pointer; }
@@ -298,7 +248,6 @@ html.md4-filedrag .md4-dropov { display: flex; }
 .md4-pv-sel { font-size: 12.5px; color: #6b6862; line-height: 1.4; }
 .md4-pv-empty { align-items: center; text-align: center; color: #9a968e; margin-top: 36px; }
 .md4-pv-stat { font-size: 13px; color: #6b6862; }
-.md4-menucap { font-size: 11px; font-weight: 700; letter-spacing: .05em; color: #9a968e; padding: 8px 16px 2px; }
 /* 다크 모드 — 뷰어처럼 사이드바(레일)만 어둡게. 본문 열은 Quasar가 밝은 테마 그대로라(입력칸·카드 글자가
    밝은 바탕 기준) 목록까지 어둡게 칠하면 글자가 묻힌다. */
 @media (prefers-color-scheme: dark) {
@@ -318,8 +267,6 @@ html.md4-filedrag .md4-dropov { display: flex; }
   /* 미리보기 열은 목록과 같은 이유로 밝게 둔다(뷰어 .md4-panel도 다크에서 밝다) — 사이드바와 맞닿지
      않으니 경계선·바닥 줄만 밝은 바탕 기준 그대로. 썸네일 바탕은 흰 그림이 바탕에 묻히지 않게 조금 짙게. */
   .md4-pv-thumb { background: #efeeeb; }
-  /* 고칠 수 있는 칸도 밝은 미리보기 열을 따른다 — 편집 중 칸은 흰 바탕 그대로, 테두리만 다크 쪽 파랑과 맞춘다 */
-  .md4-pv-ed.editing, .md4-pv-ed.editing:hover { background: #fff; box-shadow: 0 0 0 1.5px #3b8eea; }
 }
 """
 
@@ -535,59 +482,12 @@ def _haystack(r: dict) -> str:
     ]).lower()
 
 
-def field_text(key: str, value) -> tuple[str, str]:  # noqa: ANN001
-    """저장된 값 → (보이는 글자, 입력칸 글자). 저자는 보일 때 쉼표로, 고칠 때는 한 줄에 한 명."""
-    if key == "authors":
-        names = [str(a) for a in (value or []) if str(a).strip()]
-        return ", ".join(names), "\n".join(names)
-    s = "" if value is None else str(value)
-    return s, s
-
-
-def parse_field(key: str, raw) -> object:  # noqa: ANN001
-    """입력칸 글자 → 저장할 값. 연도가 숫자가 아니면 ValueError (범위 검사는 update_fields가 한다).
-
-    제목은 줄바꿈·겹친 공백을 한 칸으로(Shift+Enter로 넣은 줄바꿈이 제목에 남지 않게), 저자는 줄마다
-    한 명(빈 줄은 버린다), 초록은 문단 줄바꿈을 그대로 둔다.
-    """
-    s = "" if raw is None else str(raw)
-    if key == "authors":
-        return [a.strip() for a in s.replace("\r", "").split("\n") if a.strip()]
-    if key == "year":
-        s = s.strip()
-        if not s:
-            return None
-        if not s.isdigit():
-            raise ValueError(t("연도는 숫자로 입력하세요 (예: 2024)."))
-        return int(s)
-    if key == "title":
-        return " ".join(s.split())
-    return s.strip()
-
-
-def _same_base(stem: str, base: str) -> bool:
-    """폴더 이름이 이미 규칙대로인지 — 같은 이름의 다른 논문이 있어 `X (2)`처럼 유일화된 것도 규칙대로다."""
-    import re
-
-    return stem == base or re.fullmatch(re.escape(base) + r" \(\d+\)", stem) is not None
-
-
 def _stored_pids(r: dict) -> list[str]:
     """recent_workdirs 행에 적힌 소속 목록 — 새 키 `projects`, 없으면 옛 키 `project` 하나."""
     raw = r.get("projects")
     if raw is None:
         raw = [r["project"]] if r.get("project") else []
     return [str(p) for p in raw if p]
-
-
-def _via_subs(pids: list[str], scope: str, sub: dict[str, set[str]]) -> list[str]:
-    """상위 컬렉션 `scope`를 볼 때 이 논문이 **하위 컬렉션을 통해서만** 보이면 그 하위 컬렉션들(소속 순서).
-
-    직접 든 논문이거나, 컬렉션 보기가 아니거나(전체·미분류 — `sub`에 없다), 그 하위에도 없으면 []."""
-    if scope in pids:
-        return []
-    under = sub.get(scope) or set()
-    return [p for p in pids if p in under and p != scope]
 
 
 def _leave_scope(pids: list[str], scope: str, sub: dict[str, set[str]]) -> tuple[list[str], list[str]]:
@@ -648,7 +548,6 @@ def build_home(state: dict) -> None:
     """홈 화면 — 프로젝트 사이드바 | 논문 목록. (app.build_home이 여기로 넘긴다)"""
     from nicegui import background_tasks, run, ui
 
-    from narani import bibsource, paper_meta
     from narani.extract import DEFAULT_BACKEND, available_backends
     from narani.ui.app import (
         _CHROME_CSS, _EXPORT_TARGET, _EXTLINK_HTML, _QUEUE_ACTIVE, _pdf_page_count, _process_queue,
@@ -664,6 +563,7 @@ def build_home(state: dict) -> None:
 
     spa.add_css(_CHROME_CSS)  # 헤더 탭 줄 + .md4-body 틀 + 사이드바 색 토큰
     spa.add_css(HOME_CSS)
+    spa.add_css(meta_card.CSS)  # 미리보기 서지 칸·태그 (뷰어 ⓘ 팝오버와 같은 스타일)
     spa.add_css(settings_dialog.CSS)
     spa.add_css(setup_wizard.CSS)
     spa.add_body_html(_EXTLINK_HTML)  # 바깥 링크는 새 창(앱 창이면 시스템 브라우저)으로
@@ -700,8 +600,6 @@ def build_home(state: dict) -> None:
     pv: dict = {"open": preview_open(), "col": None, "btn": None}
     card_els: dict = {}  # root → 카드 요소 (선택 표시를 목록을 다시 그리지 않고 옮기려고)
     card_refs: dict = {}  # root → {title, tip, bib} 라벨 — 서지를 고치면 그 카드 글자만 바꾼다
-    busy_meta: set[str] = set()  # '다시 찾기'·'다시 추출'이 도는 논문 root — 두 번 누르지 않게
-    meta_lock = asyncio.Lock()  # 칸을 연달아 고칠 때 paper_meta.json 읽고-쓰기가 겹쳐 앞의 값을 잃지 않게
     loads: dict = {}  # (root, 종류, 언어) → asyncio.Task — 같은 것을 두 번 읽지 않게(EN/KO 토글이 즉시)
     preview = _preview_module()
     data: dict = {"rows": [], "by_root": {}, "projs": [], "names": {}, "tree": [], "up": {}, "sub": {},
@@ -710,12 +608,8 @@ def build_home(state: dict) -> None:
     # ===== 한 번 훑기 — 사이드바 편수와 목록이 같은 결과를 쓴다 =====
     def load_projects() -> None:
         """프로젝트 목록을 한 번 읽어 둔다 — 행마다 projects.normalize(파일 읽기)를 부르지 않게."""
-        projs = data["projs"] = projects.all_projects()
-        data["names"] = {p["id"]: p["name"] for p in projs}
         # 트리 — 사이드바 순서·들여쓰기, 조상(편수를 위로 올리기), 하위 전체(상위를 고르면 하위 논문까지)
-        data["tree"] = projects.tree(projs)
-        data["up"] = {p["id"]: projects.ancestors(p["id"], projs) for p in projs}
-        data["sub"] = {p["id"]: {p["id"], *projects.descendants(p["id"], projs)} for p in projs}
+        data.update(meta_card.collections())
         valid = data["names"]
         for r in data["rows"]:  # 없어진 프로젝트는 어디서나 미분류로 (projects.normalize_many와 같은 규칙)
             r["pids"] = [p for p in dict.fromkeys(_stored_pids(r)) if p in valid]
@@ -952,11 +846,10 @@ def build_home(state: dict) -> None:
         copies = 0
         new = list(dict.fromkeys(p for p in pids if p in data["names"]))
         for root in roots:
-            try:
-                copies += len(await run.io_bound(library.set_memberships, WorkDir(Path(root)), new))
-            except Exception as ex:  # noqa: BLE001 — 한 편이 실패해도 나머지는 계속
-                ui.notify(t("소속을 바꾸지 못했습니다: {stem} — {ex}", stem=Path(root).stem, ex=ex), type="negative")
+            n = await meta_card.set_members(WorkDir(Path(root)), new, data["names"])
+            if n is None:  # 한 편이 실패해도 나머지는 계속 (알림은 set_members가 띄웠다)
                 continue
+            copies += n
             r = data["by_root"].get(root)
             if r is not None:
                 r["pids"] = list(new)
@@ -2143,49 +2036,28 @@ def build_home(state: dict) -> None:
     member_ui: dict = {"menu": None, "r": None, "tags": None, "changed": False}
 
     def open_member_menu(r: dict, tags_box, anchor) -> None:  # noqa: ANN001 — ui.element
-        """카드 태그를 누르면 뜨는 체크 메뉴 — 프로젝트마다 넣기/빼기 + 새 프로젝트 만들기.
+        """카드 태그를 누르면 뜨는 체크 메뉴 — 프로젝트마다 넣기/빼기 + 새 프로젝트 만들기 (§meta_card).
 
         한 칸을 눌러도 메뉴는 닫지 않고 그 칸·태그만 고친다(여러 개를 연달아 고를 수 있게).
         목록은 메뉴를 닫을 때 한 번 다시 그린다 — 지금 범위에서 빠진 논문이 그때 사라진다.
         """
-        menu = member_ui["menu"]
         root = str(r["root"])
         member_ui.update(r=r, tags=tags_box)
 
-        async def flip(pid: str, icon) -> None:  # noqa: ANN001 — ui.icon
+        async def flip(pid: str) -> bool:
             now_in = await toggle_member(root, pid)
             member_ui["changed"] = True
-            icon.name = "check_box" if now_in else "check_box_outline_blank"
-            icon.classes(replace="text-primary" if now_in else "text-grey-6")
             paint_tags(tags_box, r)
-            paint_via()
+            return now_in
 
-        def paint_via() -> None:
+        def via_note() -> str:
             """상위 컬렉션 보기에서 하위로만 들어온 논문이면 어디서 왔는지 — 칸을 고칠 때마다 다시."""
             subs = _via_subs(r["pids"], view["scope"], data["sub"])
-            via_lbl.text = t("'{v}'에는 하위 컬렉션 {subs}에서 와서 보입니다 — 이 보기에서 빼려면 그 칸을 끄세요",
-                             v=name_of(view["scope"]), subs=", ".join(f"'{name_of(p)}'" for p in subs)) if subs else ""
-            via_lbl.set_visibility(bool(subs))
+            return t("'{v}'에는 하위 컬렉션 {subs}에서 와서 보입니다 — 이 보기에서 빼려면 그 칸을 끄세요",
+                     v=name_of(view["scope"]), subs=", ".join(f"'{name_of(p)}'" for p in subs)) if subs else ""
 
-        menu.clear()
-        with menu:
-            ui.label(t("컬렉션에 넣기")).classes("md4-menucap")
-            via_lbl = ui.label().classes("text-xs text-gray-500 q-px-md q-pb-xs").style("max-width:280px")
-            paint_via()
-            for p, d in data["tree"]:  # 트리 순서, 하위는 들여 써서
-                on = p["id"] in r["pids"]
-                with ui.menu_item(auto_close=False).props("dense").style(f"padding-left:{16 + 14 * d}px") as item:
-                    with ui.row().classes("items-center gap-2 no-wrap"):
-                        ic = ui.icon("check_box" if on else "check_box_outline_blank", size="18px") \
-                            .classes("text-primary" if on else "text-grey-6")
-                        ui.label(p["name"])
-                item.on("click", lambda _, pid=p["id"], i=ic: flip(pid, i))
-            if not data["projs"]:
-                ui.label(t("아직 컬렉션이 없습니다")).classes("text-xs text-gray-400 q-px-md q-py-xs")
-            ui.separator()
-            ui.menu_item(t("새 컬렉션 만들기…"), on_click=lambda: new_project(for_root=root)).props("dense")
-        menu.props(f'target="#c{anchor.id}"')
-        menu.open()
+        meta_card.open_member_menu(member_ui["menu"], anchor, data, lambda: r["pids"], flip,
+                                   lambda: new_project(for_root=root), via_note)
 
     def member_menu_closed() -> None:
         if member_ui["changed"]:
@@ -2194,24 +2066,9 @@ def build_home(state: dict) -> None:
             preview_pane.refresh()  # 카드에서 고쳤으면 미리보기 태그도 (초록·이미지는 캐시라 다시 읽지 않는다)
 
     def paint_tags(tags_box, r: dict) -> None:  # noqa: ANN001 — ui.element
-        tags_box.clear()
         # 상위 컬렉션 보기에서 직접 들지 않고 하위 컬렉션으로만 보이는 논문 — 그 하위 태그를 '↳'로
-        # 갈라 왜 여기 보이는지 알린다(새 요소 없이 글자·class만 — 카드마다 그리므로 가볍게).
-        via = set(_via_subs(r["pids"], view["scope"], data["sub"]))
-        with tags_box:
-            if r["pids"]:
-                for p in r["pids"]:
-                    if p in via:
-                        ui.label("↳ " + name_of(p)).classes("md4-ptag via") \
-                            .tooltip(t("'{v}'에 직접 들지 않고 하위 컬렉션 '{sub}'에서 와서 보입니다",
-                                       v=name_of(view["scope"]), sub=path_of(p)))
-                        continue
-                    tag = ui.label(name_of(p)).classes("md4-ptag")
-                    if data["up"].get(p):  # 하위 컬렉션은 어디 밑인지
-                        tag.tooltip(path_of(p))
-            else:
-                ui.label(t("미분류")).classes("md4-ptag none")
-            ui.icon("add", size="14px").classes("md4-ptag-add")
+        meta_card.paint_tags(tags_box, r["pids"], data, via=_via_subs(r["pids"], view["scope"], data["sub"]),
+                             scope_name=name_of(view["scope"]))
 
     @ui.refreshable
     def recent_list() -> None:
@@ -2442,85 +2299,7 @@ def build_home(state: dict) -> None:
         with box:
             ui.element("img").props(f'src="/wdthumb/{wd_token(Path(root))}?v={ver}" alt="" draggable=false')
 
-    # ----- 미리보기에서 서지·초록 고치기 -----
-    fail = object()  # commit이 저장하지 못했을 때 — 칸은 옛 값으로 돌아간다
-
-    # Enter = 저장(칸을 떠나게 해 blur 한 길로 모은다), Esc = 취소. 한글 조합 중 Enter(isComposing·229)는
-    # 글자를 확정할 뿐이라 건드리지 않는다. 여러 줄 칸은 Shift+Enter가 줄바꿈.
-    keys_js = ("(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); emit(); return; }"
-               " if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229 && !(%s && e.shiftKey))"
-               " { e.preventDefault(); e.target.blur(); } }")
-
-    def edit_field(cls: str, key: str, value, placeholder: str, commit, *,  # noqa: ANN001
-                   multiline: bool = False) -> None:
-        """누르면 그 자리에서 입력칸이 되는 칸. commit(key, 새 값) → 저장된 값(또는 fail).
-
-        값이 같으면 저장하지 않는다. Enter로 저장하면 칸이 사라지며 blur가 한 번 더 올 수 있어
-        편집 한 번에 한 번만 끝내도록 done으로 막는다.
-        """
-        box = ui.element("div").classes(f"md4-pv-ed {cls}")
-        st = {"value": value, "editing": False}
-
-        def show() -> None:
-            st["editing"] = False
-            box.classes(remove="editing")
-            box.clear()
-            text, _ = field_text(key, st["value"])
-            with box:
-                ui.label(text or placeholder).classes("md4-pv-ed-v" + ("" if text else " ph"))
-                ui.icon("edit", size="13px").classes("md4-pv-pen")
-
-        def edit() -> None:
-            if st["editing"]:
-                return  # 입력칸 안을 누른 클릭이 칸까지 올라온 것
-            st["editing"] = True
-            done = {"v": False}
-            _, cur = field_text(key, st["value"])
-            box.classes(add="editing")
-            box.clear()
-            with box:
-                w = ui.textarea(value=cur).props("autogrow") if multiline else ui.input(value=cur)
-                w.props("dense borderless autofocus" + (" inputmode=numeric maxlength=4" if key == "year" else "")) \
-                    .classes("w-full")
-
-            async def finish(save: bool) -> None:
-                if done["v"]:
-                    return
-                done["v"] = True
-                if save:
-                    try:
-                        new, old = parse_field(key, w.value), parse_field(key, cur)
-                    except ValueError as ex:
-                        ui.notify(str(ex), type="warning")
-                        new = old = None
-                    if new != old:
-                        saved = await commit(key, new)
-                        if saved is not fail:
-                            st["value"] = saved
-                show()
-
-            if not multiline:  # 한 줄 칸(연도·DOI…)은 통째로 바꾸는 일이 많아 전체 선택으로 연다
-                w.on("focus", js_handler="(e) => e.target.select()")
-            w.on("blur", lambda: finish(True))
-            w.on("keydown", lambda: finish(False), js_handler=keys_js % ("true" if multiline else "false"))
-
-        box.on("click", edit)
-        show()
-
-    def export_bib_bg(wd: WorkDir) -> None:
-        """서지가 바뀌었으면 저장 위치의 references.bib 항목도 — 사본이 놓인 곳마다, 백그라운드로."""
-        if not settings_dialog.any_library_dirs():
-            return
-
-        def go() -> None:
-            for tgt in library.export_targets(wd):
-                try:
-                    library.export_bib(wd, tgt)
-                except Exception:  # noqa: BLE001 — bib 한 곳이 실패해도 서지 저장은 이미 끝났다
-                    pass
-
-        background_tasks.create(run.io_bound(go), name="md4-export-bib")
-
+    # ----- 미리보기에서 서지·초록 고치기 — 칸·저장·다시 받기·이름 바꾸기는 뷰어 ⓘ 팝오버와 같은 meta_card -----
     def update_card(r: dict) -> None:
         """목록 카드의 제목·서지 줄만 고친다 (목록을 다시 그리지 않는다)."""
         refs = card_refs.get(str(r["root"]))
@@ -2542,122 +2321,6 @@ def build_home(state: dict) -> None:
         r["year"] = meta.get("year")
         r["venue"] = meta.get("venue") or ""
 
-    def effective_doi(wd: WorkDir, meta: dict | None = None) -> str:
-        """BibTeX에 실제로 나가는 DOI — 손으로 넣은 값 > 온라인 기록."""
-        meta = paper_meta.load(wd) if meta is None else meta
-        return (meta or {}).get("doi") or (bibsource.load(wd) or {}).get("doi") or ""
-
-    def after_meta_change(r: dict, meta: dict) -> None:
-        """서지가 바뀐 뒤 — 카드 · 헤더 탭 제목 · (보고 있으면) 이름 힌트·서지 ✓ · references.bib."""
-        wd = WorkDir(r["root"])
-        apply_meta(r, meta)
-        update_card(r)
-        tabs_bar.refresh()
-        if pick["root"] == str(r["root"]):
-            if pv.get("hint") is not None:
-                draw_hint(pv["hint"], r)
-            if pv.get("ok") is not None:
-                draw_ok(pv["ok"], effective_doi(wd, meta))
-        export_bib_bg(wd)
-
-    async def commit_meta(r: dict, key: str, value):  # noqa: ANN202 — 저장된 값 | fail
-        wd = WorkDir(r["root"])
-        try:
-            async with meta_lock:
-                meta = await run.io_bound(paper_meta.update_fields, wd, {key: value})
-        except ValueError as ex:  # 빈 제목·범위 밖 연도 등 — 칸은 옛 값으로
-            ui.notify(t("저장하지 않았습니다 — {ex}", ex=ex), type="warning")
-            return fail
-        except Exception as ex:  # noqa: BLE001
-            ui.notify(t("저장하지 못했습니다: {ex}", ex=ex), type="negative")
-            return fail
-        after_meta_change(r, meta)
-        ui.notify(t("저장됨"), type="positive", timeout=1200)
-        if key == "doi":
-            return meta.get("doi") or effective_doi(wd, meta)
-        return meta.get(key)
-
-    async def commit_abs(r: dict, lang: str, text: str):  # noqa: ANN202 — 저장된 값 | fail
-        wd = WorkDir(r["root"])
-        try:
-            await run.io_bound(preview.set_abstract, wd, lang, text)
-        except Exception as ex:  # noqa: BLE001
-            ui.notify(t("초록을 저장하지 못했습니다: {ex}", ex=ex), type="negative")
-            return fail
-        done = asyncio.get_running_loop().create_future()  # 다시 그려도 디스크를 다시 읽지 않게 캐시도
-        done.set_result(text)
-        loads[(str(r["root"]), "abs", lang)] = done
-        ui.notify(t("초록 저장됨"), type="positive", timeout=1200)
-        return text
-
-    def draw_abs(box, text) -> None:  # noqa: ANN001
-        box.clear()
-        r, lang = picked_row(), pick.get("abs_lang") or "en"
-        with box:
-            if preview is None or r is None:
-                ui.label(text or t("초록을 찾지 못했습니다")).classes("md4-pv-abs" + ("" if text else " none"))
-                return
-            edit_field("md4-pv-abs w-full", "abstract", text or "", t("초록을 찾지 못했습니다 — 눌러서 입력"),
-                       lambda _k, v, r=r, lang=lang: commit_abs(r, lang, v), multiline=True)
-
-    def draw_ok(box, doi: str) -> None:  # noqa: ANN001
-        box.clear()
-        if doi:
-            with box:
-                ui.label(t("서지 ✓")).classes("md4-pv-ok").tooltip(t("서지 정보 보강됨 — DOI {doi}", doi=doi))
-
-    def draw_hint(box, r: dict) -> None:  # noqa: ANN001
-        """이름 규칙대로면 폴더 이름이 달라질 때만 한 줄 — 서지를 고친 뒤 폴더도 맞출 수 있게."""
-        box.clear()
-        wd = WorkDir(r["root"])
-        base = paper_meta.naming_base_for(wd)
-        if not base or _same_base(wd.root.stem, base):
-            box.set_visibility(False)
-            return
-        box.set_visibility(True)
-        with box:
-            ui.label(t("이름 규칙대로면"))
-            ui.label(base).classes("md4-pv-hint-n")
-            ui.button(t("폴더 이름 바꾸기"), on_click=lambda: confirm_rename(r, base)) \
-                .props("flat dense no-caps color=primary")
-
-    def confirm_rename(r: dict, base: str) -> None:
-        old = Path(r["root"])
-        running = {str(Path(j.root).resolve()) for j in jobs.running()}
-        if str(old.resolve()) in running:  # 번역 등이 이 폴더에 쓰는 중 — 옮기면 그 작업이 길을 잃는다
-            ui.notify(t("이 논문에서 작업(번역 등)이 도는 중입니다 — 끝난 뒤에 바꾸세요."), type="warning")
-            return
-
-        async def do_rename() -> None:
-            dlg.close()
-            try:
-                new_wd = await run.io_bound(paper_meta.rename_to_naming, WorkDir(old), ws())
-            except Exception as ex:  # noqa: BLE001
-                ui.notify(t("폴더 이름을 바꾸지 못했습니다: {ex}", ex=ex), type="negative")
-                return
-            new = Path(new_wd.root)
-            if new == old:
-                ui.notify(t("이미 이름 규칙대로입니다."), type="info")
-                preview_pane.refresh()
-                return
-            tabstore.rename_tab(old, new)  # rename_workdir도 부르지만, 두 번이어도 무해(옛 키가 없으면 그냥 끝)
-            rekey(r, old, new)
-            tabs_bar.refresh()
-            refresh_views()
-            ui.notify(t("폴더 이름을 바꿨습니다 → {stem}", stem=new.stem), type="positive")
-
-        with host, ui.dialog() as dlg, ui.card().classes("gap-2").style("max-width:440px"):
-            ui.label(t("폴더 이름을 이름 규칙대로 바꿀까요?")).classes("font-bold")
-            with ui.column().classes("gap-0 w-full"):
-                ui.label(old.stem).classes("text-sm text-gray-500 break-all")
-                ui.label("→ " + base).classes("text-sm break-all")
-            ui.label(t("폴더·PDF·저장 위치 사본·열린 탭이 함께 옮겨집니다.")).classes("text-xs text-gray-500")
-            with ui.row().classes("justify-end w-full items-center gap-2"):
-                ui.button(t("취소"), on_click=dlg.close).props("flat")
-                ui.button(t("이름 바꾸기"), icon="drive_file_rename_outline", on_click=do_rename) \
-                    .props("unelevated no-caps color=primary")
-        dlg.open()
-
     def rekey(r: dict, old: Path, new: Path) -> None:
         """폴더가 옮겨졌다 — 이 홈이 root로 들고 있던 것(행·선택·체크·캐시)을 새 경로로."""
         o, n = str(old), str(new)
@@ -2675,75 +2338,41 @@ def build_home(state: dict) -> None:
         if o in recent:
             recent[n] = recent.pop(o)
 
-    def set_busy(btn, on: bool) -> None:  # noqa: ANN001 — ui.button
-        try:
-            btn.props("loading") if on else btn.props(remove="loading")
-        except Exception:  # noqa: BLE001 — 그 사이 미리보기가 다시 그려져 단추가 없어졌다
-            pass
+    def card_for(r: dict) -> meta_card.MetaCard:
+        """이 논문의 서지 카드 — 저장 뒤 홈이 들고 있는 것(행·카드 글자·탭 줄·캐시)을 훅으로 맞춘다."""
+        root = str(r["root"])
 
-    async def redo_online(r: dict, btn) -> None:  # noqa: ANN001
-        """'온라인에서 다시 찾기' — 출판 기록을 새로 받는다(손으로 고친 칸은 기록 위에 다시 덮인다)."""
-        root, wd = str(r["root"]), WorkDir(r["root"])
-        if root in busy_meta:
-            ui.notify(t("이 논문의 서지를 이미 다시 받는 중입니다."), type="info", timeout=1500)
-            return
-        busy_meta.add(root)
-        set_busy(btn, True)
-        try:
-            rec = await run.io_bound(bibsource.refetch, wd, mailto=config.resolve_enrich_mailto() or None)
-        except Exception as ex:  # noqa: BLE001 — 오프라인·레이트리밋
-            ui.notify(t("온라인 조회에 실패했습니다: {ex}", ex=ex), type="negative")
-            return
-        finally:
-            busy_meta.discard(root)
-            set_busy(btn, False)
-        if not rec:
-            ui.notify(t("출판 기록을 찾지 못했습니다 — 제목·저자·연도를 고친 뒤 다시 찾아 보세요."), type="info")
-            return
-        bits = [str(x) for x in (rec.get("venue"), rec.get("year")) if x]
-        if rec.get("doi"):
-            bits.append(f"DOI {rec['doi']}")
-        ui.notify(t("출판 기록을 받았습니다") + (" — " + " · ".join(bits) if bits else ""), type="positive")
-        after_meta_change(r, paper_meta.load(wd) or {})
-        if pick["root"] == root:
-            preview_pane.refresh()  # DOI 칸·서지 ✓
+        def on_meta(meta: dict) -> None:  # 카드 · 헤더 탭 제목 (이름 힌트·서지 ✓·references.bib은 카드가)
+            apply_meta(r, meta)
+            update_card(r)
+            tabs_bar.refresh()
 
-    async def redo_ai(r: dict, btn) -> None:  # noqa: ANN001
-        """'AI로 다시 추출' — 앞부분에서 서지를 다시 뽑는다(손으로 고친 칸은 그대로)."""
-        root, wd = str(r["root"]), WorkDir(r["root"])
-        if root in busy_meta:
-            ui.notify(t("이 논문의 서지를 이미 다시 받는 중입니다."), type="info", timeout=1500)
-            return
-        try:
-            provider = config.build_provider()
-        except RuntimeError as ex:
-            ui.notify(str(ex), type="warning")
-            return
-        busy_meta.add(root)
-        set_busy(btn, True)
-        try:
-            async with meta_lock:
-                meta = await run.io_bound(paper_meta.reextract, wd, provider)
-        except Exception as ex:  # noqa: BLE001
-            ui.notify(t("서지를 다시 뽑지 못했습니다: {ex}", ex=ex), type="negative")
-            return
-        finally:
-            busy_meta.discard(root)
-            set_busy(btn, False)
-        if not meta:
-            ui.notify(t("본문 앞부분이 비어 있어 서지를 뽑지 못했습니다."), type="warning")
-            return
-        after_meta_change(r, meta)
-        ui.notify(t("AI로 서지를 다시 뽑았습니다 — 손으로 고친 칸은 그대로 두었습니다."), type="positive")
-        if pick["root"] == root:
-            preview_pane.refresh()
+        def on_redraw() -> None:
+            if pick["root"] == str(r["root"]):
+                preview_pane.refresh()  # DOI 칸·서지 ✓
 
-    def ai_ready() -> bool:
-        """AI 키가 있는지 — config.build_provider()가 RuntimeError를 내는 바로 그 조건 (클라이언트는 만들지 않는다)."""
-        try:
-            return bool(config.resolve_key(config.resolve_provider()))
-        except Exception:  # noqa: BLE001 — 알 수 없는 제공자 이름 등
-            return False
+        def on_renamed(old: Path, new: Path) -> None:
+            rekey(r, old, new)
+            tabs_bar.refresh()
+            refresh_views()
+
+        def on_abs(lang: str, text: str) -> None:  # 다시 그려도 디스크를 다시 읽지 않게 캐시도
+            done = asyncio.get_running_loop().create_future()
+            done.set_result(text)
+            loads[(str(r["root"]), "abs", lang)] = done
+
+        return meta_card.MetaCard(WorkDir(Path(root)), host=host, workspace=ws, on_meta=on_meta,
+                                  on_redraw=on_redraw, on_renamed=on_renamed, on_abs=on_abs)
+
+    def draw_abs(box, text) -> None:  # noqa: ANN001
+        r, lang = picked_row(), pick.get("abs_lang") or "en"
+        card = pv.get("card")
+        if preview is None or r is None or card is None:
+            box.clear()
+            with box:
+                ui.label(text or t("초록을 찾지 못했습니다")).classes("md4-pv-abs" + ("" if text else " none"))
+            return
+        card.abstract(box, text, lang)
 
     def draw_notes(box, text) -> None:  # noqa: ANN001
         box.clear()
@@ -2785,8 +2414,7 @@ def build_home(state: dict) -> None:
         if r is None:
             return
         pick["abs_lang"] = lang
-        for k, span in pv.get("seg", {}).items():
-            span.classes(add="on") if k == lang else span.classes(remove="on")
+        meta_card.mark_seg(pv.get("seg", {}), lang)
         box = pv.get("abs_box")
         if box is not None:
             box.clear()
@@ -2810,32 +2438,11 @@ def build_home(state: dict) -> None:
                     .on("click", show_bulk)
             thumb = ui.element("div").classes("md4-pv-thumb")
             load_into(thumb, root, "thumb", "", draw_thumb, lambda: ui.skeleton("rect"))
-            # 서지 — 칸마다 눌러서 바로 고친다(paper_meta.update_fields). 제목·저자는 여러 줄 칸(저자는 한 줄에
-            # 한 명), 연도·venue·DOI·약칭은 이름표 | 값 두 칸. 약칭은 폴더 이름 규칙의 {title}.
-            pm = paper_meta.load(wd) or {}
-            doi = effective_doi(wd, pm)
-
-            def commit(key: str, value):  # noqa: ANN001, ANN202
-                return commit_meta(r, key, value)
-
-            with ui.column().classes("gap-1 w-full"):
-                edit_field("md4-pv-title w-full", "title", r["title"], t("제목 없음 — 눌러서 입력"), commit,
-                           multiline=True)
-                edit_field("md4-pv-auth w-full", "authors", r.get("authors") or [],
-                           t("저자 없음 — 눌러서 입력 (한 줄에 한 명)"), commit, multiline=True)
-            with ui.element("div").classes("md4-pv-kv w-full"):
-                for key, label, val, tip in (
-                        ("year", t("연도"), r.get("year"), ""),
-                        ("venue", "venue", r.get("venue"), t("학회·저널 이름")),
-                        ("doi", "DOI", doi, t("BibTeX·온라인 조회에 쓰는 DOI — https://doi.org/ 접두는 떼어 저장합니다")),
-                        ("short_title", t("약칭"), pm.get("short_title"),
-                         t("파일·폴더 이름에 쓰는 제목 약칭(이름 규칙의 {title}) — 비우면 제목에서 만듭니다"))):
-                    k = ui.label(label).classes("md4-pv-k")
-                    if tip:
-                        k.tooltip(tip)
-                    edit_field("md4-pv-v", key, val, t("비어 있음 — 눌러서 입력"), commit)
-            pv["hint"] = ui.element("div").classes("md4-pv-hint w-full")
-            draw_hint(pv["hint"], r)
+            # 서지 — 칸마다 눌러서 바로 고친다(§meta_card — 뷰어 ⓘ 팝오버와 같은 칸·같은 저장).
+            card = pv["card"] = card_for(r)
+            vals = meta_card.values(wd)
+            card.fields(vals)
+            card.hint()
             tags_box = ui.element("div").classes("md4-ptags")
             paint_tags(tags_box, r)
             tags_box.on("click", lambda _, item=r, t=tags_box: open_member_menu(item, t, t))
@@ -2849,20 +2456,12 @@ def build_home(state: dict) -> None:
                 if r["hidden"]:
                     ui.badge(t("숨김"), color="grey").props("outline")
                 ui.label(_relative_time(r["mtime"])).classes("md4-pmeta")
-                pv["ok"] = ui.element("div")
-                draw_ok(pv["ok"], doi)
+                card.ok(vals["doi"])
             with ui.row().classes("items-center w-full no-wrap q-mt-xs"):
                 ui.label(t("초록")).classes("md4-panel-title")
                 ui.space()
-                pv["seg"] = {}
-                if r["has_ko"]:
-                    with ui.element("div").classes("md4-seg"):
-                        for k in ("en", "ko"):
-                            sp = ui.element("span").classes("on" if k == lang else "")
-                            with sp:
-                                ui.label("EN" if k == "en" else langs.short(r.get("lang") or "ko"))
-                            sp.on("click", lambda _, k=k: set_lang(k))
-                            pv["seg"][k] = sp
+                pv["seg"] = meta_card.lang_seg(lang, langs.short(r.get("lang") or "ko"), set_lang) \
+                    if r["has_ko"] else {}
             abs_box = ui.column().classes("gap-1 w-full")
             pv["abs_box"] = abs_box
             load_into(abs_box, root, "abs", lang, draw_abs, abs_skeleton)
@@ -2870,20 +2469,7 @@ def build_home(state: dict) -> None:
             load_into(notes_box, root, "notes", "", draw_notes)
         foot = ui.column().classes("md4-pv-foot gap-1 w-full")
         with foot, ui.row().classes("md4-pv-redo items-center gap-1 w-full no-wrap"):
-            # 서지 다시 받기 — 손으로 고친 칸은 어느 쪽도 덮지 않는다(user_fields)
-            online = ui.button(t("온라인에서 다시 찾기"), icon="travel_explore",
-                               on_click=lambda: redo_online(r, online)) \
-                .props("flat dense no-caps size=sm color=grey-8") \
-                .tooltip(t("OpenAlex·Crossref 등에서 출판 기록(BibTeX용)을 새로 받습니다 — 손으로 고친 칸은 그대로"))
-            ai_ok = ai_ready()
-            # 툴팁은 감싼 span에 — 비활성 <button>은 마우스 이벤트를 받지 않아 '왜 꺼졌는지'가 안 뜬다
-            with ui.element("span").tooltip(
-                    t("본문 앞부분에서 제목·저자·연도·venue를 AI로 다시 뽑습니다 — 손으로 고친 칸은 그대로")
-                    if ai_ok else t("AI 키가 없어 쓸 수 없습니다 — ⚙ 설정 → AI에서 키를 넣으세요")):
-                ai = ui.button(t("AI로 다시 추출"), icon="auto_awesome", on_click=lambda: redo_ai(r, ai)) \
-                    .props("flat dense no-caps size=sm color=grey-8")
-            if not ai_ok:
-                ai.disable()
+            card.redo_buttons()
         if Path(root).stem in data["mobile"]:   # 웹 리더에 있는 논문 — 브라우저로 열기 · 공유 링크
             shared = bool(share_of(Path(root)))
             with foot, ui.row().classes("items-center gap-1 w-full no-wrap"):
@@ -3064,7 +2650,7 @@ def build_home(state: dict) -> None:
     @ui.refreshable
     def preview_pane() -> None:
         pick["seq"] += 1  # 이전 그림에 걸어 둔 읽기는 이제 버려진다
-        pv["seg"], pv["abs_box"], pv["hint"], pv["ok"] = {}, None, None, None
+        pv["seg"], pv["abs_box"], pv["card"] = {}, None, None
         if not (pv["open"] or selected):
             return  # 접혀 있으면 그리지도 읽지도 않는다
         r = picked_row()

@@ -110,6 +110,12 @@ def test_ui_server_renders(tmp_path):
     assert "레이아웃 자동 수정" in body
     assert "추가 지시 (선택)" in body
     assert "직전 상태로 되돌리기" in body
+    # 헤더 ⓘ 서지 카드 — 홈 미리보기와 같은 칸(§meta_card)
+    assert "md4-infobtn" in body and "md4-info-body" in body
+    assert "서지 정보 — 제목·저자·연도·DOI·컬렉션·초록" in body
+    assert "md4-pv-kv" in body and "온라인에서 다시 찾기" in body
+    # 내려 읽을 때 지금 섹션 띠 (§sticky_head) — 셸이 스크립트를 싣는다
+    assert "__md4Sticky" in body and ".sbs-stick" in body
 
 
 def test_ui_serves_notes_editor_bundle(tmp_path):

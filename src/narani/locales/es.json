@@ -1462,5 +1462,6 @@
  "읽을 글이 없어요.": "No hay nada que leer.",
  "만든 음성": "Audio creado",
  "재생을 시작하지 못했어요 — ▶를 다시 눌러 보세요.": "No se pudo iniciar la reproducción — prueba a pulsar ▶ otra vez.",
- "여기부터 재생": "Reproducir desde aquí"
+ "여기부터 재생": "Reproducir desde aquí",
+ "서지 정보 — 제목·저자·연도·DOI·컬렉션·초록 (눌러서 고치기)": "Datos del artículo — título · autores · año · DOI · colecciones · resumen (haz clic para editar)"
 }
