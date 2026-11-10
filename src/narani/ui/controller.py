@@ -1285,15 +1285,8 @@ def _zip_add_paper(z, wd: WorkDir, which: str, target: str = "universal") -> str
 
 
 def bulk_zip(roots, which: str = "en", target: str = "universal") -> tuple[str, bytes]:
-    """여러 워크디렉토리의 마크다운(대상 형식)+이미지를 한 zip으로 (각 논문은 자기 폴더)."""
-    import io
-    import zipfile
-    from pathlib import Path
+    """여러 워크디렉토리의 마크다운(대상 형식)+이미지를 한 zip으로 (각 논문은 자기 폴더). §export_bundle의 한 경우."""
+    from narani.export_bundle import bundle
 
-    buf = io.BytesIO()
-    n = 0
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
-        for root in roots:
-            if _zip_add_paper(z, WorkDir(Path(root)), which, target):
-                n += 1
-    return t("narani-{n}편-{which}.zip", n=n, which=which), buf.getvalue()
+    name, data, _media = bundle(roots, [which], target)
+    return name, data

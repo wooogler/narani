@@ -2477,7 +2477,6 @@ body.ag-open .md4-agentbtn { background: #fff; color: #2383e2; }
 .md4-canvasbar > * { flex: 0 0 auto; }
 .md4-canvasbar > .q-space { flex: 1 1 0; }
 .md4-canvasbar .q-toggle__label, .md4-canvasbar .q-btn__content, .md4-canvasbar .q-badge { white-space: nowrap; }
-.md4-exportmenu .q-item { min-height: 36px; }
 @media (prefers-color-scheme: dark) {
   .md4-rail { background: #1b1b1b; border-right-color: #333; }
   .md4-notes-ed, .md4-notes-ed .milkdown { background: #1d1d1d; --crepe-color-background: #1d1d1d; }
@@ -4385,19 +4384,9 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                 ui.button(t("원본 PDF"), icon="picture_as_pdf", on_click=open_pdf_app) \
                     .props("flat dense no-caps color=primary") \
                     .tooltip(t("PDF 뷰어로 열기 — 원본 PDF를 미리보기 등 기본 앱에서"))
-            # 내보내기는 메뉴 하나로 — 세 단추가 툴바 폭을 먹던 것을 접는다. 형식 선택도 같은 메뉴 안에.
-            with ui.button(t("내보내기"), icon="download").props("flat dense no-caps color=primary"):
-                with ui.menu().props("anchor='bottom right' self='top right'").classes("md4-exportmenu"):
-                    ui.menu_item(t("영어 마크다운 (zip)"), on_click=download_en)
-                    item_ko = ui.menu_item(t("번역 마크다운 · {native} (zip)", native=langs.get(ctrl.wd.lang).native),
-                                           on_click=download_ko)
-                    if not has_ko:
-                        item_ko.disable()
-                    ui.menu_item(t("하이라이트·메모 (md)"), on_click=download_notes)
-                    ui.separator()
-                    with ui.row().classes("items-center gap-2 q-px-md q-py-xs no-wrap"):
-                        ui.label(t("형식")).classes("text-xs text-gray-500")
-                        export_fmt_review()
+            # 내보내기 — 묶을 것(영어·번역·PDF·메모·bib·음성)을 체크박스로 고르는 대화상자 (§export_dialog)
+            ui.button(t("내보내기"), icon="download", on_click=open_export) \
+                .props("flat dense no-caps color=primary").tooltip(t("영어·번역 마크다운, 원본 PDF, 메모 등을 골라 zip으로"))
 
     # 번역 진행(섹션별) — 워커 스레드가 콜백으로 쓰고, UI 타이머가 폴링해 트리 아이콘을 갱신
     # failures는 지난 실행 것을 status.json에서 되살린다 — 메모리에만 두면 리뷰 화면을 다시 열었을 때
@@ -5470,30 +5459,17 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
 
         translate_method_panel()  # 번역 방식 설정은 섹션 선택 아래에 (덜 자주 만지므로 아코디언)
 
-    async def download_en() -> None:
-        if not ctrl.en_markdown():
-            ui.notify(t("영어 마크다운이 없습니다 — 먼저 변환하세요."), type="warning")
-            return
-        name, data = ctrl.export_zip("en", config.resolve_export_target())  # 마크다운(형식 변환) + images/ zip
-        await desktop.deliver(name, data)
-
-    async def download_ko() -> None:
-        if not ctrl.ko_markdown():
-            ui.notify(t("아직 번역 결과가 없습니다."), type="warning")
-            return
-        name, data = ctrl.export_zip("ko", config.resolve_export_target())
-        await desktop.deliver(name, data)
-
-    async def download_notes() -> None:
-        """하이라이트·메모를 마크다운 한 장으로 — 맨 위에 메모 패널의 자유 메모, 그 아래 인용구 + 메모."""
+    async def flush_notes() -> None:
+        """하이라이트·메모를 묶기 전에 — 클라이언트의 되저장과 메모 패널의 기다리던 자동 저장을 파일에 닿게."""
         await ui.run_javascript("window.__mdAnnoFlush && window.__mdAnnoFlush()")
         await asyncio.sleep(0.3)  # 클라이언트의 되저장이 파일에 닿을 짬
-        notes_flush()  # 메모 패널의 기다리던 자동 저장도 — 마지막 글자까지 담기게
-        if not annotations.has_any(ctrl.wd):
-            ui.notify(t("표시해 둔 하이라이트·메모가 없습니다."), type="warning")
-            return
-        name, data = annotations.export_bytes(ctrl.wd, m.title or "")
-        await desktop.deliver(name, data, media_type="text/markdown")
+        notes_flush()  # 마지막 글자까지 담기게
+
+    async def open_export() -> None:
+        from narani.ui import export_dialog
+
+        await flush_notes()  # 열 때 — '하이라이트·메모'가 있는지를 방금 그은 것까지 보고 정한다
+        await export_dialog.open_dialog([ctrl.wd.root], before=flush_notes)
 
     async def save_to_library() -> None:
         """이 논문의 자리에 결과 마크다운을 저장 (자동 저장을 꺼 뒀을 때도 수동으로).
@@ -5527,17 +5503,6 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                else t("저장 위치: {dests}", dests=dests))
         ui.button(t("폴더로 저장"), icon="drive_file_move", on_click=save_to_library) \
             .props("flat dense no-caps color=grey-8").tooltip(tip)
-
-    # 내보내기 형식 드롭다운 — 캔버스 툴바의 내보내기 메뉴 안에 두되 전역 설정(config)을 그대로 쓴다.
-    # 공유 refreshable이라 여기서 바꾸면 홈의 선택도 같은 값으로 동기화된다.
-    @ui.refreshable
-    def export_fmt_review() -> None:
-        def _pick(e) -> None:  # noqa: ANN001
-            config.set_section_value("output", "export_target", e.value)
-            export_fmt_review.refresh()
-            ui.notify(t("내보내기 형식 · {v}", v=t(_EXPORT_TARGET[e.value])), type="positive", timeout=1200)
-        ui.select(_tr(_EXPORT_TARGET), value=config.resolve_export_target(), on_change=_pick) \
-            .props("dense outlined").classes("w-28").tooltip(t("다운로드 zip에 적용하는 형식 (전역 설정)"))
 
     # --- 레이아웃 자동 수정 (구조 패널) — 깨진 헤더·수식·문단을 처음부터 끝까지 훑어 AI로 고친다 ---
     def _after_relayout() -> None:

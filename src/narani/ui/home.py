@@ -1017,15 +1017,10 @@ def build_home(state: dict) -> None:
         dlg.open()
 
     # ===== 일괄 동작 =====
-    async def download_bulk(which: str) -> None:
-        from narani.ui.controller import bulk_zip
+    async def export_bulk() -> None:
+        from narani.ui import export_dialog
 
-        roots = [Path(p) for p in selected]
-        if not roots:
-            ui.notify(t("선택된 논문이 없습니다."), type="warning")
-            return
-        name, payload = bulk_zip(roots, which, config.resolve_export_target())
-        await desktop.deliver(name, payload)
+        await export_dialog.open_dialog([Path(p) for p in selected])  # 열 때의 선택을 붙잡는다
 
     # ===== 모바일 (§phone) — Google Drive를 거쳐 모바일 리더(웹앱)에서 읽는다 =====
     def mobile_changed() -> None:
@@ -2583,9 +2578,8 @@ def build_home(state: dict) -> None:
             def export_part() -> None:
                 ui.label(t("내보내기")).classes("md4-act-h")
                 with ui.element("div").classes("md4-act-grid"):
-                    act(t("영어 zip"), "download", lambda: download_bulk("en"))
-                    if len(untranslated) < len(rows):
-                        act(t("번역 zip"), "download", lambda: download_bulk("ko"))
+                    act(t("내보내기…"), "download", export_bulk,
+                        t("영어·번역 마크다운, 원본 PDF, 메모 등을 골라 zip 하나로 — 논문마다 자기 폴더"))
                     if settings_dialog.any_library_dirs():
                         act(t("폴더로 저장"), "drive_file_move", lambda: save_to_library(paths), t("저장 위치로 내보내기"))
 
