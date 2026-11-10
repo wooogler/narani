@@ -1462,5 +1462,13 @@
  "읽을 글이 없어요.": "Nothing to read.",
  "만든 음성": "Made audio",
  "재생을 시작하지 못했어요 — ▶를 다시 눌러 보세요.": "Couldn't start playback — try pressing ▶ again.",
- "여기부터 재생": "Play from here"
+ "여기부터 재생": "Play from here",
+ "이 논문을 두고 가장 최근에 나눈 대화를 열었습니다.": "Opened your most recent conversation about this paper.",
+ "이 컬렉션을 두고 가장 최근에 나눈 대화를 열었습니다.": "Opened your most recent conversation about this collection.",
+ "이 논문으로 나눈 대화가 없어 새 대화를 열었습니다.": "No conversation about this paper yet, so a new one was opened.",
+ "이 컬렉션으로 나눈 대화가 없어 새 대화를 열었습니다.": "No conversation about this collection yet, so a new one was opened.",
+ "이 논문을 두고 나눈 대화가 따로 있습니다: {t}": "There is a separate conversation about this paper: {t}",
+ "이 컬렉션을 두고 나눈 대화가 따로 있습니다: {t}": "There is a separate conversation about this collection: {t}",
+ "그 대화로": "Go to it",
+ "이전 대화로": "Back to previous"
 }

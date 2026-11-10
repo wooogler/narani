@@ -165,6 +165,11 @@ body.ag-standalone .ag-list, body.ag-standalone .ag-foot {
 .ag-note { font-size: 11.5px; line-height: 1.55; margin: 4px 0 8px; padding: 6px 10px; border-radius: 8px;
   border: 1px solid #e6e4e0; background: #f7f6f3; color: #6b6862; }
 .ag-note a { color: #2383e2; margin-left: 4px; }
+/* 맥락 세션 안내 — 이 논문(컬렉션)의 대화를 열었다/따로 있다. ✕는 오른쪽 끝 */
+.ag-ctxnote { display: flex; align-items: baseline; gap: 2px; }
+.ag-ctxnote > span { flex: 1 1 auto; min-width: 0; }
+.ag-ctxnote a { white-space: nowrap; }
+.ag-ctxnote a.ag-ctxnote-x { color: #9a968e; text-decoration: none; margin-left: 8px; }
 
 /* 세션 목록 — 머리 아래로 펼친다 */
 .ag-menu { position: absolute; left: 8px; right: 8px; top: calc(100% + 2px); z-index: 2;
@@ -504,6 +509,8 @@ JS = r"""
 
   // 브라우저에 두는 것 — 활성 세션·서랍 폭·열림 여부(localStorage), 다른 논문으로 가는 행(sessionStorage)
   var LS_SESSION = 'md4agent.session', LS_W = 'md4agent.w', LS_OPEN = 'md4agent.open';
+  // 지금 세션을 어느 맥락(p:논문 token / c:컬렉션 id)에서 골랐나 — 같은 맥락에서 다시 열면 그 세션을 존중한다
+  var LS_CTXKEY = 'md4agent.ctxkey';
   var SS_GOTO = 'md4agent.goto';
   function lsGet(k){ try { return localStorage.getItem(k); } catch (e) { return null; } }
   function lsSet(k, v){
@@ -522,6 +529,8 @@ JS = r"""
   var JOB_POLL_MS = 3000;
   var capRetry = null;       // 비용 상한으로 막힌 요청 {body, msg} — '그래도 계속'이 override를 더해 다시 보낸다
   var notice = null;         // 단독 창의 화면 이동 안내 {url} — 다음 질문을 보내면 걷힌다
+  // 맥락 세션 안내 — {kind:'opened'|'fresh'|'hint', what:'paper'|'collection', to, toTitle, prev, prevTitle}
+  var ctxNote = null;
   var PH_IDLE = input.getAttribute('data-ph');
   var PH_WAIT = md4T('승인을 기다리는 중 — 그냥 보내면 건너뜁니다');
   var models = [], modelInfo = {ready: true, reason: '', provider: '', model: ''};
@@ -766,7 +775,7 @@ JS = r"""
     return (d.getMonth() + 1) + '/' + d.getDate();
   }
   function setSession(d){
-    if (d.id !== sid){ apprByTurn = {}; capRetry = null; }
+    if (d.id !== sid){ apprByTurn = {}; capRetry = null; ctxNote = null; }
     sess = d; sid = d.id; lsSet(LS_SESSION, sid);
     turns = d.turns || []; pending = d.pending || null; decisions = {};   // 다시 열면 대기 카드도 되살아난다
     live = null; errMsg = null;
@@ -863,12 +872,106 @@ JS = r"""
   function ensureSession(){
     loaded = true;
     return loadList().then(function(ss){
+      var picked = pickForContext();
+      if (picked) return picked;
       var want = sid || (SA && SA.session) || lsGet(LS_SESSION), hit = null;
       for (var i = 0; i < ss.length; i++) if (ss[i].id === want) hit = ss[i];
       hit = hit || ss[0];
       if (hit) return openSession(hit.id).catch(function(){ return newSession(); });
       return newSession();
     }).catch(function(e){ errMsg = md4T('세션 목록을 읽지 못했습니다: {e}', {e: e.message}); render(); });
+  }
+  // ---- 맥락 세션 — 창을 그 화면에서 처음 열 때 '이 논문(컬렉션)을 두고 가장 최근에 쓴 세션'을 연다 ----
+  // 열쇠는 서버 context.context_keys와 같은 꼴: 뷰어 = p:<논문 token>, 홈에서 고른 컬렉션 = c:<id>.
+  // 세션 목록 요약의 ctx(열쇠 → 그 맥락으로 질문한 마지막 시각)에서 가장 늦은 세션을 고른다.
+  // 같은 맥락에서 다시 열면(LS_CTXKEY가 같으면) 사용자가 그 자리에서 고른 세션을 그대로 둔다.
+  function ctxKeyNow(){
+    if (SA) return null;                       // 단독 창은 띄운 쪽이 넘겨 준 세션을 쓴다
+    var a = autoCtx();
+    if (!a) return null;                       // '모든 논문'·'미분류' — 컬렉션 맥락이 아니다
+    return a.kind === 'paper' ? (a.token ? 'p:' + a.token : null) : (a.id ? 'c:' + a.id : null);
+  }
+  function markCtx(){ lsSet(LS_CTXKEY, ctxKeyNow()); }   // 사용자가 이 맥락에서 세션을 골랐다/썼다
+  function metaOf(id){ for (var i = 0; i < sessList.length; i++) if (sessList[i].id === id) return sessList[i];
+    return null; }
+  function bestFor(key){
+    var best = null, bt = -1;
+    sessList.forEach(function(s){ var t = (s.ctx || {})[key]; if (t != null && t > bt){ bt = t; best = s; } });
+    return best;
+  }
+  // 고를 게 있으면 그 세션을 여는 Promise, 없으면(같은 맥락·맥락 없음·이미 그 세션) null
+  function pickForContext(){
+    var key = ctxKeyNow();
+    if (!key || key === lsGet(LS_CTXKEY)) return null;
+    lsSet(LS_CTXKEY, key);
+    var prev = sid || lsGet(LS_SESSION), pm = metaOf(prev);
+    var what = key.charAt(0) === 'p' ? 'paper' : 'collection';
+    var note = {key: key, what: what, prev: pm ? prev : null, prevTitle: pm ? pm.title : ''};
+    var best = bestFor(key);
+    if (best){
+      if (best.id === prev) return null;
+      note.kind = 'opened';
+      return openSession(best.id).then(function(){ ctxNote = note; render(); });
+    }
+    // 이 맥락으로 나눈 대화가 없다 — 지금 세션이 비어 있으면 그대로, 아니면 빈 세션(없으면 새로)
+    if (pm && !pm.turns) return null;
+    note.kind = 'fresh';
+    var empty = sessList.filter(function(s){ return !s.turns; })[0];
+    return (empty ? openSession(empty.id) : newSession()).then(function(){ ctxNote = note; render(); });
+  }
+  // 창이 열린 채 화면(논문·컬렉션)이 바뀌었다 — 대화가 끊기지 않게 바꾸지 않고, 그 맥락의 세션이 따로
+  // 있으면 안내 줄만 띄운다
+  function ctxHint(){
+    var key = ctxKeyNow();
+    if (ctxNote && ctxNote.key !== key){       // 안내가 가리키는 맥락(논문·컬렉션)을 떠났다
+      ctxNote = null;
+      if (panel.classList.contains('open') && !live) render();
+    }
+    if (!panel.classList.contains('open') || live || busy) return;
+    var best = key && key !== lsGet(LS_CTXKEY) ? bestFor(key) : null;
+    var was = ctxNote && ctxNote.kind === 'hint' ? ctxNote.to : null;
+    if (best && best.id !== sid){
+      if (was === best.id) return;
+      ctxNote = {kind: 'hint', key: key, what: key.charAt(0) === 'p' ? 'paper' : 'collection',
+                 to: best.id, toTitle: best.title};
+      render();
+    } else if (was){ ctxNote = null; render(); }
+  }
+  function ctxNoteNode(){
+    var n = ctxNote, paperish = n.what === 'paper';
+    var box = document.createElement('div'); box.className = 'ag-note ag-ctxnote';
+    var t = document.createElement('span');
+    t.textContent = n.kind === 'opened'
+      ? (paperish ? md4T('이 논문을 두고 가장 최근에 나눈 대화를 열었습니다.')
+                  : md4T('이 컬렉션을 두고 가장 최근에 나눈 대화를 열었습니다.'))
+      : n.kind === 'fresh'
+      ? (paperish ? md4T('이 논문으로 나눈 대화가 없어 새 대화를 열었습니다.')
+                  : md4T('이 컬렉션으로 나눈 대화가 없어 새 대화를 열었습니다.'))
+      : (paperish ? md4T('이 논문을 두고 나눈 대화가 따로 있습니다: {t}', {t: n.toTitle || md4T('새 세션')})
+                  : md4T('이 컬렉션을 두고 나눈 대화가 따로 있습니다: {t}', {t: n.toTitle || md4T('새 세션')}));
+    box.appendChild(t);
+    var go = n.kind === 'hint' ? n.to : n.prev;
+    if (go && go !== sid){
+      var a = document.createElement('a'); a.href = '#';
+      a.textContent = n.kind === 'hint' ? md4T('그 대화로') : md4T('이전 대화로');
+      a.title = n.kind === 'hint' ? '' : (n.prevTitle || '');
+      a.addEventListener('click', function(ev){
+        ev.preventDefault();
+        if (busy) return;
+        markCtx(); ctxNote = null;
+        openSession(go).then(loadList).then(renderHead).catch(function(e){ errMsg = e.message; render(); });
+      });
+      box.appendChild(a);
+    }
+    var x = document.createElement('a'); x.href = '#'; x.className = 'ag-ctxnote-x';
+    x.innerHTML = '&#10005;'; x.setAttribute('aria-label', md4T('닫기')); x.title = md4T('닫기');
+    x.addEventListener('click', function(ev){
+      ev.preventDefault();
+      if (ctxNote && ctxNote.kind === 'hint') markCtx();   // 안내를 닫았다 = 지금 세션으로 이어 간다
+      ctxNote = null; render();
+    });
+    box.appendChild(x);
+    return box;
   }
   function refreshSession(){
     if (!sid) return Promise.resolve();
@@ -999,7 +1102,7 @@ JS = r"""
         if (ev.detail >= 2) return renameInline(tEl, s.id, renderMenu);   // 더블클릭 = 이름 바꾸기
         var pick = function(){
           if (b.querySelector('.ag-name-in')) return;
-          closeMenu();
+          closeMenu(); markCtx();
           if (s.id !== sid) openSession(s.id).then(renderHead)
             .catch(function(e){ errMsg = e.message; render(); });
         };
@@ -1415,6 +1518,7 @@ JS = r"""
     if (pending) list.appendChild(approvalNode(pending, true));   // 진행 중 말풍선 아래에
     if (capRetry) list.appendChild(capNode());
     if (notice) list.appendChild(noticeNode());
+    if (ctxNote) list.appendChild(ctxNoteNode());
     if (errMsg){
       var er = document.createElement('div');
       er.className = 'ag-err'; er.textContent = errMsg;
@@ -1555,6 +1659,7 @@ JS = r"""
       if (q){ draft = clearInput(); lastSel = null; paintSel(); autoOff = ''; atClose(); paintCtx(); }
     }
     capRetry = null; notice = null;
+    if (q){ markCtx(); ctxNote = null; }
     // 대기 중이던 승인 카드를 잠근다 — 승인/거절을 보냈거나, 그냥 새 질문을 보내 건너뛰었다.
     // 잠긴 카드는 마지막 턴(그 승인을 부른 질문) 뒤에 남는다. 스트림 전에 거절되면 되돌린다.
     var rec = null, key = null, was = pending;
@@ -1796,6 +1901,7 @@ JS = r"""
       x.addEventListener('click', function(){ autoOff = atKeyOf(a); paintCtx(); input.focus(); });
       c.appendChild(x); ctxBar.appendChild(c);
     }
+    ctxHint();
   }
   // 커서 앞 '@글자' — 없으면 null (줄바꿈·40자를 넘으면 끝). 커서가 든 글자 마디 안에서만 본다(알약이 경계)
   function atQuery(){
@@ -1988,7 +2094,11 @@ JS = r"""
     panel.classList.add('open');
     // 다시 열 때는 세션을 새로 읽는다 — 그사이 새 창(단독 창)에서 쌓인 턴이 있을 수 있다
     if (!loaded){ loadModels(); ensureSession(); }
-    else { render(); if (!busy) refreshSession(); }
+    else {
+      render();
+      if (!busy) loadList().then(function(){ return pickForContext() || refreshSession(); })
+        .then(renderHead).catch(function(){});
+    }
     setTimeout(function(){ if (input.isContentEditable) input.focus(); }, 60);
   }
   function closePanel(){ closeMenu(); if (!SA) panel.classList.remove('open'); }
@@ -2012,7 +2122,7 @@ JS = r"""
     context: ctxNow
   };
   panel.querySelector('.ag-x').addEventListener('click', closePanel);
-  newBtn.addEventListener('click', newSession);
+  newBtn.addEventListener('click', function(){ markCtx(); newSession(); });
   sendBtn.addEventListener('click', ask);
   input.addEventListener('input', tidyInput);
   input.addEventListener('paste', function(ev){

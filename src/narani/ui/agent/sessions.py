@@ -86,6 +86,11 @@ class Session:
     # started, done, status, progress, result, error, message, notified, turn_id, …}`.
     # 결과는 `sync_jobs`가 서버의 작업 레지스트리(ui/jobs.py)와 대조해 채운다.
     jobs: list[dict] = field(default_factory=list)
+    # 이 세션이 어느 논문·컬렉션을 두고 쓰였는지 — 맥락 열쇠(`p:<token>`·`c:<컬렉션 id>`) → 그 맥락으로
+    # 질문한 마지막 시각. 창을 그 화면에서 처음 열 때 "그 논문(컬렉션)을 두고 가장 최근에 쓴 세션"을
+    # 고르는 데 쓴다(§contexts_for_meta). 첫 맥락·가장 잦은 맥락이 아니라 **맥락별 마지막 시각**인 까닭:
+    # 세션은 여러 논문을 오가므로 한 꼬리표로는 틀리고, 횟수는 오래전 긴 대화가 이긴다.
+    contexts: dict[str, float] = field(default_factory=dict)
 
     @property
     def pending(self) -> dict | None:
@@ -114,7 +119,8 @@ class Session:
                 "updated": self.updated, "model": self.model,
                 "last_paper": self.paper_tokens[-1] if self.paper_tokens else None,
                 "turns": sum(1 for t in self.turns if t.get("role") == "user"),
-                "cost_usd": round(float(self.usage.get("cost_usd", 0.0)), 6)}
+                "cost_usd": round(float(self.usage.get("cost_usd", 0.0)), 6),
+                "ctx": contexts_for_meta(self)}
 
 
 # --- (역)직렬화 ---------------------------------------------------------
@@ -127,7 +133,7 @@ def _to_dict(s: Session) -> dict:
     return {"version": VERSION, "id": s.id, "title": s.title, "created": s.created,
             "updated": s.updated, "model": s.model, "paper_tokens": s.paper_tokens,
             "papers": s.papers, "conversation": conv, "turns": s.turns, "usage": s.usage,
-            "pending_token": s.pending_token, "jobs": s.jobs}
+            "pending_token": s.pending_token, "jobs": s.jobs, "contexts": s.contexts}
 
 
 def _from_dict(data: dict) -> Session:
@@ -152,6 +158,8 @@ def _from_dict(data: dict) -> Session:
                "cost_usd": float(usage.get("cost_usd") or 0.0)},
         pending_token=str(data.get("pending_token") or "") or None,
         jobs=[j for j in (data.get("jobs") or []) if isinstance(j, dict) and j.get("id")],
+        contexts={str(k): float(v) for k, v in (data.get("contexts") or {}).items()
+                  if isinstance(k, str) and isinstance(v, (int, float))},
     )
 
 
@@ -290,6 +298,32 @@ def touch_paper(session: Session, token: str | None, root: Path | str | None = N
     session.paper_tokens = [t for t in session.paper_tokens if t != token] + [token]
     if root is not None:
         remember_papers(session, {token: root})
+
+
+CONTEXTS_MAX = 60    # 세션 하나가 기억하는 맥락 열쇠 수 — 넘으면 오래 안 쓴 것부터 버린다
+
+
+def touch_contexts(session: Session, keys: list[str], ts: float | None = None) -> None:
+    """질문 한 번의 맥락 열쇠들(`p:<token>`·`c:<id>`)에 지금 시각을 적는다 (저장은 호출자가)."""
+    now = time.time() if ts is None else ts
+    for k in keys:
+        if k:
+            session.contexts[k] = now
+    if len(session.contexts) > CONTEXTS_MAX:
+        keep = sorted(session.contexts.items(), key=lambda kv: -kv[1])[:CONTEXTS_MAX]
+        session.contexts = dict(keep)
+
+
+def contexts_for_meta(session: Session) -> dict[str, float]:
+    """목록 요약에 싣는 맥락 열쇠 → 마지막 시각.
+
+    `contexts`가 생기기 전의 세션은 화면에서 다룬 논문 목록(`paper_tokens`, 뒤가 최근)으로 갈음한다 —
+    마지막 논문이 세션의 마지막 시각을, 앞의 것은 그보다 조금씩 이른 시각을 받는다(순서만 의미가 있다).
+    """
+    if session.contexts:
+        return dict(session.contexts)
+    n = len(session.paper_tokens)
+    return {f"p:{t}": session.updated - (n - 1 - i) for i, t in enumerate(session.paper_tokens)}
 
 
 def remember_papers(session: Session, papers: dict[str, Path | str]) -> None:

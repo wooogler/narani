@@ -54,7 +54,7 @@ from narani import config  # noqa: E402
 from narani.llm.base import Usage, cost_usd  # noqa: E402
 from narani.ui.agent import jobtools, retrieval, sessions  # noqa: E402
 from narani.ui.agent.cites import note_tag, render_html, resolve_citations  # noqa: E402
-from narani.ui.agent.context import PaperRef, mentions_prompt, to_prompt  # noqa: E402
+from narani.ui.agent.context import PaperRef, context_keys, mentions_prompt, to_prompt  # noqa: E402
 from narani.ui.agent.tools import TOOLS, Deps, review_url  # noqa: E402
 
 COST_TOOLS = [Tool(fn, requires_approval=True) for fn in jobtools.TOOLS]
@@ -458,6 +458,8 @@ async def run_turn(agent: Agent, session: sessions.Session, user_text: str | Non
         prompt = [at, *(prompt if isinstance(prompt, list) else [prompt])]
     cur = deps.wd_for(deps.current_token) if deps.current_token else None
     sessions.touch_paper(session, deps.current_token, cur.root if cur is not None else None)
+    if text:   # 질문을 두고 있는 논문·컬렉션 — 창이 그 화면에서 처음 열 때 이 세션을 고를 수 있게
+        sessions.touch_contexts(session, context_keys(deps.ctx))
     if text and not session.title:
         session.title = sessions.default_title(text)
     user_turn = ({"id": sessions.turn_id(), "ts": time.time(), "role": "user", "text": text,

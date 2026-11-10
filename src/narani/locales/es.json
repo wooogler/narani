@@ -1462,5 +1462,13 @@
  "읽을 글이 없어요.": "No hay nada que leer.",
  "만든 음성": "Audio creado",
  "재생을 시작하지 못했어요 — ▶를 다시 눌러 보세요.": "No se pudo iniciar la reproducción — prueba a pulsar ▶ otra vez.",
- "여기부터 재생": "Reproducir desde aquí"
+ "여기부터 재생": "Reproducir desde aquí",
+ "이 논문을 두고 가장 최근에 나눈 대화를 열었습니다.": "Se abrió tu conversación más reciente sobre este artículo.",
+ "이 컬렉션을 두고 가장 최근에 나눈 대화를 열었습니다.": "Se abrió tu conversación más reciente sobre esta colección.",
+ "이 논문으로 나눈 대화가 없어 새 대화를 열었습니다.": "Aún no hay conversaciones sobre este artículo; se abrió una nueva.",
+ "이 컬렉션으로 나눈 대화가 없어 새 대화를 열었습니다.": "Aún no hay conversaciones sobre esta colección; se abrió una nueva.",
+ "이 논문을 두고 나눈 대화가 따로 있습니다: {t}": "Hay otra conversación sobre este artículo: {t}",
+ "이 컬렉션을 두고 나눈 대화가 따로 있습니다: {t}": "Hay otra conversación sobre esta colección: {t}",
+ "그 대화로": "Ir a ella",
+ "이전 대화로": "Volver a la anterior"
 }
