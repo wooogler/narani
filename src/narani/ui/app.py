@@ -6217,6 +6217,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     from narani.ui import meta_card, settings_dialog
 
     spa.add_css(meta_card.CSS)
+    spa.add_css(settings_dialog.CSS)  # '새 컬렉션 만들기…' 대화상자 (홈을 거치지 않고 뷰어부터 열어도)
     info_host = ui.element("div").style("display:none")
     info_state: dict = {"lang": None}
 
