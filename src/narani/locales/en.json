@@ -1481,5 +1481,13 @@
  "마크다운에 적용하는 형식 (전역 설정)": "Format applied to Markdown (global setting)",
  "논문마다 자기 폴더로 — 마크다운은 <이름>-en/ · <이름>-ko/, 나머지는 <이름>/": "Each paper gets its own folders — Markdown in <name>-en/ · <name>-ko/, the rest in <name>/",
  "내보내기…": "Export…",
- "영어·번역 마크다운, 원본 PDF, 메모 등을 골라 zip 하나로 — 논문마다 자기 폴더": "Pick English/translated Markdown, the original PDF, notes and more into one zip — a folder per paper"
+ "영어·번역 마크다운, 원본 PDF, 메모 등을 골라 zip 하나로 — 논문마다 자기 폴더": "Pick English/translated Markdown, the original PDF, notes and more into one zip — a folder per paper",
+ "이 논문을 두고 가장 최근에 나눈 대화를 열었습니다.": "Opened your most recent conversation about this paper.",
+ "이 컬렉션을 두고 가장 최근에 나눈 대화를 열었습니다.": "Opened your most recent conversation about this collection.",
+ "이 논문으로 나눈 대화가 없어 새 대화를 열었습니다.": "No conversation about this paper yet, so a new one was opened.",
+ "이 컬렉션으로 나눈 대화가 없어 새 대화를 열었습니다.": "No conversation about this collection yet, so a new one was opened.",
+ "이 논문을 두고 나눈 대화가 따로 있습니다: {t}": "There is a separate conversation about this paper: {t}",
+ "이 컬렉션을 두고 나눈 대화가 따로 있습니다: {t}": "There is a separate conversation about this collection: {t}",
+ "그 대화로": "Go to it",
+ "이전 대화로": "Back to previous"
 }

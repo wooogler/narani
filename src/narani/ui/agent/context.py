@@ -209,3 +209,28 @@ def to_prompt(ctx: ScreenContext | None) -> str:
         return ""
     block = "## 현재 화면 (사용자가 보고 있는 것)\n" + "\n".join(lines)
     return block if len(block) <= PROMPT_MAX else block[:PROMPT_MAX].rstrip() + "…"
+
+
+def context_keys(ctx: ScreenContext) -> list[str]:
+    """이 질문이 두고 있는 맥락의 열쇠 — 세션 기록(`sessions.touch_contexts`)과 창의 세션 고르기가 쓴다.
+
+    `p:<token>` = 화면의 논문, @(또는 '보는 중' 칩)으로 붙인 논문·섹션·메모 탭의 논문.
+    `c:<id>` = @로 붙인 컬렉션, 홈에서 고른 컬렉션. 창(agent_panel `ctxKeyNow`)이 같은 꼴로 만든다.
+    """
+    keys: list[str] = []
+
+    def add(k: str) -> None:
+        if k not in keys:
+            keys.append(k)
+
+    if ctx.token:
+        add(f"p:{ctx.token}")
+    for m in ctx.mentions:
+        if m.kind == "collection":
+            if m.id:
+                add(f"c:{m.id}")
+        elif m.token:
+            add(f"p:{m.token}")
+    if ctx.project and ctx.project.id:
+        add(f"c:{ctx.project.id}")
+    return keys

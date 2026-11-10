@@ -1481,5 +1481,13 @@
  "마크다운에 적용하는 형식 (전역 설정)": "Formato aplicado al Markdown (ajuste global)",
  "논문마다 자기 폴더로 — 마크다운은 <이름>-en/ · <이름>-ko/, 나머지는 <이름>/": "Cada artículo con sus propias carpetas: Markdown en <nombre>-en/ · <nombre>-ko/, el resto en <nombre>/",
  "내보내기…": "Exportar…",
- "영어·번역 마크다운, 원본 PDF, 메모 등을 골라 zip 하나로 — 논문마다 자기 폴더": "Elige Markdown en inglés o traducido, el PDF original, notas y más en un solo zip, con una carpeta por artículo"
+ "영어·번역 마크다운, 원본 PDF, 메모 등을 골라 zip 하나로 — 논문마다 자기 폴더": "Elige Markdown en inglés o traducido, el PDF original, notas y más en un solo zip, con una carpeta por artículo",
+ "이 논문을 두고 가장 최근에 나눈 대화를 열었습니다.": "Se abrió tu conversación más reciente sobre este artículo.",
+ "이 컬렉션을 두고 가장 최근에 나눈 대화를 열었습니다.": "Se abrió tu conversación más reciente sobre esta colección.",
+ "이 논문으로 나눈 대화가 없어 새 대화를 열었습니다.": "Aún no hay conversaciones sobre este artículo; se abrió una nueva.",
+ "이 컬렉션으로 나눈 대화가 없어 새 대화를 열었습니다.": "Aún no hay conversaciones sobre esta colección; se abrió una nueva.",
+ "이 논문을 두고 나눈 대화가 따로 있습니다: {t}": "Hay otra conversación sobre este artículo: {t}",
+ "이 컬렉션을 두고 나눈 대화가 따로 있습니다: {t}": "Hay otra conversación sobre esta colección: {t}",
+ "그 대화로": "Ir a ella",
+ "이전 대화로": "Volver a la anterior"
 }

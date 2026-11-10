@@ -494,7 +494,8 @@ def test_popout_hands_over_and_closes_this_drawer():
     assert "setTimeout(closePanel, 0);" in block
     # 다시 열면 세션을 새로 읽는다 — 단독 창에서 쌓인 턴
     op = _js_block(JS, "function openPanel(")
-    assert "if (!busy) refreshSession();" in op
+    # 다시 열면 세션을 새로 읽는다 (맥락 세션을 따로 고르지 않을 때)
+    assert "pickForContext() || refreshSession()" in op
 
 
 def test_install_registers_popout_only_in_app_window_mode(monkeypatch):
