@@ -241,11 +241,14 @@ KEYS_JS = ("(e) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropaga
 
 
 def edit_field(cls: str, key: str, value, placeholder: str,  # noqa: ANN001
-               commit: Callable[[str, object], Awaitable[object]], *, multiline: bool = False) -> None:
+               commit: Callable[[str, object], Awaitable[object]], *, multiline: bool = False,
+               track: dict | None = None) -> None:
     """누르면 그 자리에서 입력칸이 되는 칸. commit(key, 새 값) → 저장된 값(또는 FAIL).
 
     값이 같으면 저장하지 않는다. Enter로 저장하면 칸이 사라지며 blur가 한 번 더 올 수 있어
-    편집 한 번에 한 번만 끝내도록 done으로 막는다.
+    편집 한 번에 한 번만 끝내도록 done으로 막는다. track을 주면 고치는 동안 그 칸의 '저장하고 끝내기'를
+    거기 올려 둔다 — 팝오버가 바깥 클릭으로 닫힐 때 blur가 서버에 오지 않으므로(QMenu 포커스 가두기가
+    칸에 포커스를 돌려놓는다) 닫히기 직전에 호출측이 저장한다(MetaCard.flush).
     """
     from nicegui import ui
 
@@ -254,6 +257,8 @@ def edit_field(cls: str, key: str, value, placeholder: str,  # noqa: ANN001
 
     def show() -> None:
         st["editing"] = False
+        if track is not None:
+            track.pop(box.id, None)
         box.classes(remove="editing")
         box.clear()
         text, _ = field_text(key, st["value"])
@@ -290,6 +295,8 @@ def edit_field(cls: str, key: str, value, placeholder: str,  # noqa: ANN001
                         st["value"] = saved
             show()
 
+        if track is not None:
+            track[box.id] = lambda: finish(True)
         if not multiline:  # 한 줄 칸(연도·DOI…)은 통째로 바꾸는 일이 많아 전체 선택으로 연다
             w.on("focus", js_handler="(e) => e.target.select()")
         w.on("blur", lambda: finish(True))
@@ -429,6 +436,12 @@ class MetaCard:
         self.on_abs = on_abs
         self.hint_box = None
         self.ok_box = None
+        self.editing: dict = {}  # 고치는 중인 칸 → 저장하고 끝내기 (edit_field track)
+
+    async def flush(self) -> None:
+        """고치는 중인 칸을 모두 저장하고 끝낸다 — 칸 밖 클릭과 같은 저장(값이 같으면 쓰지 않는다)."""
+        for done in list(self.editing.values()):
+            await done()
 
     # ----- 저장 -----
 
@@ -490,9 +503,9 @@ class MetaCard:
 
         with ui.column().classes("gap-1 w-full"):
             edit_field("md4-pv-title w-full", "title", vals.get("title"), t("제목 없음 — 눌러서 입력"), self.commit,
-                       multiline=True)
+                       multiline=True, track=self.editing)
             edit_field("md4-pv-auth w-full", "authors", vals.get("authors") or [],
-                       t("저자 없음 — 눌러서 입력 (한 줄에 한 명)"), self.commit, multiline=True)
+                       t("저자 없음 — 눌러서 입력 (한 줄에 한 명)"), self.commit, multiline=True, track=self.editing)
         with ui.element("div").classes("md4-pv-kv w-full"):
             for key, label, tip in (
                     ("year", t("연도"), ""),
@@ -503,7 +516,7 @@ class MetaCard:
                 k = ui.label(label).classes("md4-pv-k")
                 if tip:
                     k.tooltip(tip)
-                edit_field("md4-pv-v", key, vals.get(key), t("비어 있음 — 눌러서 입력"), self.commit)
+                edit_field("md4-pv-v", key, vals.get(key), t("비어 있음 — 눌러서 입력"), self.commit, track=self.editing)
 
     def hint(self) -> None:
         """이름 규칙 힌트 자리 — 서지·소속(주 컬렉션의 이름 규칙)이 바뀌면 paint_hint로 다시."""
@@ -547,7 +560,7 @@ class MetaCard:
         box.clear()
         with box:
             edit_field("md4-pv-abs w-full", "abstract", text or "", t("초록을 찾지 못했습니다 — 눌러서 입력"),
-                       lambda _k, v: self.commit_abs(lang, v), multiline=True)
+                       lambda _k, v: self.commit_abs(lang, v), multiline=True, track=self.editing)
 
     def redo_buttons(self) -> None:
         """서지 다시 받기 — 손으로 고친 칸은 어느 쪽도 덮지 않는다(user_fields)."""

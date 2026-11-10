@@ -2270,6 +2270,11 @@ _CHROME_CSS = """
 .md4-chip.todo { background: #fff; color: #2383e2; font-weight: 600; }
 .md4-chip.todo:hover { background: #f3f8ff; }
 .md4-chip.warn { background: #f59e0b; color: #fff; }
+/* ⓘ 서지 카드 — 상태 칩 옆 동그란 칩, 누르면 팝오버(§meta_card). 팝오버는 홈 미리보기 열처럼 흰 바탕. */
+.md4-chip.md4-infobtn { width: 26px; padding: 0; justify-content: center; margin-right: 6px; }
+.md4-info-pop { width: 400px; max-width: calc(100vw - 24px); background: #fff; }
+.md4-info-body { padding: 14px 16px 12px; flex-wrap: nowrap; }
+.md4-info-body > * { flex-shrink: 0; }
 /* 헤더 맨 오른쪽 에이전트 단추 — 홈·뷰어 같은 자리. 상태 칩과 같은 높이·바닥선, 서랍이 열리면
    흰 바닥(활성 탭과 같은 말)으로 '지금 열려 있다'를 보인다. */
 .md4-agentbtn { align-self: flex-end; margin: 0 2px 3px 0; display: inline-flex; align-items: center;
@@ -2577,13 +2582,14 @@ def agent_button() -> None:
     b.tooltip(t("에이전트 — 이 논문·라이브러리에 묻고, 근거 문단으로 이동"))
 
 
-def tab_bar(state: dict, here: Path | None, here_title: str = "", tools=None):  # noqa: ANN001, ANN201
+def tab_bar(state: dict, here: Path | None, here_title: str | Callable[[], str] = "", tools=None):  # noqa: ANN001, ANN201
     """헤더의 탭 줄 — 맨 앞 '홈' 탭 + 연 논문 탭들(×까지 유지) + '+'(변환된 논문 골라 열기).
 
     홈·리뷰 두 화면이 같은 탭 줄을 쓴다. here=None이면 홈 탭이 활성이다. 탭은 페이지 이동이고
     (한 창에 한 화면), 나란히 보려면 리뷰 화면의 ⧉로 새 창을 띄운다. 고정(pin)과는 별개다.
     백그라운드 작업(번역 등)이 도는 논문은 탭 아이콘이 돈다. tools()는 탭 줄 끝 단추(고정·새 창)를
-    그린다. 반환값은 refreshable — .refresh()로 다시 그린다.
+    그린다. 반환값은 refreshable — .refresh()로 다시 그린다. here_title이 함수면 그릴 때마다 부른다
+    (뷰어 ⓘ 팝오버에서 제목을 고치면 활성 탭 제목도 따라가게).
     """
     from nicegui import ui
 
@@ -2598,7 +2604,8 @@ def tab_bar(state: dict, here: Path | None, here_title: str = "", tools=None):  
         with ui.row().classes("items-end gap-0 no-wrap md4-tabstrip"):
             _home_chip(active=here_key is None)
             for tv in tabs:
-                _chip(here_title if tv == here_key else paper_title(Path(tv)), Path(tv),
+                _chip((here_title() if callable(here_title) else here_title) if tv == here_key
+                      else paper_title(Path(tv)), Path(tv),
                       active=tv == here_key, busy=tv in busy)
         ui.button(icon="add", color=None, on_click=open_picker) \
             .props("flat dense round size=sm text-color=white").classes("md4-tabadd") \
@@ -2832,6 +2839,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     m = ctrl.manifest
     tok = wd_token(ctrl.wd.root)  # 이미지·PDF URL에 넣는 논문별 토큰 (캐시 충돌 방지)
     _title = m.title or ctrl.wd.root.name
+    title_ref = {"v": _title}  # 헤더 활성 탭 제목 — ⓘ 서지 카드에서 제목을 고치면 바뀐다
 
     spa.add_css(_CHROME_CSS)
     find_bar.install()  # Cmd/Ctrl+F 페이지 찾기 — 앱 창에는 브라우저 찾기 바가 없다
@@ -2851,7 +2859,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     # 단계 탭이 있던 자리다 — 화면은 이제 하나(캔버스 + 왼쪽 작업 패널)라 단계를 오갈 일이 없고,
     # 번호가 가르쳐 주던 '다음 할 일'은 이 칩이 대신한다.
     with spa.header():
-        paper_tabs = tab_bar(state, ctrl.wd.root, _title, tools=review_tools)
+        paper_tabs = tab_bar(state, ctrl.wd.root, lambda: title_ref["v"], tools=review_tools)
         ui.space()
         chip_slot = ui.row().classes("items-center no-wrap md4-chipslot")  # 상태 칩은 아래에서 채운다
         agent_button()  # 맨 오른쪽 — 홈과 같은 자리
@@ -6199,7 +6207,126 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                 box.set_visibility(False)
             rail.refresh()
 
+    # ---------- ⓘ 서지 카드 — 홈 미리보기와 같은 칸·같은 저장(§meta_card) ----------
+    # 헤더 상태 칩 옆 ⓘ를 누르면 팝오버로: 제목·저자·연도·venue·DOI·약칭(눌러서 고치기), 이름 규칙 힌트,
+    # 컬렉션 태그(체크 메뉴), 초록 EN/번역, 다시 찾기·다시 추출. 열 때마다 디스크에서 다시 읽는다(홈 창에서
+    # 고쳤을 수 있다). 대화상자(이름 바꾸기·새 컬렉션)는 팝오버 밖 자리에 — 닫히면 팝오버 내용이 빠진다.
+    from nicegui import background_tasks
+    from nicegui import run as info_run  # 'run'은 이 모듈의 run()과 겹친다
+
+    from narani.ui import meta_card, settings_dialog
+
+    spa.add_css(meta_card.CSS)
+    info_host = ui.element("div").style("display:none")
+    info_state: dict = {"lang": None}
+
+    async def info_flush() -> None:
+        card = info_state.get("card")
+        if card is not None:
+            await card.flush()
+
+    def info_card() -> meta_card.MetaCard:
+        def on_meta(meta: dict) -> None:
+            title_ref["v"] = meta.get("title") or title_ref["v"]
+            paper_tabs.refresh()
+
+        def before_rename() -> None:  # 기다리던 편집·메모를 옛 경로에 쓰지 않게 — 옮기기 전에 바로
+            edit_flush()
+            notes_flush()
+
+        def on_renamed(_old: Path, new: Path) -> None:  # 이 화면은 옛 경로를 쥐고 있다 — 새 주소로 다시 짓는다
+            ui.navigate.to(_review_url(new))
+
+        return meta_card.MetaCard(ctrl.wd, host=info_host, workspace=lambda: state.get("upload_dir") or ctrl.wd.root.parent,
+                                  on_meta=on_meta, on_redraw=lambda: info_body.refresh(),
+                                  before_rename=before_rename, on_renamed=on_renamed)
+
+    @ui.refreshable
+    def info_body() -> None:
+        wd = ctrl.wd
+        card = info_state["card"] = info_card()
+        vals = meta_card.values(wd)
+        coll = meta_card.collections()
+        has_ko = wd.ko_md.exists()
+        with ui.column().classes("md4-info-body gap-3 w-full"):
+            card.fields(vals)
+            card.hint()
+            with ui.row().classes("items-center gap-x-2 gap-y-1 w-full"):
+                tags = ui.element("div").classes("md4-ptags")
+                card.ok(vals["doi"])
+
+            def paint() -> None:
+                meta_card.paint_tags(tags, library.projects_of(wd), coll)
+
+            async def flip(pid: str) -> bool:
+                cur = library.projects_of(wd)
+                now_in = pid not in cur
+                await meta_card.set_members(wd, cur + [pid] if now_in else [p for p in cur if p != pid], coll["names"])
+                paint()
+                card.paint_hint()  # 이름 규칙은 주 컬렉션마다 다를 수 있다
+                return pid in library.projects_of(wd)
+
+            def new_coll() -> None:
+                members.close()
+
+                async def saved(proj: dict, _created: bool) -> None:
+                    await meta_card.set_members(wd, library.projects_of(wd) + [proj["id"]],
+                                                meta_card.collections()["names"])
+                    info_body.refresh()
+
+                with info_host:
+                    settings_dialog.open_project_dialog(state, None, saved)
+
+            with ui.row().classes("md4-pv-redo items-center gap-1 w-full no-wrap"):
+                card.redo_buttons()  # 서지 칸 바로 아래 — 긴 초록 밑으로 스크롤하지 않아도 보이게
+            paint()
+            members = ui.menu().props("no-parent-event auto-close=false")  # 팝오버 안에 — 눌러도 바깥 클릭이 아니게
+            tags.on("click", lambda: meta_card.open_member_menu(
+                members, tags, coll, lambda: library.projects_of(wd), flip, new_coll))
+            lang = info_state["lang"] if info_state["lang"] in ("en", "ko") and (has_ko or info_state["lang"] == "en") \
+                else ("ko" if has_ko else "en")
+            with ui.row().classes("items-center w-full no-wrap q-mt-xs"):
+                ui.label(t("초록")).classes("md4-panel-title")
+                ui.space()
+                seg = meta_card.lang_seg(lang, langs.short(wd.lang or "ko"), lambda k: pick_lang(k)) if has_ko else {}
+            abs_box = ui.column().classes("gap-1 w-full")
+
+            async def load_abs(k: str) -> None:
+                try:
+                    from narani import preview
+                    text = await info_run.io_bound(preview.abstract_of, wd, k)
+                except Exception:  # noqa: BLE001 — 초록은 없어도 된다
+                    text = ""
+                if info_state["lang"] != k:
+                    return  # 그 사이 다른 언어를 골랐다
+                try:
+                    card.abstract(abs_box, text, k)
+                except Exception:  # noqa: BLE001 — 그 사이 팝오버가 다시 그려졌다
+                    pass
+
+            def pick_lang(k: str) -> None:
+                info_state["lang"] = k
+                meta_card.mark_seg(seg, k)
+                abs_box.clear()
+                with abs_box:
+                    ui.skeleton("text").style("width:96%")
+                background_tasks.create(load_abs(k), name="md4-info-abs")
+
+            pick_lang(lang)
+
     with chip_slot:  # 헤더 상태 칩 — 패널보다 먼저 그린다(번역 중에 돌아온 화면은 패널을 짓다가 칩을 갱신한다)
+        info_btn = ui.element("div").classes("md4-chip md4-infobtn")
+        with info_btn:
+            ui.icon("info_outline", size="16px")
+            info_tip = ui.tooltip(t("서지 정보 — 제목·저자·연도·DOI·컬렉션·초록 (눌러서 고치기)"))
+            with ui.menu().props("anchor='bottom right' self='top right' max-height=80vh") \
+                    .classes("md4-info-pop") as info_menu:
+                info_body()
+        info_menu.on("before-show", lambda: info_body.refresh())  # 홈 창 등에서 고쳤을 수 있다 — 열 때마다 새로
+        info_menu.on("show", lambda: info_tip.run_method("hide"))  # 단추 툴팁이 열린 팝오버를 가리지 않게
+        # 고치던 칸이 있는데 바깥을 눌러 닫히면 — QMenu의 포커스 가두기가 칸에 포커스를 돌려놓아 칸의 blur가
+        # 서버에 오지 않고 글자를 잃는다. 닫히기 직전 서버 쪽에서 그 칸을 저장한다(홈의 '칸 밖 클릭 = 저장'과 같게).
+        info_menu.on("before-hide", lambda: info_flush())
         status_chip()
 
     wc_host = ui.element("div").style("display:none")  # 단어 수 대화상자 자리 (목차 refreshable 밖)
