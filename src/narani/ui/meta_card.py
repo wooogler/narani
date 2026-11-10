@@ -1,4 +1,4 @@
-"""서지 카드 — 홈 미리보기와 논문 뷰어의 ⓘ 팝오버가 **같은 칸·같은 편집 동작**을 쓴다.
+"""서지 카드 — 홈 미리보기와 논문 뷰어의 서지 패널이 **같은 칸·같은 편집 동작**을 쓴다.
 
 한 논문의 제목·저자·연도·venue·DOI·약칭(눌러서 그 자리에서 고치기), 이름 규칙 힌트(폴더 이름 바꾸기),
 서지 ✓, 컬렉션 태그(체크 메뉴로 넣고 빼기), 초록 EN/번역(눌러서 고치기), '온라인에서 다시 찾기'·
@@ -28,7 +28,7 @@ FAIL = object()  # commit이 저장하지 못했을 때 — 칸은 옛 값으로
 META_LOCK = asyncio.Lock()  # 칸을 연달아 고칠 때 paper_meta.json 읽고-쓰기가 겹치지 않게 (홈·뷰어 공통)
 BUSY: set[str] = set()  # '다시 찾기'·'다시 추출'이 도는 논문 root — 두 번 누르지 않게 (홈·뷰어 공통)
 
-# 홈 미리보기에서 옮겨 온 스타일 — 뷰어 팝오버도 같은 칸을 그리므로 둘 다 싣는다(spa.add_css가 한 번만 넣는다).
+# 홈 미리보기에서 옮겨 온 스타일 — 뷰어 서지 패널도 같은 칸을 그리므로 둘 다 싣는다(spa.add_css가 한 번만 넣는다).
 CSS = """
 /* 소속 프로젝트 태그 — 여러 개. 누르면 체크 메뉴로 넣고 뺀다. */
 .md4-ptags { display: inline-flex; flex-wrap: wrap; gap: 4px; cursor: pointer; border-radius: 10px; }
@@ -87,7 +87,7 @@ CSS = """
 .md4-seg span.on { background: #fff; color: #37352f; box-shadow: 0 1px 2px rgba(0,0,0,.1); cursor: default; }
 .md4-menucap { font-size: 11px; font-weight: 700; letter-spacing: .05em; color: #9a968e; padding: 8px 16px 2px; }
 @media (prefers-color-scheme: dark) {
-  /* 고칠 수 있는 칸은 밝은 바탕(홈 미리보기 열·뷰어 팝오버)을 따른다 — 편집 중 칸은 흰 바탕 그대로, 테두리만 다크 쪽 파랑 */
+  /* 고칠 수 있는 칸은 밝은 바탕(홈 미리보기 열·뷰어 서지 패널)을 따른다 — 편집 중 칸은 흰 바탕 그대로, 테두리만 다크 쪽 파랑 */
   .md4-pv-ed.editing, .md4-pv-ed.editing:hover { background: #fff; box-shadow: 0 0 0 1.5px #3b8eea; }
 }
 """
@@ -409,7 +409,7 @@ def set_busy(btn, on: bool) -> None:  # noqa: ANN001 — ui.button
 
 
 class MetaCard:
-    """한 논문의 서지 카드 조각들과 그 저장 동작 — 그리는 곳(홈 미리보기·뷰어 팝오버)마다 하나.
+    """한 논문의 서지 카드 조각들과 그 저장 동작 — 그리는 곳(홈 미리보기·뷰어 서지 패널)마다 하나.
 
     훅 (모두 선택):
     - on_meta(meta): 서지가 저장된 뒤 — 그 화면이 들고 있는 것(목록 행·카드 글자·탭 제목)을 고친다.

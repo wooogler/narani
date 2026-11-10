@@ -1757,6 +1757,46 @@ def save_panels(state: dict) -> None:
         config.set_section_value("ui", "panels", on)
 
 
+# 왼쪽 작업 패널 레일의 탭 — (키, 이름, 아이콘). 이 순서가 기본값이다.
+SIDE_PANELS = (("toc", N_("목차"), "toc"), ("structure", N_("구조"), "account_tree"),
+               ("translate", N_("번역"), "translate"), ("settings", N_("설정"), "tune"),
+               ("notes", N_("메모"), "edit_note"), ("info", N_("서지"), "info_outline"))
+SIDE_KEYS = tuple(k for k, _l, _i in SIDE_PANELS)
+
+
+def side_tabs(cfg: dict | None = None) -> list[str]:
+    """레일에 보이는 탭(순서대로) — 전역 설정 [ui].side_tabs(보이는 것의 순서)·side_tabs_hidden(숨긴 것).
+
+    모르는 키·겹친 키는 버리고, 두 목록 어디에도 없는 탭(뒤 버전에 새로 생긴 탭)은 기본 순서대로 뒤에 붙인다
+    — 보이는 것만 적어 두면 '사용자가 숨긴 탭'과 '새 탭'을 가를 수 없어서 숨긴 것도 따로 적는다.
+    하나도 안 남으면(깨진 값) 기본값.
+    """
+    ui_cfg = (config.load_config() if cfg is None else cfg).get("ui", {})
+    saved, hidden = ui_cfg.get("side_tabs"), ui_cfg.get("side_tabs_hidden")
+    hidden = {k for k in hidden if isinstance(k, str)} if isinstance(hidden, list) else set()
+    out: list[str] = []
+    for k in (saved if isinstance(saved, list) else []):
+        if k in SIDE_KEYS and k not in out and k not in hidden:
+            out.append(k)
+    out += [k for k in SIDE_KEYS if k not in out and k not in hidden]
+    return out or list(SIDE_KEYS)
+
+
+def save_side_tabs(visible: list[str]) -> list[str]:
+    """레일에 보일 탭(순서대로)을 전역 설정에 — 다른 논문·다음 실행에도. 적어도 하나는 남긴다(빈 목록은 무시)."""
+    vis = [k for k in dict.fromkeys(visible) if k in SIDE_KEYS]
+    if not vis:
+        return side_tabs()
+    config.set_section_value("ui", "side_tabs", vis)
+    config.set_section_value("ui", "side_tabs_hidden", [k for k in SIDE_KEYS if k not in vis])
+    return vis
+
+
+def side_mode_or_visible(mode: str | None, visible: list[str]) -> str | None:
+    """기억해 둔 패널이 숨긴 탭이면 보이는 첫 탭으로. None(접힘)은 그대로."""
+    return mode if mode is None or mode in visible else visible[0]
+
+
 def wd_token(root: Path) -> str:
     """워크디렉토리별 짧은 토큰 — 이미지/PDF URL에 넣어 논문 간 캐시 충돌을 막는다.
 
@@ -2270,11 +2310,24 @@ _CHROME_CSS = """
 .md4-chip.todo { background: #fff; color: #2383e2; font-weight: 600; }
 .md4-chip.todo:hover { background: #f3f8ff; }
 .md4-chip.warn { background: #f59e0b; color: #fff; }
-/* ⓘ 서지 카드 — 상태 칩 옆 동그란 칩, 누르면 팝오버(§meta_card). 팝오버는 홈 미리보기 열처럼 흰 바탕. */
-.md4-chip.md4-infobtn { width: 26px; padding: 0; justify-content: center; margin-right: 6px; }
-.md4-info-pop { width: 400px; max-width: calc(100vw - 24px); background: #fff; }
-.md4-info-body { padding: 14px 16px 12px; flex-wrap: nowrap; }
+/* 서지 패널(§meta_card) — 작업 패널 안이라 여백은 .md4-panel 것을 쓴다 */
+.md4-info-body { flex-wrap: nowrap; padding: 0 2px; }
 .md4-info-body > * { flex-shrink: 0; }
+/* 레일 맨 아래 ⋯ — 탭 보이기·순서 메뉴. 숨긴 탭이 다른 곳에서 열려 잠깐 보일 땐 흐리게 */
+.md4-railcfg { display: flex; align-items: center; justify-content: center; width: 34px; height: 26px; flex: 0 0 auto;
+  margin-bottom: 4px; border-radius: 8px; cursor: pointer; color: #9a968e; }
+.md4-railcfg:hover { background: rgba(0,0,0,.06); color: #37352f; }
+.md4-railbtn.md4-railtmp:not(:hover) { opacity: .62; }
+.md4-railcfg-menu { padding: 6px 8px 6px; min-width: 230px; }
+.md4-railcfg-row { width: 100%; padding: 0 2px; font-size: 13px; color: #37352f; }
+.md4-railcfg-row.off { color: #9a968e; }
+.md4-railcfg-ic { color: #8a867e; }
+@media (prefers-color-scheme: dark) {
+  .md4-railcfg { color: #777; }
+  .md4-railcfg:hover { background: rgba(255,255,255,.08); color: #e0e0e0; }
+  .md4-railcfg-row { color: #e0e0e0; }
+  .md4-railcfg-row.off, .md4-railcfg-ic { color: #8a8a8a; }
+}
 /* 헤더 맨 오른쪽 에이전트 단추 — 홈·뷰어 같은 자리. 상태 칩과 같은 높이·바닥선, 서랍이 열리면
    흰 바닥(활성 탭과 같은 말)으로 '지금 열려 있다'를 보인다. */
 .md4-agentbtn { align-self: flex-end; margin: 0 2px 3px 0; display: inline-flex; align-items: center;
@@ -2588,7 +2641,7 @@ def tab_bar(state: dict, here: Path | None, here_title: str | Callable[[], str] 
     (한 창에 한 화면), 나란히 보려면 리뷰 화면의 ⧉로 새 창을 띄운다. 고정(pin)과는 별개다.
     백그라운드 작업(번역 등)이 도는 논문은 탭 아이콘이 돈다. tools()는 탭 줄 끝 단추(고정·새 창)를
     그린다. 반환값은 refreshable — .refresh()로 다시 그린다. here_title이 함수면 그릴 때마다 부른다
-    (뷰어 ⓘ 팝오버에서 제목을 고치면 활성 탭 제목도 따라가게).
+    (뷰어 서지 패널에서 제목을 고치면 활성 탭 제목도 따라가게).
     """
     from nicegui import ui
 
@@ -2838,7 +2891,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     m = ctrl.manifest
     tok = wd_token(ctrl.wd.root)  # 이미지·PDF URL에 넣는 논문별 토큰 (캐시 충돌 방지)
     _title = m.title or ctrl.wd.root.name
-    title_ref = {"v": _title}  # 헤더 활성 탭 제목 — ⓘ 서지 카드에서 제목을 고치면 바뀐다
+    title_ref = {"v": _title}  # 헤더 활성 탭 제목 — 서지 패널에서 제목을 고치면 바뀐다
 
     spa.add_css(_CHROME_CSS)
     find_bar.install()  # Cmd/Ctrl+F 페이지 찾기 — 앱 창에는 브라우저 찾기 바가 없다
@@ -5049,14 +5102,14 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     # ---------- 왼쪽 작업 패널 — 목차 / 구조 / 번역 / 설정 / 메모 ----------
     # 옛 '변환 탭 왼쪽 열'과 '번역 탭 왼쪽 열'이 여기로 들어왔다. 모드를 모두 지어 두고(작업 재부착·
     # refreshable 참조가 살아 있어야 한다) 보이는 것만 바꾼다. 레일의 같은 단추를 다시 누르면 접힌다.
-    _PANELS = (("toc", N_("목차"), "toc"), ("structure", N_("구조"), "account_tree"),
-               ("translate", N_("번역"), "translate"), ("settings", N_("설정"), "tune"),
-               ("notes", N_("메모"), "edit_note"))
+    # 레일에 보일 탭·순서는 사용자가 고른다(§side_tabs — 전역 [ui].side_tabs). 숨긴 탭은 레일 단추만 빠질 뿐
+    # 다른 곳(✎ 섹션 구조 점프 → 구조, 상태 칩 → 번역)에서 여는 건 그대로 된다 — 열려 있는 동안은 단추도 잠깐 보인다.
+    _PANELS = SIDE_PANELS
     root_key = str(ctrl.wd.root.resolve())
     panel_state: dict = {"mode": None, "splitter": None, "boxes": {}}
     # 패널 폭(%)은 모드마다 따로 — 목차는 한 줄짜리 제목 목록이라 좁게, 섹션 트리·설정은 넓게 시작한다.
     # 드래그한 폭은 모드별로 전역 설정([ui].panel_width_<모드>)에 기억해 다른 논문·다음 실행에도 그대로.
-    _DEFAULT_PANEL_W = {"toc": 20, "structure": 30, "translate": 30, "settings": 30, "notes": 34}
+    _DEFAULT_PANEL_W = {"toc": 20, "structure": 30, "translate": 30, "settings": 30, "notes": 34, "info": 28}
 
     def panel_width(mode: str) -> float:
         v = config.load_config().get("ui", {}).get(f"panel_width_{mode}")
@@ -5147,6 +5200,8 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         prev = panel_state["mode"]
         if prev == "notes" and mode != "notes":
             notes_flush()
+        if prev == "info" and mode != "info":
+            background_tasks.create(info_flush(), name="md4-info-flush")  # 고치던 서지 칸 (blur가 늦게 올 수 있다)
         panel_state["mode"] = mode
         if mode is not None:
             panel_state["last"] = mode  # 끌어서 다시 열 때 돌아갈 패널
@@ -5154,6 +5209,8 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         set_left_panel(ctrl.wd.root, mode)  # 앱을 다시 켜도 이 논문은 이 패널로
         for key, box in panel_state["boxes"].items():
             box.set_visibility(key == mode)
+        if mode == "info" and prev != "info":
+            info_body.refresh()  # 홈 창 등에서 고쳤을 수 있다 — 열 때마다 디스크에서 새로 (닫혀 있는 동안은 짓지 않는다)
         sp = panel_state["splitter"]
         if sp is not None:
             if prev is not None and sp.value > 1:
@@ -5167,21 +5224,70 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
 
     ui.on("md4-open-side", lambda _: open_side())
 
+    _rail_tips = {"toc": N_("목차 — 섹션으로 이동 (원문·번역 제목)"),
+                  "structure": N_("구조 — 헤더 레벨·섹션 트리·레이아웃 수정·다시 변환"),
+                  "translate": N_("번역 — 번역할 섹션·용어집·실행"),
+                  "settings": N_("설정 — 인용 표기·캡션·저자"),
+                  "notes": N_("메모 — 논문 전체에 대한 자유 메모 (위지윅, 자동 저장)"),
+                  "info": N_("서지 정보 — 제목·저자·연도·DOI·컬렉션·초록 (눌러서 고치기)")}
+    _panel_meta = {k: (label, icon) for k, label, icon in _PANELS}
+
     @ui.refreshable
     def rail() -> None:
-        for key, label, icon in _PANELS:
+        vis = side_tabs()
+        keys = vis + ([panel_state["mode"]] if panel_state["mode"] and panel_state["mode"] not in vis else [])
+        for key in keys:
+            label, icon = _panel_meta[key]
             on = panel_state["mode"] == key
-            b = ui.element("div").classes("md4-railbtn" + (" on" if on else ""))
+            b = ui.element("div").classes("md4-railbtn" + (" on" if on else "") + ("" if key in vis else " md4-railtmp"))
             with b:
                 ui.icon(icon, size="20px")
                 ui.label(t(label))
             b.on("click", lambda _, k=key: set_panel(k))
-            b.tooltip({"toc": t("목차 — 섹션으로 이동 (원문·번역 제목)"),
-                       "structure": t("구조 — 헤더 레벨·섹션 트리·레이아웃 수정·다시 변환"),
-                       "translate": t("번역 — 번역할 섹션·용어집·실행"),
-                       "settings": t("설정 — 인용 표기·캡션·저자"),
-                       "notes": t("메모 — 논문 전체에 대한 자유 메모 (위지윅, 자동 저장)")}[key]
-                      + (t(" (누르면 접힘)") if on else ""))
+            b.tooltip(t(_rail_tips[key]) + (t(" (누르면 접힘)") if on else "")
+                      + ("" if key in vis else " · " + t("레일에서 숨긴 탭 — 지금 열려 있어 잠깐 보입니다")))
+
+    def rail_tabs_set(vis: list[str]) -> None:
+        """레일 탭 보이기·순서 저장 → 레일 다시 그리기. 지금 열린 탭을 숨겼으면 보이는 첫 탭으로 옮긴다."""
+        vis = save_side_tabs(vis)
+        rail_cfg_list.refresh()
+        mode = panel_state["mode"]
+        if mode is not None and mode not in vis:
+            set_panel(vis[0], toggle=False)  # rail.refresh()까지 — notes_flush 등 떠날 때 일도 거친다
+        else:
+            rail.refresh()
+
+    @ui.refreshable
+    def rail_cfg_list() -> None:
+        """레일 맨 아래 ⋯ 메뉴 안 — 탭마다 보이기 체크 + 위/아래. 보이는 탭이 위, 숨긴 탭은 아래(기본 순서)."""
+        vis = side_tabs()
+        rows = vis + [k for k in SIDE_KEYS if k not in vis]
+        ui.label(t("레일 탭 — 보이기·순서")).classes("md4-menucap")
+        for key in rows:
+            label, icon = _panel_meta[key]
+            shown = key in vis
+            i = vis.index(key) if shown else -1
+            with ui.row().classes("md4-railcfg-row items-center no-wrap gap-1" + ("" if shown else " off")):
+                cb = ui.checkbox(value=shown).props("dense size=sm")
+                if shown and len(vis) == 1:
+                    cb.disable()  # 적어도 하나는 남긴다
+                    cb.tooltip(t("탭은 적어도 하나는 남겨야 합니다"))
+                cb.on_value_change(lambda e, k=key: rail_tabs_set(
+                    [x for x in side_tabs() if x != k] + ([k] if e.value else [])))
+                ui.icon(icon, size="17px").classes("md4-railcfg-ic")
+                ui.label(t(label)).classes("md4-railcfg-name")
+                ui.space()
+                up = ui.button(icon="keyboard_arrow_up", on_click=lambda k=key, j=i: rail_tabs_set(
+                    vis[:j - 1] + [k, vis[j - 1]] + vis[j + 1:])).props("flat dense round size=sm color=grey-7")
+                dn = ui.button(icon="keyboard_arrow_down", on_click=lambda k=key, j=i: rail_tabs_set(
+                    vis[:j] + [vis[j + 1], k] + vis[j + 2:])).props("flat dense round size=sm color=grey-7")
+                if not shown or i == 0:
+                    up.disable()
+                if not shown or i == len(vis) - 1:
+                    dn.disable()
+        with ui.row().classes("w-full justify-end q-mt-xs"):
+            ui.button(t("기본값으로"), on_click=lambda: rail_tabs_set(list(SIDE_KEYS))) \
+                .props("flat dense no-caps size=sm").classes("md4-linkbtn")
 
     @ui.refreshable
     def status_chip() -> None:
@@ -6155,14 +6261,16 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     _seen_mode = state.get("panel_by_root", {}).get(root_key, "?")
     if _seen_mode == "?":
         _seen_mode = left_panel(ctrl.wd.root)
-    _valid_modes = (None, *(k for k, _l, _i in _PANELS))
-    panel_state["mode"] = _seen_mode if _seen_mode in _valid_modes else ("toc" if ctrl.ko_markdown() else "structure")
+    _valid_modes = (None, *SIDE_KEYS)
+    _vis = side_tabs()
+    panel_state["mode"] = side_mode_or_visible(
+        _seen_mode if _seen_mode in _valid_modes else ("toc" if ctrl.ko_markdown() else "structure"), _vis)
     panel_state["last"] = panel_state["mode"]
 
     def _on_split(e) -> None:  # noqa: ANN001 — 패널 폭 드래그. 끝까지 밀어 닫으면 레일도 '접힘'으로
         if e.value > 1:
             if panel_state["mode"] is None:  # 닫힌 패널을 끌어 열었다 → 마지막 모드로 (없으면 목차)
-                set_panel(panel_state.get("last") or "toc", toggle=False)
+                set_panel(side_mode_or_visible(panel_state.get("last") or side_tabs()[0], side_tabs()), toggle=False)
             else:
                 remember_width(panel_state["mode"], e.value)
         elif panel_state["mode"] is not None:
@@ -6173,10 +6281,11 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                 box.set_visibility(False)
             rail.refresh()
 
-    # ---------- ⓘ 서지 카드 — 홈 미리보기와 같은 칸·같은 저장(§meta_card) ----------
-    # 헤더 상태 칩 옆 ⓘ를 누르면 팝오버로: 제목·저자·연도·venue·DOI·약칭(눌러서 고치기), 이름 규칙 힌트,
-    # 컬렉션 태그(체크 메뉴), 초록 EN/번역, 다시 찾기·다시 추출. 열 때마다 디스크에서 다시 읽는다(홈 창에서
-    # 고쳤을 수 있다). 대화상자(이름 바꾸기·새 컬렉션)는 팝오버 밖 자리에 — 닫히면 팝오버 내용이 빠진다.
+    # ---------- 서지 패널 — 홈 미리보기와 같은 칸·같은 저장(§meta_card) ----------
+    # 레일의 '서지' 탭: 제목·저자·연도·venue·DOI·약칭(눌러서 고치기), 이름 규칙 힌트, 컬렉션 태그(체크 메뉴),
+    # 초록 EN/번역, 다시 찾기·다시 추출. 탭을 열 때마다 디스크에서 다시 읽는다(홈 창에서 고쳤을 수 있다).
+    # 닫혀 있는 동안은 짓지 않는다 — 초록 읽기까지 논문을 열 때마다 돌 일이 없게.
+    # (예전엔 헤더 상태 칩 옆 ⓘ 팝오버였는데 눈에 잘 띄지 않아 레일 탭으로 옮겼다.)
     from nicegui import background_tasks
     from nicegui import run as info_run  # 'run'은 이 모듈의 run()과 겹친다
 
@@ -6210,12 +6319,16 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
 
     @ui.refreshable
     def info_body() -> None:
+        if panel_state["mode"] != "info":
+            info_state["card"] = None
+            return
         wd = ctrl.wd
         card = info_state["card"] = info_card()
         vals = meta_card.values(wd)
         coll = meta_card.collections()
         has_ko = wd.ko_md.exists()
         with ui.column().classes("md4-info-body gap-3 w-full"):
+            ui.label(t("서지")).classes("md4-panel-title")
             card.fields(vals)
             card.hint()
             with ui.row().classes("items-center gap-x-2 gap-y-1 w-full"):
@@ -6282,18 +6395,6 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             pick_lang(lang)
 
     with chip_slot:  # 헤더 상태 칩 — 패널보다 먼저 그린다(번역 중에 돌아온 화면은 패널을 짓다가 칩을 갱신한다)
-        info_btn = ui.element("div").classes("md4-chip md4-infobtn")
-        with info_btn:
-            ui.icon("info_outline", size="16px")
-            info_tip = ui.tooltip(t("서지 정보 — 제목·저자·연도·DOI·컬렉션·초록 (눌러서 고치기)"))
-            with ui.menu().props("anchor='bottom right' self='top right' max-height=80vh") \
-                    .classes("md4-info-pop") as info_menu:
-                info_body()
-        info_menu.on("before-show", lambda: info_body.refresh())  # 홈 창 등에서 고쳤을 수 있다 — 열 때마다 새로
-        info_menu.on("show", lambda: info_tip.run_method("hide"))  # 단추 툴팁이 열린 팝오버를 가리지 않게
-        # 고치던 칸이 있는데 바깥을 눌러 닫히면 — QMenu의 포커스 가두기가 칸에 포커스를 돌려놓아 칸의 blur가
-        # 서버에 오지 않고 글자를 잃는다. 닫히기 직전 서버 쪽에서 그 칸을 저장한다(홈의 '칸 밖 클릭 = 저장'과 같게).
-        info_menu.on("before-hide", lambda: info_flush())
         status_chip()
 
     wc_host = ui.element("div").style("display:none")  # 단어 수 대화상자 자리 (목차 refreshable 밖)
@@ -6301,6 +6402,15 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     with ui.row().classes("w-full no-wrap gap-0 md4-steps md4-body"):
         with ui.column().classes("md4-rail gap-0"):
             rail()
+            # 레일 맨 아래 — 탭 보이기·순서. rail() 밖에 둔다: 레일은 패널을 바꿀 때마다 다시 그려져
+            # 안에 두면 열린 메뉴가 그때마다 닫힌다. md4-railbtn 클래스도 쓰지 않는다(에이전트 창의 '지금 패널' 읽기).
+            ui.space()
+            with ui.element("div").classes("md4-railcfg"):
+                ui.icon("more_horiz", size="18px")
+                cfg_tip = ui.tooltip(t("레일 탭 보이기·순서 바꾸기"))
+                with ui.menu().props("anchor='top right' self='bottom left'").classes("md4-railcfg-menu") as cfg_menu:
+                    rail_cfg_list()
+            cfg_menu.on("show", lambda: cfg_tip.run_method("hide"))  # 툴팁이 열린 메뉴를 가리지 않게
         with ui.splitter(value=panel_width(panel_state["mode"]) if panel_state["mode"] else 0, limits=(0, 60)) \
                 .classes("md4-split").style("flex:1 1 auto; min-width:0; height:100%") as sp:
             panel_state["splitter"] = sp
@@ -6381,6 +6491,11 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                     with ui.column().classes("w-full gap-2 md4-notes") as box:
                         notes_panel()
                     panel_state["boxes"]["notes"] = box
+
+                    # ---------- 서지 (홈 미리보기와 같은 카드 — §meta_card) ----------
+                    with ui.column().classes("w-full gap-2") as box:
+                        info_body()  # 이 탭이 열려 있을 때만 짓는다(초록 읽기 등) — 열 때 set_panel이 다시 그린다
+                    panel_state["boxes"]["info"] = box
 
                     for key, box in panel_state["boxes"].items():
                         box.set_visibility(key == panel_state["mode"])
