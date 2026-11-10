@@ -1478,7 +1478,7 @@
  "묶을 것을 고르세요 — zip 하나로 받습니다.": "Choose what to include — you'll get a single zip.",
  "{n}/{total}편": "{n}/{total} papers",
  "마크다운에 적용하는 형식 (전역 설정)": "Format applied to Markdown (global setting)",
- "논문마다 자기 폴더로 — 마크다운은 <이름>-en/ · <이름>-<언어>/, 나머지는 <이름>/": "Each paper gets its own folders — Markdown in <name>-en/ · <name>-<lang>/, the rest in <name>/",
+ "논문마다 자기 폴더로 — 마크다운은 <이름>-en/ · <이름>-ko/, 나머지는 <이름>/": "Each paper gets its own folders — Markdown in <name>-en/ · <name>-ko/, the rest in <name>/",
  "내보내기…": "Export…",
  "영어·번역 마크다운, 원본 PDF, 메모 등을 골라 zip 하나로 — 논문마다 자기 폴더": "Pick English/translated Markdown, the original PDF, notes and more into one zip — a folder per paper"
 }

@@ -1124,10 +1124,10 @@ def build_home(state: dict) -> None:
         dlg.open()
 
     # ===== 일괄 동작 =====
-    def export_bulk() -> None:
+    async def export_bulk() -> None:
         from narani.ui import export_dialog
 
-        export_dialog.open_dialog([Path(p) for p in selected])  # 열 때의 선택을 붙잡는다
+        await export_dialog.open_dialog([Path(p) for p in selected])  # 열 때의 선택을 붙잡는다
 
     # ===== 모바일 (§phone) — Google Drive를 거쳐 모바일 리더(웹앱)에서 읽는다 =====
     def mobile_changed() -> None:

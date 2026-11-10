@@ -16,6 +16,7 @@ from narani.i18n import N_, t
 from narani.workdir import WorkDir
 
 PREF_KEY = "export_items"
+_OPEN_ATTR = "_md4_export_open"
 _LABELS = {
     "en": N_("영어 마크다운"), "ko": N_("번역 마크다운"), "pdf": N_("원본 PDF"),
     "notes": N_("하이라이트·메모"), "bib": "BibTeX", "audio": N_("듣기 음성"),
@@ -43,8 +44,10 @@ def _ko_label(roots: list[Path]) -> str:
     return t(_LABELS["ko"])
 
 
-def open_dialog(roots: list[Path | str], before: Callable[[], Awaitable[None]] | None = None) -> None:
-    """체크박스 내보내기 대화상자를 연다. `before`는 묶기 직전에 기다릴 일(뷰어의 메모 되저장 등)."""
+async def open_dialog(roots: list[Path | str], before: Callable[[], Awaitable[None]] | None = None) -> None:
+    """체크박스 내보내기 대화상자를 연다. `before`는 묶기 직전에 기다릴 일(뷰어의 메모 되저장 등).
+
+    한 화면에 하나만 — 단추를 두 번 눌러 대화상자가 겹치지 않게."""
     from nicegui import run, ui
 
     from narani.ui import desktop
@@ -54,7 +57,16 @@ def open_dialog(roots: list[Path | str], before: Callable[[], Awaitable[None]] |
     if not roots:
         ui.notify(t("선택된 논문이 없습니다."), type="warning")
         return
-    have = export_bundle.counts(roots)
+    client = ui.context.client
+    if getattr(client, _OPEN_ATTR, False):
+        return
+    setattr(client, _OPEN_ATTR, True)
+    try:  # 논문마다 파일을 훑는다(bib 항목 조립 포함) — 수백 편이면 0.5초쯤이라 화면이 멈추지 않게 따로
+        have = await run.io_bound(export_bundle.counts, roots)
+        ko_label = await run.io_bound(_ko_label, roots)
+    except Exception:
+        setattr(client, _OPEN_ATTR, False)
+        raise
     total = len(roots)
     chosen = set(prefs())
     state = {"busy": False}
@@ -77,6 +89,7 @@ def open_dialog(roots: list[Path | str], before: Callable[[], Awaitable[None]] |
         # 이 손잡이를 부른 단추는 footer를 다시 그리면 지워진다 — 그 뒤의 UI 호출은 카드(대화상자가 열린 동안 그대로)의 자리에서
         with card:
             state["busy"] = True
+            dlg.props("persistent")  # 묶는 동안은 Esc·바깥 클릭으로 닫히지 않게 — 닫히면 전달할 자리가 없다
             footer.refresh()
             try:
                 if before is not None:
@@ -86,6 +99,7 @@ def open_dialog(roots: list[Path | str], before: Callable[[], Awaitable[None]] |
             except (OSError, ValueError) as ex:
                 ui.notify(str(ex), type="warning")
                 state["busy"] = False
+                dlg.props(remove="persistent")
                 footer.refresh()
                 return
             await desktop.deliver(name, data, media_type=media)
@@ -101,7 +115,7 @@ def open_dialog(roots: list[Path | str], before: Callable[[], Awaitable[None]] |
         with ui.column().classes("gap-0 w-full"):
             for k in export_bundle.ITEMS:
                 n = have[k]
-                label = _ko_label(roots) if k == "ko" else t(_LABELS[k])
+                label = ko_label if k == "ko" else t(_LABELS[k])
                 with ui.row().classes("items-center gap-2 no-wrap w-full"):
                     cb = ui.checkbox(label, value=k in chosen,
                                      on_change=lambda e, kk=k: toggle(kk, bool(e.value))) \
@@ -124,7 +138,7 @@ def open_dialog(roots: list[Path | str], before: Callable[[], Awaitable[None]] |
         def footer() -> None:
             items = effective()
             if total > 1 and items:
-                ui.label(t("논문마다 자기 폴더로 — 마크다운은 <이름>-en/ · <이름>-<언어>/, 나머지는 <이름>/")) \
+                ui.label(t("논문마다 자기 폴더로 — 마크다운은 <이름>-en/ · <이름>-ko/, 나머지는 <이름>/")) \
                     .classes("text-xs text-gray-500")
             with ui.row().classes("w-full justify-end gap-1"):
                 ui.button(t("취소"), on_click=dlg.close).props("flat no-caps")
@@ -135,5 +149,9 @@ def open_dialog(roots: list[Path | str], before: Callable[[], Awaitable[None]] |
                     b.props("loading")
 
         footer()
-    dlg.on("hide", lambda: dlg.delete())
+    def _gone() -> None:
+        setattr(client, _OPEN_ATTR, False)
+        dlg.delete()
+
+    dlg.on("hide", _gone)
     dlg.open()

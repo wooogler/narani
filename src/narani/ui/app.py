@@ -5460,7 +5460,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         from narani.ui import export_dialog
 
         await flush_notes()  # 열 때 — '하이라이트·메모'가 있는지를 방금 그은 것까지 보고 정한다
-        export_dialog.open_dialog([ctrl.wd.root], before=flush_notes)
+        await export_dialog.open_dialog([ctrl.wd.root], before=flush_notes)
 
     async def save_to_library() -> None:
         """이 논문의 자리에 결과 마크다운을 저장 (자동 저장을 꺼 뒀을 때도 수동으로).

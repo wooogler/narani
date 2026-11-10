@@ -1478,7 +1478,7 @@
  "묶을 것을 고르세요 — zip 하나로 받습니다.": "Elige qué incluir: recibirás un solo zip.",
  "{n}/{total}편": "{n}/{total} artículos",
  "마크다운에 적용하는 형식 (전역 설정)": "Formato aplicado al Markdown (ajuste global)",
- "논문마다 자기 폴더로 — 마크다운은 <이름>-en/ · <이름>-<언어>/, 나머지는 <이름>/": "Cada artículo con sus propias carpetas: Markdown en <nombre>-en/ · <nombre>-<idioma>/, el resto en <nombre>/",
+ "논문마다 자기 폴더로 — 마크다운은 <이름>-en/ · <이름>-ko/, 나머지는 <이름>/": "Cada artículo con sus propias carpetas: Markdown en <nombre>-en/ · <nombre>-ko/, el resto en <nombre>/",
  "내보내기…": "Exportar…",
  "영어·번역 마크다운, 원본 PDF, 메모 등을 골라 zip 하나로 — 논문마다 자기 폴더": "Elige Markdown en inglés o traducido, el PDF original, notas y más en un solo zip, con una carpeta por artículo"
 }
