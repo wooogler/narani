@@ -92,3 +92,13 @@ def _clean_tabs_and_jobs():
     if tabstore.TABS_PATH.exists():
         tabstore.TABS_PATH.unlink()
     jobs.reset()
+
+
+@pytest.fixture(autouse=True)
+def _clean_pdf_hashes():
+    """같은 PDF 찾기의 해시 캐시(pdf_hashes.json)도 설정 폴더 전역이라 테스트마다 비운다."""
+    from narani import dupes
+
+    dupes.cache_path().unlink(missing_ok=True)
+    yield
+    dupes.cache_path().unlink(missing_ok=True)
