@@ -39,7 +39,7 @@ import time
 from pathlib import Path
 
 from narani.i18n import N_, t
-from narani import config, langs, library, projects
+from narani import config, dupes, langs, library, projects
 from narani.phone import gdrive
 from narani.phone import pages
 from narani.phone import service as phone_service
@@ -52,7 +52,7 @@ from narani.ui import meta_card
 from narani.ui.meta_card import field_text, parse_field  # noqa: F401
 from narani.ui.meta_card import same_base as _same_base  # noqa: F401
 from narani.ui.meta_card import via_subs as _via_subs
-from narani.workdir import WorkDir
+from narani.workdir import WorkDir, hash_bytes
 
 # 카드를 사이드바로 끌 때 dataTransfer에 싣는 형식 — 파일 끌기('Files')와 섞이지 않게 따로 둔다
 PAPER_MIME = "text/x-md4-paper"
@@ -1622,24 +1622,99 @@ def build_home(state: dict) -> None:
         ui.notify(t("내보내기 형식 · {v}", v=t(_EXPORT_TARGET[value])), type="positive", timeout=1200)
 
     # ===== 업로드 → 큐 =====
+    # 같은 내용 판정 중인 업로드 — 해시 → 파일 이름. 파일마다 handle이 따로 돌고 사이에 await가 있어서,
+    # 같은 내용 두 파일을 한 번에 올리면 둘 다 '대기열에 없음'으로 통과하지 않게 await 전에 자리를 잡는다.
+    # 중복을 묻는 대화상자는 한 번에 하나씩(lock) — 중복이 아닌 파일은 기다리지 않고 바로 대기열로.
+    upload_hold: dict = {"hashes": {}, "lock": asyncio.Lock()}
+
     async def handle(e) -> None:  # noqa: ANN001 — NiceGUI upload 이벤트 (파일마다 발화)
         fname = e.file.name
         payload = await e.file.read()
         if any(q["name"] == fname and q["status"] in _QUEUE_ACTIVE for q in state["queue"]):
             ui.notify(t("{fname} 은(는) 이미 대기열에 있습니다.", fname=fname), type="info")
             return
+        scope = view["scope"]  # 올린 순간의 범위 — 묻는 사이에 범위를 바꿔도 그때 보던 컬렉션으로
+        digest = hash_bytes(payload)
+        twin = next((q["name"] for q in state["queue"]
+                     if q.get("hash") == digest and q["status"] in _QUEUE_ACTIVE), None)
+        if twin is not None:  # 대기열에서 변환 중인 파일과 내용이 같다
+            ui.notify(t("{fname} 은(는) 대기열의 {other} 와(과) 내용이 같아 건너뜁니다.", fname=fname, other=twin),
+                      type="info")
+            return
+        twin = upload_hold["hashes"].get(digest)
+        if twin is not None:  # 함께 올린(아직 묻는 중인) 파일과 내용이 같다
+            ui.notify(t("{fname} 은(는) 함께 올린 {other} 와(과) 내용이 같아 건너뜁니다.", fname=fname, other=twin),
+                      type="info")
+            return
+        upload_hold["hashes"][digest] = fname
+        try:
+            same = await run.io_bound(dupes.find, digest, ws())
+            if same:
+                async with upload_hold["lock"]:
+                    choice = await ask_duplicate(fname, same, scope)
+                if choice == "open":
+                    open_wd(same[0])
+                    return
+                if choice == "add":
+                    await add_dropped(str(same[0]), projects.assign_target(scope))
+                    return
+                if choice != "convert":
+                    return
+            await enqueue(fname, payload, digest, scope)
+        finally:
+            upload_hold["hashes"].pop(digest, None)
+
+    async def enqueue(fname: str, payload: bytes, digest: str, scope: str) -> None:
         pages = _pdf_page_count(payload) if fname.lower().endswith(".pdf") else 0
         src = await run.io_bound(save_source, payload, fname, ws())
         state["queue"].append({
-            "name": fname, "src_path": str(src), "pages": pages,
+            "name": fname, "src_path": str(src), "pages": pages, "hash": digest,
             "backend": DEFAULT_BACKEND, "ocr": config.resolve_ocr(),
             # 올릴 때 고른 묶음을 항목에 새겨 둔다 — 변환 도중 범위를 바꿔도 이 논문의 소속은 그대로.
-            "project": projects.assign_target(view["scope"]),
+            "project": projects.assign_target(scope),
             "status": "pending", "error": "", "garbled": 0, "since": 0.0, "done_at": 0.0,
         })
         queue_panel.refresh()
         if not state.get("worker_running"):  # 워커가 놀고 있으면 깨운다 (하나만 돎)
             background_tasks.create(_process_queue(state))
+
+    async def ask_duplicate(fname: str, same: list[Path], scope: str) -> str | None:
+        """올린 파일이 라이브러리의 논문과 내용이 같다 — 무엇을 할지 묻는다.
+
+        반환: "open"(이미 있는 논문 열기) · "add"(올릴 때 보던 컬렉션에 그 논문을 더하기) ·
+        "convert"(그래도 새로 변환 — '(2)' 폴더) · None(취소·창 닫기)."""
+        root = str(same[0])
+        if root not in data["by_root"]:  # 목록이 그 논문을 아직 모르면(다른 창에서 변환 등) 다시 훑는다
+            scan()
+        r = data["by_root"].get(root) or {}
+        title = r.get("title") or Path(root).stem
+        pids = r.get("pids") or []
+        pid = projects.assign_target(scope)
+        with host, ui.dialog() as dlg, ui.card().classes("gap-2").style("max-width:540px"):
+            ui.label(t("이미 라이브러리에 있는 논문입니다")).classes("font-bold")
+            ui.label(t("{fname} 은(는) 아래 논문의 원본 PDF와 내용이 같습니다.", fname=fname)) \
+                .classes("text-xs text-gray-500")
+            with ui.column().classes("gap-1 w-full").style(
+                    "border:1px solid #e3e2df;border-radius:8px;padding:8px 10px;background:#faf9f7"):
+                ui.label(title).classes("font-medium").style("overflow-wrap:anywhere")
+                ui.label(t("컬렉션: {v}", v=", ".join(path_of(p) for p in pids) if pids else t("미분류"))) \
+                    .classes("text-xs text-gray-500")
+            if len(same) > 1:
+                ui.label(t("같은 내용의 논문이 {n}편 더 있습니다.", n=len(same) - 1)).classes("text-xs text-gray-500")
+            if pid and pid in pids:
+                ui.label(t("이미 '{v}' 컬렉션에 들어 있습니다.", v=name_of(pid))).classes("text-xs text-gray-500")
+            with ui.row().classes("justify-end w-full items-center gap-2"):
+                ui.button(t("취소"), on_click=lambda: dlg.submit(None)).props("flat no-caps")
+                ui.button(t("그래도 새로 변환"), on_click=lambda: dlg.submit("convert")).props("flat no-caps")
+                if pid and pid not in pids:
+                    ui.button(t("'{v}'에 넣기", v=name_of(pid)), icon="playlist_add",
+                              on_click=lambda: dlg.submit("add")).props("outline no-caps")
+                ui.button(t("열기"), icon="open_in_new", on_click=lambda: dlg.submit("open")) \
+                    .props("unelevated no-caps color=primary")
+        try:
+            return await dlg
+        finally:
+            dlg.delete()
 
     # ===== 왼쪽 — 프로젝트 사이드바 =====
     def prow(value: str, label: str, n: int, icon: str, *, project: bool = False, sub: str = "",

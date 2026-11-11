@@ -1498,5 +1498,14 @@
  "메모 패널의 하이라이트 목록에서 이 항목 보기": "Show this item in the highlight list in the Notes panel",
  "목록": "List",
  "첫 섹션 앞": "Before the first section",
- "하이라이트": "Highlights"
+ "하이라이트": "Highlights",
+ "{fname} 은(는) 대기열의 {other} 와(과) 내용이 같아 건너뜁니다.": "Skipped {fname}: same content as {other} in the queue.",
+ "이미 라이브러리에 있는 논문입니다": "This paper is already in your library",
+ "{fname} 은(는) 아래 논문의 원본 PDF와 내용이 같습니다.": "{fname} has the same content as the original PDF of this paper.",
+ "컬렉션: {v}": "Collections: {v}",
+ "같은 내용의 논문이 {n}편 더 있습니다.": "{n} more paper(s) have the same content.",
+ "이미 '{v}' 컬렉션에 들어 있습니다.": "It's already in the '{v}' collection.",
+ "그래도 새로 변환": "Convert anyway",
+ "'{v}'에 넣기": "Add to '{v}'",
+ "{fname} 은(는) 함께 올린 {other} 와(과) 내용이 같아 건너뜁니다.": "Skipped {fname}: same content as {other}, uploaded with it."
 }

@@ -6668,6 +6668,13 @@ def save_source(data: bytes, filename: str, upload_dir: Path) -> Path:
     workspace.mkdir(parents=True, exist_ok=True)
     dest = workspace / filename
     dest.write_bytes(data)
+    try:  # 같은 PDF 찾기(§dupes)가 이 파일을 다시 읽지 않게 해시를 적어 둔다
+        from narani import dupes
+        from narani.workdir import hash_bytes
+
+        dupes.remember(dest, hash_bytes(data))
+    except OSError:
+        pass
     return dest
 
 
