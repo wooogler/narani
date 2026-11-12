@@ -233,7 +233,16 @@ body.ag-standalone .ag-list, body.ag-standalone .ag-foot {
 .ag-a > :first-child { margin-top: 0; }
 .ag-a blockquote { border-left: 3px solid #e0ded9; padding-left: 9px; color: #6b6862; }
 .ag-a hr { border: none; border-top: 1px solid #ecebe8; margin: 10px 0; }
-.ag-live { white-space: pre-wrap; }      /* 흐르는 동안은 날것 — done에서 렌더된 HTML로 바뀐다 */
+/* 표 — 좁은 서랍에서는 표만 가로로 스크롤한다(말풍선은 넘치지 않게) */
+.ag-a table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse;
+  margin: 2px 0 9px; font-size: .96em; line-height: 1.5; }
+.ag-a th, .ag-a td { border: 1px solid #e6e4e0; padding: 4px 8px; text-align: left; vertical-align: top;
+  min-width: 56px; }
+.ag-a th { background: #f6f5f2; font-weight: 600; white-space: nowrap; }
+.ag-a tbody tr:nth-child(even) td { background: #fbfbfa; }
+.ag-a s { color: #9a968e; }
+.ag-live { white-space: pre-wrap; }
+.ag-streaming a.chat-cite { pointer-events: none; opacity: .75; }   /* 잠정 칩 — done에서 최종 칩으로 */      /* 흐르는 동안은 날것 — done에서 렌더된 HTML로 바뀐다 */
 .ag-turn + .ag-turn { margin-top: 10px; }
 .ag-turn.ag-user + .ag-turn.ag-user, .ag-turn.ag-bot + .ag-turn.ag-user { border-top: 1px solid #f0efec;
   padding-top: 10px; }
@@ -396,6 +405,9 @@ a.chat-cite-note:hover { background: #f7cf60; }
   .ag-a code, .ag-a pre, .ag-tool { background: #2c2c2c; color: #b8b8b8; }
   .ag-a blockquote { border-left-color: #3a3a3a; color: #9a9a9a; }
   .ag-a hr { border-top-color: #333; }
+  .ag-a th, .ag-a td { border-color: #3a3a3a; }
+  .ag-a th { background: #2a2a2a; }
+  .ag-a tbody tr:nth-child(even) td { background: #232323; }
   .ag-tool b { color: #d0d0d0; }
   .ag-btn:hover, .ag-sess:hover, .ag-mi:hover { background: #2c2c2c; }
   .ag-setm, .ag-fs button, .ag-setm-model { background: #262626; border-color: #3a3a3a; }
@@ -1454,6 +1466,12 @@ JS = r"""
     return box;
   }
   var liveText = null, liveTools = null;
+  // 흐르는 답 — 서버가 렌더해 보낸 HTML(html 이벤트, 끝난 뒤와 같은 렌더러)이 있으면 그것을, 첫 HTML이
+  // 오기 전의 아주 짧은 동안만 날글을 보인다. 칩은 아직 잠정이라 누를 수 없다(done에서 최종 HTML로 바뀐다).
+  function paintLive(){
+    if (live.html != null){ liveText.className = 'ag-a ag-streaming'; liveText.innerHTML = live.html; }
+    else { liveText.className = 'ag-a ag-live'; liveText.textContent = live.text.replace(/^\s+/, ''); }
+  }
   function liveNode(){
     var frag = document.createDocumentFragment();
     if (live.q){
@@ -1464,8 +1482,7 @@ JS = r"""
     liveTools = toolGroup(live.tools, 'live');
     w.appendChild(liveTools);
     liveText = document.createElement('div');
-    liveText.className = 'ag-a ag-live';
-    liveText.textContent = live.text.replace(/^\s+/, '');
+    paintLive();
     w.appendChild(liveText);
     if (!live.text){
       var wt = document.createElement('div'); wt.className = 'ag-wait';
@@ -1609,10 +1626,15 @@ JS = r"""
       var stick = nearBottom(), first = !live.text;
       live.text += d.delta || '';
       if (first || !liveText) render();        // 첫 조각 — '생각하는 중…'을 걷어 낸다
-      else {
-        liveText.textContent = live.text.replace(/^\s+/, '');      // 조각마다 전체를 다시 그리지 않는다
+      else if (live.html == null){             // 렌더된 HTML이 오기 전에만 날글로 (오면 그것을 둔다)
+        paintLive();                           // 조각마다 목록 전체를 다시 그리지 않는다
         if (stick) list.scrollTop = list.scrollHeight;
       }
+    } else if (name === 'html'){
+      var stuck = nearBottom();
+      live.html = d.html || '';
+      if (!liveText) render(); else paintLive();
+      if (stuck) list.scrollTop = list.scrollHeight;   // 바닥에 붙어 있을 때만 따라 내려간다
     } else if (name === 'tool_call'){
       live.tools.push({id: d.id, name: d.name, args: d.args, summary: ''});
       render();
