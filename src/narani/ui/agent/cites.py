@@ -134,11 +134,12 @@ def _emphasis_cjk(state, silent: bool) -> bool:  # noqa: ANN001 — StateInline
 
 
 def markdown():  # noqa: ANN201 — MarkdownIt
-    """답 렌더용 MarkdownIt — commonmark, raw HTML 끔, 한글 친화 강조."""
+    """답 렌더용 MarkdownIt — commonmark + 표·취소선(GFM), raw HTML 끔, 한글 친화 강조."""
     from markdown_it import MarkdownIt
 
-    # html=False — 답에 섞인 raw HTML(<script> 등)은 이스케이프한다 (commonmark 기본은 허용)
-    md = MarkdownIt("commonmark", {"html": False})
+    # html=False — 답에 섞인 raw HTML(<script> 등)은 이스케이프한다 (commonmark 기본은 허용).
+    # 표·취소선은 commonmark 프리셋에서 꺼져 있다 — 모델이 비교를 표로 자주 답한다.
+    md = MarkdownIt("commonmark", {"html": False}).enable(["table", "strikethrough"])
     md.inline.ruler.at("emphasis", _emphasis_cjk)
     return md
 
@@ -175,3 +176,42 @@ def render_html(text: str, refs: list[Ref], notes: dict[str, dict] | None = None
                 f'data-row="{int(note.get("row", 0) or 0)}" data-n="{n}">{n}</a>')
 
     return _PH_RE.sub(chip, html)
+
+
+# --- 스트리밍 중 렌더 ---------------------------------------------------
+
+_TAIL_MARK_RE = re.compile(r"\[(?:\[[^\]\n]{0,40}\]?)?$")   # 끝에 반쯤 온 인용 표시 `[`, `[[r1`, `[[r1]`
+_TABLE_SEP_RE = re.compile(r"^\s*\|?\s*:?-{1,}:?\s*(\|\s*:?-{1,}:?\s*)*\|?\s*$")
+
+
+def _hold_back(text: str) -> str:
+    """스트리밍 중인 글에서 아직 모양이 정해지지 않은 꼬리를 떼어 낸다 — 깜빡임·깨짐 방지.
+
+    - 끝에 반쯤 온 인용 표시(`[[r1` 등)는 닫힐 때까지 보이지 않는다.
+    - 끝의 `|` 줄 묶음에 구분 줄(`|---|`)이 아직 없으면 그 묶음을 미룬다 — 표 머리줄이 문단으로
+      잠깐 보였다가 표로 바뀌는 깜빡임을 없앤다. 구분 줄이 왔으면 쓰는 중인 마지막 행만 미룬다.
+    """
+    text = _TAIL_MARK_RE.sub("", text)
+    lines = text.split("\n")
+    i = len(lines)
+    while i > 0 and lines[i - 1].lstrip().startswith("|"):
+        i -= 1
+    block = lines[i:]
+    if block:
+        if not any(_TABLE_SEP_RE.match(ln) for ln in block):
+            lines = lines[:i]
+        elif not text.endswith("\n") and not block[-1].rstrip().endswith("|"):
+            lines = lines[:-1]                  # 쓰는 중인 마지막 행
+    return "\n".join(lines)
+
+
+def render_partial(text: str, allowed_rows: Iterable[RowRef], allowed_notes: Iterable[str] = (),
+                   notes: dict[str, dict] | None = None, current: str | None = None) -> str:
+    """스트리밍 중인 답을 끝난 뒤와 같은 렌더러로 그린다 (잠정 HTML).
+
+    인용 번호는 등장 순서라 앞부분은 최종 번호와 같다 — 칩도 그대로 그린다(허용 밖 표시는 지운다).
+    닫히지 않은 코드 블록은 markdown-it이 글 끝까지 코드로 그리므로 따로 막지 않는다.
+    """
+    clean, refs = resolve_citations(_hold_back(text or ""), allowed_rows, allowed_notes,
+                                    current=current)
+    return render_html(clean, refs, notes, current=current)

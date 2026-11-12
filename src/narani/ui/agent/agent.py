@@ -53,13 +53,19 @@ from pydantic_ai.usage import RunUsage  # noqa: E402
 from narani import config  # noqa: E402
 from narani.llm.base import Usage, cost_usd  # noqa: E402
 from narani.ui.agent import jobtools, retrieval, sessions  # noqa: E402
-from narani.ui.agent.cites import note_tag, render_html, resolve_citations  # noqa: E402
+from narani.ui.agent.cites import (  # noqa: E402
+    note_tag,
+    render_html,
+    render_partial,
+    resolve_citations,
+)
 from narani.ui.agent.context import PaperRef, context_keys, mentions_prompt, to_prompt  # noqa: E402
 from narani.ui.agent.tools import TOOLS, Deps, review_url  # noqa: E402
 
 COST_TOOLS = [Tool(fn, requires_approval=True) for fn in jobtools.TOOLS]
 from narani.workdir import paper_title  # noqa: E402
 
+HTML_EVERY = 0.15     # 스트리밍 중 렌더한 HTML을 보내는 최소 간격(초)
 DEFAULT_LIMITS = UsageLimits(request_limit=12, tool_calls_limit=20)
 HISTORY_TURNS = 8      # 모델에 보내는 최근 사용자 질문 수 (세션 파일에는 전부 남는다)
 FULL_RESULT_TURNS = 2  # 최근 몇 질문의 tool 결과는 줄이지 않는다
@@ -472,6 +478,18 @@ async def run_turn(agent: Agent, session: sessions.Session, user_text: str | Non
 
     result = None
     after_tool = False
+    streamed, shown, last_html = "", "", 0.0   # 흐르는 글 · 마지막으로 렌더해 보낸 글 · 그 시각
+
+    def partial_html() -> dict | None:
+        """흐르는 글을 끝난 뒤와 같은 렌더러로 그려 보낸다 — HTML_EVERY마다 한 번, 글이 늘었을 때만."""
+        nonlocal shown, last_html
+        now = time.monotonic()
+        if streamed == shown or now - last_html < HTML_EVERY:
+            return None
+        shown, last_html = streamed, now
+        return _event("html", {"html": render_partial(
+            streamed, deps.cited_rows, deps.cited_notes, deps.note_refs, current=deps.current_token)})
+
     try:
         async with agent.run_stream_events(
                 prompt, deps=deps, conversation=conv_in, usage_limits=usage_limits or DEFAULT_LIMITS,
@@ -479,12 +497,18 @@ async def run_turn(agent: Agent, session: sessions.Session, user_text: str | Non
             async for ev in events:
                 if isinstance(ev, PartStartEvent) and isinstance(ev.part, TextPart):
                     if ev.part.content:
-                        yield _event("text", {"delta": ("\n\n" if after_tool else "")
-                                              + ev.part.content})
+                        delta = ("\n\n" if after_tool else "") + ev.part.content
+                        streamed += delta
+                        yield _event("text", {"delta": delta})
                         after_tool = False
+                        if (h := partial_html()) is not None:
+                            yield h
                 elif isinstance(ev, PartDeltaEvent) and isinstance(ev.delta, TextPartDelta):
                     if ev.delta.content_delta:
+                        streamed += ev.delta.content_delta
                         yield _event("text", {"delta": ev.delta.content_delta})
+                        if (h := partial_html()) is not None:
+                            yield h
                 elif isinstance(ev, FunctionToolCallEvent):
                     yield _event("tool_call", {"id": ev.part.tool_call_id,
                                                "name": ev.part.tool_name,
