@@ -1534,5 +1534,7 @@
  "있음 · 다른 음성": "yes · different audio",
  "있음 · 음성 없음": "yes · no audio",
  "차례를 기다리는 중…": "Waiting for its turn…",
- "음성 만드는 중": "Making audio"
+ "음성 만드는 중": "Making audio",
+ "번역 본문을 읽은 음성을 이 컴퓨터에 만듭니다 — 뷰어의 듣기에서 바로 듣고, 웹 리더에 있는 논문은 웹 리더에서도 듣습니다": "Makes audio of the translated text on this computer — listen right away with Listen in the viewer; papers in the web reader can be heard there too",
+ "음성 만들기를 시작했습니다 — {n}편 · 목록 위 '백그라운드 작업'에서 진행이 보입니다": "Started making audio — {n} papers · progress shows under 'Background jobs' above the list"
 }

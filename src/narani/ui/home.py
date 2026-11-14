@@ -1016,11 +1016,12 @@ def build_home(state: dict) -> None:
         return await audio_dialog.drive_call(fn, roots, busy, progress, on_connect=mobile_changed)
 
     async def make_mobile_audio(roots: list[Path]) -> None:
-        """웹 리더에서 들을 음성 — 공용 창(§ui.audio_dialog)으로 고르고 이 컴퓨터에 만들어 웹 리더로 보낸다."""
+        """듣기 음성 — 공용 창(§ui.audio_dialog)으로 고르고 이 컴퓨터에 만든다. 웹 리더에 있는 논문은 만든 뒤 그쪽에도
+        올리고, 없는 논문은 창의 '웹 리더로도 보내기'를 켰을 때만 보낸다(그때만 Drive 연결을 묻는다)."""
         titles = {k: (r or {}).get("title", "") for k, r in data["by_root"].items()}
-        started = await audio_dialog.make(host, [Path(r) for r in roots], titles, send=True, on_connect=mobile_changed)
+        started = await audio_dialog.make(host, [Path(r) for r in roots], titles, on_connect=mobile_changed)
         if started:
-            ui.notify(t("웹 리더 음성 만들기를 시작했습니다 — {n}편 · 목록 위 '백그라운드 작업'에서 진행이 보입니다",
+            ui.notify(t("음성 만들기를 시작했습니다 — {n}편 · 목록 위 '백그라운드 작업'에서 진행이 보입니다",
                         n=len(started)), type="info")
             show_jobs()
 
@@ -2247,8 +2248,10 @@ def build_home(state: dict) -> None:
                     act(t("음성 다시 만들기") if remake else t("음성 만들기"), "headphones",
                         lambda: make_mobile_audio(paths), audio_tip, main=True)
                 with ui.element("div").classes("md4-act-grid"):
-                    if not first and on_mobile:   # 음성은 모바일에 있는 논문만 — 모바일에서 듣는 것이므로
-                        act(t("음성 만들기"), "headphones", lambda: make_mobile_audio(on_mobile), audio_tip)
+                    if not first and paths:   # 음성은 이 컴퓨터에 만든다 — 웹 리더에 있는 논문은 그쪽에도 올린다
+                        act(t("음성 만들기"), "headphones", lambda: make_mobile_audio(paths),
+                            t("번역 본문을 읽은 음성을 이 컴퓨터에 만듭니다 — 뷰어의 듣기에서 바로 듣고, 웹 리더에 있는 논문은 "
+                              "웹 리더에서도 듣습니다"))
                     act(t("동기화") if all_there else t("보내기"), "sync" if all_there else "smartphone",
                         lambda: send_to_mobile(paths), send_tip)
                     if on_mobile:

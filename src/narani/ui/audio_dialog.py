@@ -1,7 +1,7 @@
 """듣기 음성 만들기 대화상자 — 홈(여러 편·웹 리더 보기)과 뷰어(듣기 막대 ⋯, 이 논문 하나)가 같이 쓴다.
 
 음성은 이 컴퓨터에 만든다(§phone.service.make_local — Drive 없이). 웹 리더에 이미 있는 논문은 만든 뒤 저절로
-올리고, 그 밖의 논문은 '웹 리더로도 보내기'(기본 꺼짐)를 켰을 때만 보낸다. 홈은 웹 리더 보기에서 부르므로 늘 보낸다.
+올리고, 그 밖의 논문은 '웹 리더로도 보내기'(기본 꺼짐)를 켰을 때만 보낸다(그때만 Drive 연결을 묻는다).
 
 오래 걸리는 일이라 백그라운드 작업(§ui.jobs, 종류 `mobile_audio`)으로 돈다 — 다른 논문·홈으로 가도 끝까지 돌고,
 한 번에 한 편씩(GATE), 같은 논문은 둘째 시작이 거절된다.
@@ -111,7 +111,7 @@ async def drive_call(fn, roots: list[Path], busy: str, progress: dict | None = N
 async def ask(host, roots: list[Path], send: bool | None = None) -> dict | None:  # noqa: ANN001, C901
     """음성 만들기 창 — 엔진·목소리·(한 편이면) 섹션·발음 용어집·캡션·수식을 고른다. 취소하면 None.
 
-    send=True면 늘 웹 리더로도 보낸다(홈의 웹 리더 보기), None이면 웹 리더에 없는 논문이 있을 때 '웹 리더로도
+    send=True면 늘 웹 리더로도 보낸다, None(홈·뷰어)이면 웹 리더에 없는 논문이 있을 때 '웹 리더로도
     보내기'(기본 꺼짐)를 묻는다. 반환: {engine, voice, model, style, captions, math, include, send}.
     무료 내장 목소리(Mac·Windows), 무료 로컬 Qwen3(Apple Silicon), Gemini(유료, 내 키) 가운데 이 컴퓨터에서 되는
     엔진만 고를 수 있다. Gemini는 길이로 어림한 비용을 먼저 보여 준다."""
