@@ -178,3 +178,29 @@ def test_home_and_viewer_share_one_gate_and_kind():
     assert home._AUDIO_GATE is audio_dialog.GATE and audio_dialog.KIND == "mobile_audio"
     assert home.audio_label is audio_dialog.audio_label
     assert audio_dialog.audio_label({"voice": "win:Microsoft Heami Desktop", "duration": 600}).startswith("Windows · Heami")
+
+
+def test_same_audio_with_new_src_is_still_sent(tmp_path):
+    """본문 지문만 바뀌고 읽는 글은 같아 m4a가 바이트까지 같아도 — 시간표의 src가 다르면 올린다(웹 리더가 옛 음성으로
+    알지 않게, 켤 때마다 다시 잇지 않게). 같은 음성·같은 src면 건너뛰고, m4a를 읽지 않는다."""
+    wd = _wd(tmp_path)
+    store = LocalStore(tmp_path / "store")
+    sync.push([wd.root], store)
+    tl = {"format": 1, "key": wd.root.stem, "src": "old", "voice": "mac:Yuna", "side": "ko", "duration": 3.0,
+          "sections": [{"title": "x", "row": 1, "start": 0, "end": 3}], "sents": []}
+    listen.keep_local(wd.root, b"same-m4a", tl, {"captions": True})
+    assert sync.put_audio(store, [wd.root])["sent"] == 1
+    assert sync.put_audio(store, [wd.root])["sent"] == 0
+    listen.keep_local(wd.root, b"same-m4a", {**tl, "src": "new"}, {"captions": True})
+    assert sync.put_audio(store, [wd.root])["sent"] == 1
+    e = sync.read_index(store)["papers"][0]
+    assert e["audio"]["src"] == "new" and json.loads(store.read(e["audio"]["tl"]))["src"] == "new"
+    assert set(e["audio"]) == _AUDIO_KEYS and e["audio"]["captions"] is True
+    # 웹 리더 것보다 먼저 만든 사본은 켤 때 맞추기(newer_only)로 덮지 않는다
+    e["audio"]["built"] = 9e12
+    idx = sync.read_index(store)
+    idx["papers"][0]["audio"]["built"] = 9e12
+    store.write(sync.INDEX, json.dumps(idx).encode())
+    listen.keep_local(wd.root, b"other-m4a", {**tl, "src": "newer"})
+    assert sync.put_audio(store, [wd.root], newer_only=True)["sent"] == 0
+    assert sync.put_audio(store, [wd.root])["sent"] == 1

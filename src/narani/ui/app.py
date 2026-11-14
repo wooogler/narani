@@ -6667,7 +6667,8 @@ def _listen_audio_hooks(ctrl, tok: str, title: str) -> None:  # noqa: ANN001 —
                 push(f"setJob({json.dumps(listen.job_info(job))})")
                 return
             timer.cancel()
-            push("reload()")
+            # 새 음성은 다 만들었을 때만 — 멈춤·실패면 듣던 것을 끊지 않고 상태만 다시 읽는다
+            push("reload()" if job.status == "done" else "setJob(null);window.__mdListen.refreshState()")
             if job.seen:
                 return
             job.seen = True

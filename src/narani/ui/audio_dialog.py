@@ -18,6 +18,7 @@ from narani.phone import service as phone_service
 from narani.ui import jobs
 
 KIND = "mobile_audio"
+_OPEN_ATTR = "_md4_audio_dialog_open"
 GATE = jobs.Gate(1)  # 서버 수명 동안 하나, 한 번에 한 편씩 (합성이 이미 여러 스레드를 쓴다)
 
 
@@ -473,7 +474,14 @@ async def make(host, roots: list[Path], titles: dict[str, str] | None = None, se
         ui.notify(t("이미 이 논문의 음성을 만드는 중입니다.") if len(roots) == 1
                   else t("{n}편은 이미 음성을 만드는 중입니다.", n=len(busy)), type="warning")
         return None
-    opts = await ask(host, roots, send)
+    client = ui.context.client
+    if getattr(client, _OPEN_ATTR, False):   # 창을 여는 중(섹션 읽기에 몇 초) — 두 번 눌러도 창은 하나
+        return None
+    setattr(client, _OPEN_ATTR, True)
+    try:
+        opts = await ask(host, roots, send)
+    finally:
+        setattr(client, _OPEN_ATTR, False)
     if opts is None:
         return None
     if opts["send"] and not await ensure_drive(on_connect):

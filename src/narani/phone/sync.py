@@ -236,8 +236,10 @@ def unshare(store: Store, key: str) -> None:
     store.delete(share_name(key))
 
 
-def _audio_entry(root: Path) -> tuple[dict, bytes, dict] | None:
-    """이 컴퓨터에 만든 음성 → (목록 줄의 audio, m4a 바이트, 시간표). 만든 음성이 없으면 None."""
+def _audio_entry(root: Path) -> dict | None:
+    """이 컴퓨터에 만든 음성 → 목록 줄의 audio (올릴 이름·지문·길이·목소리·설정). 만든 음성이 없으면 None.
+
+    m4a는 읽지 않는다 — 지문은 기록 파일(listen-rec.json)의 것(없으면 None: 올릴 때 계산한다)."""
     from narani.ui import listen
 
     got = listen.local_audio(root)
@@ -245,20 +247,25 @@ def _audio_entry(root: Path) -> tuple[dict, bytes, dict] | None:
         return None
     m4a, tl = got
     rec = listen.local_record(root)
-    data = m4a.read_bytes()
     a_name, t_name = audio_names(root.stem)
-    return {"file": a_name, "tl": t_name, "hash": hashlib.sha256(data).hexdigest()[:16],
-            "bytes": len(data), "duration": tl.get("duration", 0), "voice": tl.get("voice", ""), "src": tl.get("src", ""),
-            "sections": len(tl.get("sections") or []), "include": rec.get("include"),
+    return {"file": a_name, "tl": t_name, "hash": rec.get("hash"),
+            "bytes": m4a.stat().st_size, "duration": tl.get("duration", 0), "voice": tl.get("voice", ""),
+            "src": tl.get("src", ""), "sections": len(tl.get("sections") or []), "include": rec.get("include"),
             "built": float(rec.get("built") or m4a.stat().st_mtime),
-            "captions": bool(rec.get("captions")), "math": bool(rec.get("math"))}, data, tl
+            "captions": bool(rec.get("captions")), "math": bool(rec.get("math"))}
+
+
+_SAME_AUDIO = ("hash", "src", "voice", "duration", "include", "captions", "math")
 
 
 def put_audio(store: Store, roots: Iterable[Path], *, newer_only: bool = False) -> dict:
     """이 컴퓨터에 만든 음성을 웹 리더로 올린다 — 다시 합성하지 않는다. 논문이 이미 목록에 있어야 한다(push 뒤).
 
-    올린 것과 같은 음성(지문이 같음)은 건너뛴다. newer_only면 웹 리더에 있는 음성보다 나중에 만든 것만(켤 때 맞추기 —
-    다른 데서 만든 음성을 이 컴퓨터의 옛 사본으로 덮지 않게). 반환: {sent, bytes, missing(목록에 없음), none(만든 음성 없음)}."""
+    웹 리더 것과 같은 음성(지문·만든 번들 지문 src·목소리·설정이 같음)은 건너뛴다. newer_only면 웹 리더 음성보다 나중에 만든
+    것만(켤 때 맞추기 — 다른 데서 만든 음성을 이 컴퓨터의 옛 사본으로 덮지 않게).
+    반환: {sent, bytes, missing(목록에 없음), none(만든 음성 없음)}."""
+    from narani.ui import listen
+
     index = read_index(store)
     by_key = {e.get("key"): e for e in index["papers"] if isinstance(e, dict)}
     sent = nbytes = 0
@@ -270,13 +277,20 @@ def put_audio(store: Store, roots: Iterable[Path], *, newer_only: bool = False) 
         if e is None:
             missing.append(root.stem)
             continue
-        got = _audio_entry(root)
-        if got is None:
+        a = _audio_entry(root)
+        if a is None:
             none.append(root.stem)
             continue
-        a, data, tl = got
         old = e.get("audio") or {}
-        if old.get("hash") == a["hash"] or (newer_only and old and float(old.get("built") or 0) >= a["built"]):
+
+        def same(a: dict = a, old: dict = old) -> bool:   # 소리·시간표·목록 줄이 모두 같다
+            return bool(old) and all(old.get(k) == a[k] for k in _SAME_AUDIO)
+        if same() or (newer_only and old and float(old.get("built") or 0) >= a["built"]):
+            continue
+        m4a, tl = listen.local_audio(root)
+        data = m4a.read_bytes()
+        a.update(hash=hashlib.sha256(data).hexdigest()[:16], bytes=len(data))
+        if same():   # 기록 파일에 지문이 없던 옛 사본 — 읽어 보니 같은 음성
             continue
         store.write(a["file"], data, "audio/mp4")
         store.write(a["tl"], bmod.dumps(tl))
