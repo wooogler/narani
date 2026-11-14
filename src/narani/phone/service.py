@@ -113,9 +113,11 @@ def _extra(rows: list[dict]) -> dict[str, dict]:
 
 
 def send(roots: list[Path]) -> dict:
-    """고른 논문들을 웹 리더로 — 더하거나 고치기만 한다(목록의 다른 논문은 그대로). 메모도 함께 오간다."""
+    """고른 논문들을 웹 리더로 — 더하거나 고치기만 한다(목록의 다른 논문은 그대로). 메모도 함께 오간다.
+    이 컴퓨터에 만든 음성이 웹 리더 것보다 새것이면 그것도 올린다(다시 합성하지 않는다). out['audio'] = 올린 음성 수."""
     store = gdrive.open_store()
     out = sync.push(roots, store, prune=False, extra=_extra(_rows()))
+    out["audio"] = sync.put_audio(store, roots, newer_only=True)["sent"]
     _remember(sync.read_index(store), store)
     return out
 
@@ -344,36 +346,28 @@ def suggest_speech_terms(root: Path, terms: list[str]) -> dict[str, str]:
     return tts.suggest_readings(terms, paper_lang(root))
 
 
-def make_audio(roots: list[Path], voice: str | None = None, include: list[int] | None = None,
-               on_progress=None, engine: str = "mac", model: str | None = None,
-               style: str | None = None, captions: bool = True, math: bool = True) -> dict:  # noqa: ANN001
-    """논문들의 듣기 음성을 만들어 올린다 — 먼저 번들·메모를 맞추고(send), 음성은 바뀐 섹션만 새로 만든다.
-
-    engine: mac·win(무료 내장 목소리 — voice가 없으면 논문 언어마다 지난번 목소리; 이 컴퓨터에 없는 쪽을 주면
-    있는 쪽으로) | qwen(무료·로컬) | gemini(유료 — 사용자 키, voice·model).
-    include는 논문 하나일 때 넣을 섹션 행들.
-    """
+def _engines(roots: list[Path], voice: str | None, engine: str, model: str | None,
+             style: str | None) -> tuple[list[tuple[Path, object]], dict]:
+    """논문마다 쓸 엔진 + 다음에 기억할 고름(voices·gemini·qwen). 엔진은 논문마다 새로(Qwen 일꾼은 build가 닫는다)."""
     from narani.phone import tts
 
-    store = gdrive.open_store()
-    sync.push(roots, store, prune=False, extra=_extra(_rows()))
-    jobs = []
+    out: list[tuple[Path, object]] = []
     chosen: dict[str, str] = {}
     gem = qwen = None
     if engine == "gemini":
         g = gemini_choice()
         gem = {"voice": voice or g["voice"], "model": model or g["model"]}
     for root in roots:
-        inc = include if len(roots) == 1 else None
+        root = Path(root)
         if gem:
-            jobs.append((Path(root), tts.GeminiVoice(gem["voice"], gem["model"]), inc))
+            out.append((root, tts.GeminiVoice(gem["voice"], gem["model"])))
             continue
         if engine == "qwen":
             if not tts.qwen_ready():
                 raise RuntimeError("Qwen3 로컬 목소리가 설치되지 않았습니다")
             lang = paper_lang(root)
             qwen = {"speaker": voice or qwen_choice(lang), "style": qwen_style() if style is None else style}
-            jobs.append((Path(root), tts.QwenVoice(qwen["speaker"], lang, style=qwen["style"]), inc))
+            out.append((root, tts.QwenVoice(qwen["speaker"], lang, style=qwen["style"])))
             continue
         kind = engine if engine in ("mac", "win") and (tts.WinVoice if engine == "win" else tts.MacVoice).available() \
             else system_kind()
@@ -384,15 +378,101 @@ def make_audio(roots: list[Path], voice: str | None = None, include: list[int] |
         if not name:
             raise RuntimeError(f"이 컴퓨터에 '{lang}' 목소리가 없습니다")
         chosen[lang] = name
-        jobs.append((Path(root), _system_voice(kind, name), inc))
+        out.append((root, _system_voice(kind, name)))
+    keep: dict = {"voices": {**(load_cache().get("voices") or {}), **chosen}}
+    if gem:
+        keep["gemini"] = gem
+    elif qwen:
+        keep["qwen"] = qwen
+    return out, keep
+
+
+def make_local(roots: list[Path], voice: str | None = None, include: list[int] | None = None,
+               on_progress=None, engine: str = "mac", model: str | None = None,  # noqa: ANN001
+               style: str | None = None, captions: bool = True, math: bool = True) -> dict:
+    """논문들의 듣기 음성을 이 컴퓨터에 만든다 — Drive 없이. 뷰어의 듣기가 바로 쓰고, 웹 리더로 보낼 때 그대로 올린다.
+
+    engine: mac·win(무료 내장 목소리 — voice가 없으면 논문 언어마다 지난번 목소리; 이 컴퓨터에 없는 쪽을 주면
+    있는 쪽으로) | qwen(무료·로컬) | gemini(유료 — 사용자 키, voice·model). include는 논문 하나일 때 넣을 섹션 행들.
+    on_progress(논문 순번, 논문 수, 만든 문장, 만들 문장, 섹션 제목). 반환: {made, seconds, bytes}.
+    """
+    from narani.ui import listen
+
+    roots = [Path(r) for r in roots]
+    jobs, keep = _engines(roots, voice, engine, model, style)
     if math:   # 수식을 말로 — 아직 읽는 말이 없는 수식만 AI에게(논문마다 저장). 키가 없거나 실패하면 수식은 건너뛴다
-        for root, _engine, _inc in jobs:
+        for root, _engine in jobs:
             prepare_math(root, captions)
-    out = sync.push_audio(store, jobs, on_progress, captions=captions, math=math)
-    c = load_cache()
-    extra = {"gemini": gem} if gem else ({"qwen": qwen} if qwen else {})
-    extra["audio_opts"] = {"captions": captions, "math": math}
-    _remember(sync.read_index(store), store, voices={**(c.get("voices") or {}), **chosen}, **extra)
+    made = nbytes = 0
+    seconds = 0.0
+    for n, (root, eng) in enumerate(jobs):
+        def prog(d: int, total: int, title: str, n: int = n) -> None:
+            if on_progress:
+                on_progress(n, len(jobs), d, total, title)
+        out = listen.build(root, eng, include if len(roots) == 1 else None, prog, captions=captions, math=math)
+        made += 1
+        nbytes += out["bytes"]
+        seconds += out["tl"]["duration"]
+    _remember(None, audio_opts={"captions": captions, "math": math}, **keep)
+    return {"made": made, "seconds": seconds, "bytes": nbytes}
+
+
+def send_audio(roots: list[Path], *, newer_only: bool = False) -> dict:
+    """논문들을 웹 리더로 보내고(번들·메모를 맞춘 뒤) 이 컴퓨터에 만든 음성을 올린다 — 다시 합성하지 않는다.
+    반환: sync.put_audio의 {sent, bytes, missing, none}."""
+    store = gdrive.open_store()
+    roots = [Path(r) for r in roots]
+    sync.push(roots, store, prune=False, extra=_extra(_rows()))
+    out = sync.put_audio(store, roots, newer_only=newer_only)
+    _remember(sync.read_index(store), store)
+    return out
+
+
+def audio_state(root: Path) -> dict:
+    """뷰어 듣기 막대의 작은 상태 — 이 컴퓨터에 만든 음성과 웹 리더.
+
+    {local: {voice, duration, built, stale(본문이 그 뒤에 바뀜 — 바뀐 섹션만 다시 만들면 된다)} | None,
+     web: {configured, connected, on(웹 리더에 있음), audio: 'same'(이 음성과 같음) | 'other' | None}}"""
+    from narani.phone import bundle as bmod
+    from narani.ui import listen
+
+    root = Path(root)
+    local = None
+    got = listen.local_audio(root)
+    if got:
+        m4a, tl = got
+        rec = listen.local_record(root)
+        local = {"voice": str(tl.get("voice") or ""), "duration": float(tl.get("duration") or 0),
+                 "built": float(rec.get("built") or m4a.stat().st_mtime), "hash": rec.get("hash"),
+                 "stale": tl.get("src") != bmod.content_hash(root)}
+    e = on_mobile().get(root.stem)
+    a = (e or {}).get("audio") or None
+    same = bool(a and local and (a.get("hash") == local["hash"]
+                                 or (a.get("voice") == local["voice"] and float(a.get("built") or 0) == local["built"])))
+    return {"local": local, "web": {"configured": configured(), "connected": connected(), "on": e is not None,
+                                    "audio": ("same" if same else "other") if a else None}}
+
+
+def make_audio(roots: list[Path], voice: str | None = None, include: list[int] | None = None,
+               on_progress=None, engine: str = "mac", model: str | None = None,  # noqa: ANN001
+               style: str | None = None, captions: bool = True, math: bool = True, send: bool = True) -> dict:
+    """듣기 음성을 이 컴퓨터에 만들고(make_local) 웹 리더로 보낸다(send_audio).
+
+    send=True면 고른 논문 모두를 보낸다(웹 리더에 없던 논문도 더한다). False면 이미 웹 리더에 있는 논문만 — 그
+    논문의 웹 리더 음성이 옛것으로 남지 않게. 보내기가 실패해도(오프라인·연결 만료) 만든 음성은 이 컴퓨터에 남고
+    send_error에 까닭을 담는다. 반환: {made, seconds, bytes(올린 양), sent, send_error}."""
+    roots = [Path(r) for r in roots]
+    out = make_local(roots, voice, include, on_progress, engine, model, style, captions, math)
+    there = on_mobile()
+    targets = roots if send else [r for r in roots if r.stem in there]
+    out.update(bytes=0, sent=0, send_error=None)
+    if targets:
+        try:
+            s = send_audio(targets)
+            out.update(bytes=s["bytes"], sent=s["sent"])
+        except Exception as e:  # noqa: BLE001 — 음성은 이미 이 컴퓨터에 있다; 다음 보내기·켤 때 맞추기에 다시 올린다
+            log.warning("만든 음성을 웹 리더에 올리지 못함: %s", e)
+            out["send_error"] = str(e) or type(e).__name__
     return out
 
 
@@ -484,6 +564,11 @@ def refresh() -> dict:
     roots = [r["root"] for r in rows if r["name"] in keys]
     out = sync.push(roots, store, prune=False, extra=_extra(rows)) if roots else {
         "uploaded": 0, "skipped": 0, "removed": 0, "bytes": 0, "papers": len(keys), "merged": 0, "notes": 0}
+    try:   # 이 컴퓨터에서 만들고 못 올린 음성(오프라인이었음 등)을 먼저 올린다 — 그래야 옛 음성을 다시 만들지 않는다
+        out["sent_audio"] = sync.put_audio(store, roots, newer_only=True)["sent"] if roots else 0
+    except Exception as e:  # noqa: BLE001
+        log.info("만든 음성을 올리지 못함: %s", e)
+        out["sent_audio"] = 0
     try:
         out["audio"] = _remake_stale_audio(store)
     except Exception as e:  # noqa: BLE001 — 음성을 못 만들어도 본문·메모 동기화는 끝났다

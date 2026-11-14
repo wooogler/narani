@@ -9,7 +9,8 @@ prune=True면 목록을 고른 논문들로 **맞춘다**(빠진 논문의 번�
 하이라이트·메모(§phone.notes)도 여기서 오간다 — 논문마다 폰 기록을 먼저 annotations.json에 합치고,
 바뀌었으면 notes/를 다시 올린다. 본문 번들을 다시 굽지 않아도 메모는 따로 오간다.
 
-듣기 음성(§phone.tts)은 따로 만든다(push_audio) — audio/<id>.m4a와 시간표 audio/<id>.json, 목록 줄의 `audio`.
+듣기 음성(§phone.tts)은 이 컴퓨터에서 먼저 만들고(§ui.listen.build — Drive와 무관) 올리기만 따로 한다(put_audio;
+push_audio는 둘을 잇는다) — audio/<id>.m4a와 시간표 audio/<id>.json, 목록 줄의 `audio`.
 본문을 다시 구워도 목록 줄의 audio는 그대로 둔다. 폰은 audio.src(음성을 만든 번들 지문)가 지금 hash와 다르면
 옛 음성이라고 알고, 데스크톱은 켤 때 무료 목소리 음성을 다시 만든다(§phone.service.refresh).
 """
@@ -235,52 +236,109 @@ def unshare(store: Store, key: str) -> None:
     store.delete(share_name(key))
 
 
-def push_audio(store: Store, jobs: list[tuple[Path, object, list[int] | None]],
-               on_progress: Callable[[int, int, int, int, str], None] | None = None,
-               captions: bool = False, math: bool = False) -> dict:
-    """논문마다 듣기 음성을 만들어 올린다. jobs: (작업 디렉토리, 엔진, 넣을 섹션 행들|None=전부).
+def _audio_entry(root: Path) -> dict | None:
+    """이 컴퓨터에 만든 음성 → 목록 줄의 audio (올릴 이름·지문·길이·목소리·설정). 만든 음성이 없으면 None.
 
-    captions면 그림·표 설명도, math면 수식도(논문의 speech_math.json에 읽는 말이 있는 것만) 읽는다.
-
-    논문이 이미 웹 리더 목록에 있어야 한다(번들을 먼저 올린 뒤). 섹션 캐시(§tts)가 있어 바뀐 섹션만 다시 만든다.
-    on_progress(논문 순번, 논문 수, 만든 문장, 만들 문장, 섹션 제목). 반환: {made, seconds, bytes, missing}.
-    """
-    from narani.phone import tts
+    m4a는 읽지 않는다 — 지문은 기록 파일(listen-rec.json)의 것(없으면 None: 올릴 때 계산한다)."""
     from narani.ui import listen
-    from narani.workdir import WorkDir
+
+    got = listen.local_audio(root)
+    if got is None:
+        return None
+    m4a, tl = got
+    rec = listen.local_record(root)
+    a_name, t_name = audio_names(root.stem)
+    return {"file": a_name, "tl": t_name, "hash": rec.get("hash"),
+            "bytes": m4a.stat().st_size, "duration": tl.get("duration", 0), "voice": tl.get("voice", ""),
+            "src": tl.get("src", ""), "sections": len(tl.get("sections") or []), "include": rec.get("include"),
+            "built": float(rec.get("built") or m4a.stat().st_mtime),
+            "captions": bool(rec.get("captions")), "math": bool(rec.get("math"))}
+
+
+_SAME_AUDIO = ("hash", "src", "voice", "duration", "include", "captions", "math")
+
+
+def put_audio(store: Store, roots: Iterable[Path], *, newer_only: bool = False) -> dict:
+    """이 컴퓨터에 만든 음성을 웹 리더로 올린다 — 다시 합성하지 않는다. 논문이 이미 목록에 있어야 한다(push 뒤).
+
+    웹 리더 것과 같은 음성(지문·만든 번들 지문 src·목소리·설정이 같음)은 건너뛴다. newer_only면 웹 리더 음성보다 나중에 만든
+    것만(켤 때 맞추기 — 다른 데서 만든 음성을 이 컴퓨터의 옛 사본으로 덮지 않게).
+    반환: {sent, bytes, missing(목록에 없음), none(만든 음성 없음)}."""
+    from narani.ui import listen
 
     index = read_index(store)
     by_key = {e.get("key"): e for e in index["papers"] if isinstance(e, dict)}
-    made = sent = 0
-    seconds = 0.0
+    sent = nbytes = 0
     missing: list[str] = []
-    for n, (root, engine, include) in enumerate(jobs):
+    none: list[str] = []
+    for root in roots:
         root = Path(root)
         e = by_key.get(root.stem)
         if e is None:
             missing.append(root.stem)
             continue
-        b = bmod.build_paper(root, e.get("hash") or bmod.content_hash(root))
+        a = _audio_entry(root)
+        if a is None:
+            none.append(root.stem)
+            continue
+        old = e.get("audio") or {}
 
-        def prog(done: int, total: int, title: str, n: int = n) -> None:
-            if on_progress:
-                on_progress(n, len(jobs), done, total, title)
-        data, tl = tts.build(b, engine, WorkDir(root).root / "audio", include, prog, terms=tts.load_terms(root),
-                             captions=captions, math=tts.load_math(root) if math else None)
-        a_name, t_name = audio_names(root.stem)
-        listen.keep_local(root, data, tl)   # 데스크톱 뷰어의 '듣기'도 이 음성을 쓴다
-        store.write(a_name, data, "audio/mp4")
-        store.write(t_name, bmod.dumps(tl))
-        e["audio"] = {"file": a_name, "tl": t_name, "hash": hashlib.sha256(data).hexdigest()[:16],
-                      "bytes": len(data), "duration": tl["duration"], "voice": tl["voice"], "src": tl["src"],
-                      "sections": len(tl["sections"]), "include": include, "built": time.time(),
-                      "captions": captions, "math": math}
-        made += 1
-        sent += len(data)
-        seconds += tl["duration"]
-    if made:
+        def same(a: dict = a, old: dict = old) -> bool:   # 소리·시간표·목록 줄이 모두 같다
+            return bool(old) and all(old.get(k) == a[k] for k in _SAME_AUDIO)
+        if same() or (newer_only and old and float(old.get("built") or 0) >= a["built"]):
+            continue
+        m4a, tl = listen.local_audio(root)
+        data = m4a.read_bytes()
+        a.update(hash=hashlib.sha256(data).hexdigest()[:16], bytes=len(data))
+        if same():   # 기록 파일에 지문이 없던 옛 사본 — 읽어 보니 같은 음성
+            continue
+        store.write(a["file"], data, "audio/mp4")
+        store.write(a["tl"], bmod.dumps(tl))
+        e["audio"] = a
+        sent += 1
+        nbytes += len(data)
+    if sent:
         index["updated"] = time.time()
         store.write(INDEX, bmod.dumps(index))
+    return {"sent": sent, "bytes": nbytes, "missing": missing, "none": none}
+
+
+def push_audio(store: Store, jobs: list[tuple[Path, object, list[int] | None]],
+               on_progress: Callable[[int, int, int, int, str], None] | None = None,
+               captions: bool = False, math: bool = False) -> dict:
+    """논문마다 듣기 음성을 이 컴퓨터에 만들고(§ui.listen.build) 웹 리더로 올린다. jobs: (작업 디렉토리, 엔진,
+    넣을 섹션 행들|None=전부).
+
+    captions면 그림·표 설명도, math면 수식도(논문의 speech_math.json에 읽는 말이 있는 것만) 읽는다.
+
+    논문이 이미 웹 리더 목록에 있어야 한다(번들을 먼저 올린 뒤) — 없으면 만들지도 않는다. 섹션 캐시(§tts)가 있어
+    바뀐 섹션만 다시 만든다. on_progress(논문 순번, 논문 수, 만든 문장, 만들 문장, 섹션 제목).
+    반환: {made, seconds, bytes, missing}.
+    """
+    from narani.ui import listen
+
+    keys = {e.get("key"): e for e in read_index(store)["papers"] if isinstance(e, dict)}
+    made = sent = 0
+    seconds = 0.0
+    missing: list[str] = []
+    done: list[Path] = []
+    for n, (root, engine, include) in enumerate(jobs):
+        root = Path(root)
+        e = keys.get(root.stem)
+        if e is None:
+            missing.append(root.stem)
+            continue
+
+        def prog(d: int, total: int, title: str, n: int = n) -> None:
+            if on_progress:
+                on_progress(n, len(jobs), d, total, title)
+        out = listen.build(root, engine, include, prog, captions=captions, math=math,
+                           digest=e.get("hash") or None)
+        done.append(root)
+        made += 1
+        seconds += out["tl"]["duration"]
+    if done:
+        sent = put_audio(store, done)["bytes"]
     return {"made": made, "seconds": seconds, "bytes": sent, "missing": missing}
 
 
