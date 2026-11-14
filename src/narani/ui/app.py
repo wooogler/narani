@@ -2897,6 +2897,8 @@ def tab_bar(state: dict, here: Path | None, here_title: str | Callable[[], str] 
                 name = j.title or Path(j.root).stem
                 if j.status == "done":
                     ui.notify(f"‘{name}’ — {j.message or t('{label} 완료', label=j.label)}", type="positive")
+                elif j.status == "cancelled":
+                    ui.notify(t("‘{name}’ {label} — 멈췄습니다", name=name, label=j.label))
                 else:
                     ui.notify(t("‘{name}’ {label} 실패: {error}", name=name, label=j.label, error=j.error), type="negative")
         sig_state["watch"] = jobs.running()
@@ -3403,6 +3405,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
     spa.add_body_html(f"<script>{jump_back.init_js(tok)}</script>")  # 읽던 자리는 이 논문의 것 — 바뀌면 비운다
     spa.add_body_html(f"<script>{split_view.init_js(tok)}</script>")  # 두 뷰어도 논문마다 (창 안 기억)
     spa.add_body_html(f"<script>{listen.init_js(tok)}</script>")  # 듣기도 논문마다 — 바뀌면 닫는다
+    _listen_audio_hooks(ctrl, tok, _title)
 
     def push_cite_tips() -> None:
         """참고문헌을 (재)파싱한 뒤 클라이언트 툴팁 맵을 갱신한다."""
@@ -6633,8 +6636,87 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         job.seen = True
         if job.status == "done":
             ui.notify(job.message or t("{label} 완료", label=job.label), type="positive")
+        elif job.status == "cancelled":
+            ui.notify(t("{label} — 멈췄습니다", label=job.label))
         else:
             ui.notify(t("{label} 실패: {error}", label=job.label, error=job.error), type="negative")
+
+
+def _listen_audio_hooks(ctrl, tok: str, title: str) -> None:  # noqa: ANN001 — UIController
+    """듣기 막대 ⋯ 메뉴(§ui/listen.py)의 '음성 만들기…'·'웹 리더로 보내기'·'멈추기'를 받는다.
+
+    음성은 백그라운드 작업(§ui/audio_dialog.py)이라 다른 논문·홈으로 가도 끝까지 돈다. 이 화면이 떠 있는 동안은
+    작업에 붙어 막대에 진행을 밀고, 끝나면 막대를 새 음성으로 바꾸고 한 번 알린다(다른 화면에 있었으면 그 화면이)."""
+    from nicegui import ui
+
+    from narani.phone import service as phone_service
+    from narani.ui import audio_dialog
+
+    root = ctrl.wd.root
+    host = ui.element("div").style("display:none")   # 음성 만들기 창 자리
+
+    def push(js: str) -> None:
+        ui.run_javascript(f"window.{listen.LISTEN_API}&&window.{listen.LISTEN_API}.{js}")
+
+    def attach(job: jobs.Job | None) -> None:
+        if job is None:
+            return
+
+        def tick() -> None:
+            if job.running:
+                push(f"setJob({json.dumps(listen.job_info(job))})")
+                return
+            timer.cancel()
+            push("reload()")
+            if job.seen:
+                return
+            job.seen = True
+            if job.status == "done":
+                ui.notify(job.message or t("{label} 완료", label=job.label), type="positive")
+            elif job.status == "cancelled":
+                ui.notify(t("음성 만들기를 멈췄습니다 — 이미 만든 섹션은 남아 다음에 이어서 만듭니다."))
+            else:
+                ui.notify(t("{label} 실패: {error}", label=job.label, error=job.error), type="negative", timeout=8000)
+        timer = ui.timer(1.0, tick)
+
+    def mine(e) -> bool:  # noqa: ANN001
+        """이 화면의 이 논문 막대에서 온 것인가 — 다른 논문, 또는 화면을 갈아 끼우며 남은 옛 핸들러(ui.on은 창 단위로
+        쌓인다 — 같은 논문을 다시 열면 둘 다 불려 창이 두 개 뜬다)는 무시한다."""
+        args = e.args if isinstance(e.args, dict) else {}
+        return not host.is_deleted and args.get("tok") == tok
+
+    async def on_make(e) -> None:  # noqa: ANN001
+        if not mine(e):
+            return
+        started = await audio_dialog.make(host, [root], {str(root): title})
+        if started:
+            ui.notify(t("음성을 만드는 중입니다 — 다른 논문으로 가도 계속 만들고, 끝나면 알려 드려요."), type="info")
+            attach(jobs.get(root, audio_dialog.KIND))
+
+    async def on_send(e) -> None:  # noqa: ANN001
+        if not mine(e):
+            return
+        s = await audio_dialog.drive_call(phone_service.send, [root], t("웹 리더로 보내는 중…"))
+        if s is None:
+            return
+        msg = t("웹 리더로 보냈습니다")
+        if s.get("audio"):
+            msg += t(" · 만든 음성도 올렸습니다")
+        if s.get("merged"):
+            msg += t(" · 웹 리더에서 단 메모 {n}개를 합쳤습니다", n=s["merged"])
+        ui.notify(msg, type="positive")
+        push("refreshState()")
+
+    def on_stop(e) -> None:  # noqa: ANN001
+        job = jobs.get(root, audio_dialog.KIND)
+        if mine(e) and job is not None and job.running:
+            job.cancel()   # 다음 문장에서 멈춘다 — 만든 섹션은 캐시에 남는다
+
+    ui.on("md4-listen-make", on_make)
+    ui.on("md4-listen-send", on_send)
+    ui.on("md4-listen-stop", on_stop)
+    if jobs.is_running(root, audio_dialog.KIND):   # 만드는 중에 떠났다 돌아왔다 — 다시 붙는다
+        attach(jobs.get(root, audio_dialog.KIND))
 
 
 def _mark_opened(wd: WorkDir) -> None:

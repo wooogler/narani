@@ -17,8 +17,9 @@ import json
 import os
 from pathlib import Path
 
-LOCAL_AUDIO = "listen.m4a"   # <작업 폴더>/audio/ — 만든 음성의 이 컴퓨터 사본 (Drive에 올린 것과 같은 파일)
+LOCAL_AUDIO = "listen.m4a"   # <작업 폴더>/audio/ — 만든 음성 (웹 리더로 보낼 때 이 파일을 그대로 올린다)
 LOCAL_TL = "listen.json"     # 그 시간표
+LOCAL_REC = "listen-rec.json"  # 만든 설정 — {include, captions, math, built, hash} (웹 리더 목록 줄의 audio에 들어간다)
 
 
 def audio_dir(root: Path) -> Path:
@@ -34,16 +35,56 @@ def _write(path: Path, data: bytes) -> None:
     os.replace(tmp, path)
 
 
-def keep_local(root: Path, data: bytes, tl: dict) -> None:
-    """만든 음성을 이 컴퓨터에도 둔다 — 데스크톱 뷰어가 Drive를 거치지 않고 듣게."""
+def keep_local(root: Path, data: bytes, tl: dict, rec: dict | None = None) -> dict:
+    """만든 음성을 이 컴퓨터에 둔다 — 데스크톱 뷰어가 바로 듣고, 웹 리더로 보낼 때 이것을 그대로 올린다.
+
+    rec은 만든 설정(include·captions·math, 이미 올린 음성을 다시 이은 것이면 그 built). 반환: 저장한 기록."""
+    import hashlib
+    import time
+
+    rec = rec or {}
+    out = {"include": rec.get("include"), "captions": bool(rec.get("captions")), "math": bool(rec.get("math")),
+           "built": float(rec.get("built") or time.time()), "hash": hashlib.sha256(data).hexdigest()[:16]}
     d = audio_dir(root)
     _write(d / LOCAL_AUDIO, data)
     _write(d / LOCAL_TL, json.dumps(tl, ensure_ascii=False).encode("utf-8"))
+    _write(d / LOCAL_REC, json.dumps(out).encode("utf-8"))
+    return out
 
 
 def drop_local(root: Path) -> None:
-    for name in (LOCAL_AUDIO, LOCAL_TL):
+    for name in (LOCAL_AUDIO, LOCAL_TL, LOCAL_REC):
         (audio_dir(root) / name).unlink(missing_ok=True)
+
+
+def local_record(root: Path) -> dict:
+    """이 컴퓨터 음성의 만든 설정 — 기록 파일이 없는 옛 사본이면 웹 리더 기록(같은 목소리일 때)으로, 그것도 없으면 빈 값."""
+    try:
+        rec = json.loads((audio_dir(root) / LOCAL_REC).read_text(encoding="utf-8"))
+        if isinstance(rec, dict):
+            return rec
+    except (OSError, ValueError):
+        pass
+    got = local_audio(root)
+    mob = _mobile_audio_record(root) or {}
+    if got and mob.get("voice") == got[1].get("voice"):
+        return {k: mob.get(k) for k in ("include", "captions", "math", "built", "hash")}
+    return {}
+
+
+def build(root: Path, engine, include: list[int] | None = None, on_progress=None,  # noqa: ANN001
+          captions: bool = False, math: bool = False, digest: str | None = None) -> dict:
+    """이 논문의 듣기 음성을 이 컴퓨터에 만든다 — 섹션 캐시(audio/<키>.m4a)로 바뀐 섹션만 새로 말하고 이어 붙여
+    keep_local. Drive와 무관하다. on_progress(만든 문장, 만들 문장, 섹션 제목). 반환: {tl, rec, bytes}."""
+    from narani.phone import bundle as bmod
+    from narani.phone import tts
+
+    root = Path(root)
+    b = bmod.build_paper(root, digest or bmod.content_hash(root))
+    data, tl = tts.build(b, engine, audio_dir(root), include, on_progress, terms=tts.load_terms(root),
+                         captions=captions, math=tts.load_math(root) if math else None)
+    rec = keep_local(root, data, tl, {"include": include, "captions": captions, "math": math})
+    return {"tl": tl, "rec": rec, "bytes": len(data)}
 
 
 def local_audio(root: Path) -> tuple[Path, dict] | None:
@@ -89,7 +130,7 @@ def rebuild_local(root: Path, rec: dict | None) -> bool:
                              math=tts.load_math(root) if rec.get("math") else None)
     except (LookupError, ValueError, OSError):
         return False
-    keep_local(root, data, tl)
+    keep_local(root, data, tl, rec)   # 웹 리더에 있는 그 음성을 이은 것 — 만든 때(built)도 그대로
     return True
 
 
@@ -140,7 +181,27 @@ def info(root: Path, side: str | None = None) -> dict:
         m4a, tl = got
         out["audio"] = {"tl": tl, "stale": tl.get("src") != bmod.content_hash(root),
                         "v": int(m4a.stat().st_mtime)}
+    out.update(state(root))
     return out
+
+
+def job_info(job) -> dict | None:  # noqa: ANN001 — jobs.Job | None
+    """막대에 보일 음성 만들기 진행 — {pct(없으면 None), section, queued}. 돌지 않으면 None."""
+    if job is None or not job.running:
+        return None
+    return {"pct": int(job.fraction * 100) if job.total else None, "section": str(job.detail.get("section") or ""),
+            "queued": bool(job.detail.get("queued"))}
+
+
+def state(root: Path) -> dict:
+    """막대 ⋯ 메뉴의 상태 — {state: 만든 음성·웹 리더(§phone.service.audio_state) + label, job: 진행 | None}."""
+    from narani.phone import service
+    from narani.ui import audio_dialog, jobs
+
+    st = service.audio_state(root)
+    if st["local"]:
+        st["local"]["label"] = audio_dialog.audio_label(st["local"])
+    return {"state": st, "job": job_info(jobs.get(root, audio_dialog.KIND))}
 
 
 def register_routes(app, wd_for) -> None:  # noqa: ANN001 — FastAPI 앱, 토큰 → WorkDir | None
@@ -153,6 +214,13 @@ def register_routes(app, wd_for) -> None:  # noqa: ANN001 — FastAPI 앱, 토�
         if wd is None:
             raise HTTPException(status_code=404)
         return info(wd.root, side or None)
+
+    @app.get("/listen/{token}/state")
+    def _listen_state(token: str):  # noqa: ANN202 — 만든 음성·웹 리더 상태 (⋯ 메뉴)
+        wd = wd_for(token)
+        if wd is None:
+            raise HTTPException(status_code=404)
+        return state(wd.root)
 
     @app.get("/listen/{token}/audio")
     def _listen_audio(token: str):  # noqa: ANN202 — 만든 음성(m4a)
@@ -298,6 +366,7 @@ _ICON = {
     "next": "M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z",
     "back": "M11 18V6l-8.5 6 8.5 6zm.5-6 8.5 6V6l-8.5 6z",
     "fwd": "M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z",
+    "more": "M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z",
     "close": "M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z",
 }
 
@@ -330,6 +399,31 @@ CSS = """
   font-size: 12px; color: #6b6862; pointer-events: none; }
 #md-listen .mdl-note span { background: #fff; border: 1px solid #e4e1da; border-radius: 8px; padding: 3px 8px; }
 #md-listen .mdl-note:empty { display: none; }
+#md-listen .mdl-more { position: relative; }
+#md-listen .mdl-dot { position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%;
+  background: #f2a705; display: none; }
+#md-listen .mdl-more.stale .mdl-dot { display: block; }
+#md-listen .mdl-more.busy .mdl-dot { display: block; background: #2383e2; }
+#md-listen .mdl-prog { position: absolute; left: 12px; right: 12px; top: 0; height: 2px; border-radius: 2px;
+  overflow: hidden; display: none; }
+#md-listen .mdl-prog.on { display: block; }
+#md-listen .mdl-prog i, #md-listen .mdl-pbar i { display: block; height: 100%; width: 0; background: #2383e2;
+  transition: width .4s; }
+#md-listen .mdl-menu { position: absolute; right: 0; bottom: calc(100% + 8px); width: 290px; padding: 8px;
+  background: #fff; border: 1px solid #e4e1da; border-radius: 12px; box-shadow: 0 8px 28px rgba(0,0,0,.14);
+  display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; }
+#md-listen .mdl-menu[hidden] { display: none; }
+#md-listen .mdl-st { color: #6b6862; line-height: 1.4; padding: 2px 6px; }
+#md-listen .mdl-st b { color: #1f1e1c; font-weight: 600; }
+#md-listen .mdl-st.warn { color: #a26500; }
+#md-listen .mdl-st:empty { display: none; }
+#md-listen .mdl-job { padding: 2px 6px 4px; color: #6b6862; }
+#md-listen .mdl-pbar { height: 4px; border-radius: 4px; background: #e8eef7; overflow: hidden; margin: 4px 0 2px; }
+#md-listen .mdl-menu hr { border: none; border-top: 1px solid #ece9e3; margin: 2px 0; width: 100%; }
+#md-listen .mdl-menu button.mdl-mi { line-height: 1.3; text-align: left; padding: 6px 8px; font: inherit;
+  display: flex; align-items: center; gap: 6px; }
+#md-listen .mdl-menu button.mdl-mi[hidden] { display: none; }
+body:has(.q-dialog) #md-listen { z-index: 5900; }   /* 대화상자(음성 만들기 창 등)가 막대 위로 */
 ::highlight(md-listen) { background-color: rgba(255, 214, 77, .55); }
 #mdl-here { position: fixed; z-index: 9991; display: none; align-items: center; gap: 4px; padding: 5px 11px 5px 8px;
   border: none; border-radius: 999px; background: #2383e2; color: #fff; font-size: 12.5px; font-weight: 600;
@@ -350,6 +444,12 @@ body.md-listening .sbs-grid, body.md-listening .vpane { scroll-padding-bottom: 9
   #md-listen .mdl-row, #md-listen .mdl-note { color: #9a968f; }
   #md-listen select { border-color: #3a3a37; }
   #md-listen .mdl-note span { background: #232321; border-color: #3a3a37; }
+  #md-listen .mdl-menu { background: #232321; border-color: #3a3a37; }
+  #md-listen .mdl-st, #md-listen .mdl-job { color: #9a968f; }
+  #md-listen .mdl-st b { color: #e8e6e1; }
+  #md-listen .mdl-st.warn { color: #e0a84a; }
+  #md-listen .mdl-pbar { background: #2e3a4a; }
+  #md-listen .mdl-menu hr { border-top-color: #3a3a37; }
   ::highlight(md-listen) { background-color: rgba(200, 160, 40, .45); }
 }
 """
@@ -372,7 +472,18 @@ HTML = f"""
   <select class="mdl-src" title="⦃목소리⦄"></select>
   <select class="mdl-voice" title="⦃컴퓨터 목소리⦄"></select>
   <select class="mdl-rate" title="⦃속도⦄"></select>
+  <button data-a="more" class="mdl-more" title="⦃음성 만들기 · 웹 리더⦄">{_svg("more")}<i class="mdl-dot"></i></button>
   <button data-a="close" title="⦃듣기 닫기⦄">{_svg("close")}</button>
+  <div class="mdl-prog"><i></i></div>
+  <div class="mdl-menu" hidden>
+    <div class="mdl-st mdl-st-local"></div>
+    <div class="mdl-st mdl-st-web"></div>
+    <div class="mdl-job" hidden><div class="mdl-pbar"><i></i></div><span></span></div>
+    <hr>
+    <button data-a="make" class="mdl-mi" type="button">⦃음성 만들기…⦄</button>
+    <button data-a="stop" class="mdl-mi" type="button" hidden>⦃만들기 멈추기⦄</button>
+    <button data-a="send" class="mdl-mi" type="button">⦃웹 리더로 보내기⦄</button>
+  </div>
 </div>
 """
 
@@ -409,8 +520,12 @@ JS = r"""
   function place(){   // 본문 칸 아래 가운데 — 왼쪽 패널·에이전트 창을 빼고
     var m = document.querySelector('.vmain') || document.querySelector('.sbs-grid');
     if (!m) return;
-    var r = m.getBoundingClientRect();
-    bar.style.left = (r.left + r.width / 2) + 'px';
+    var r = m.getBoundingClientRect(), x = r.left + r.width / 2;
+    bar.style.left = x + 'px';
+    var b = bar.getBoundingClientRect();   // 좁은 창 — 막대가 화면 밖으로 나가지 않게 안쪽으로 민다
+    if (b.right > innerWidth - 12) x -= b.right - innerWidth + 12;
+    else if (b.left < 12) x += 12 - b.left;
+    bar.style.left = Math.max(x, b.width / 2 + 12) + 'px';
   }
   window.addEventListener('resize', place);
 
@@ -552,8 +667,53 @@ JS = r"""
     opt($('.mdl-rate'), [0.8, 1, 1.2, 1.5, 1.75, 2].map(function(r){ return [r, r + '×']; }), rate());
     $('.mdl-rate').style.display = '';
     L.cur = sentAt(au.currentTime || 0); mark(L.cur, true);
+    if (d.state){ ST.state = d.state; ST.job = d.job || null; paintState(); }
     if (L.want){ L.want = false; play(); }
   }
+
+  // ---- ⋯ 메뉴 — 만든 음성·웹 리더 상태, 음성 만들기(공용 창, §ui/audio_dialog.py)·웹 리더로 보내기 ----
+  var ST = {state: null, job: null};
+  function line(el, label, value, warn){
+    el.textContent = ''; el.classList.toggle('warn', !!warn);
+    if (!label) return;
+    var b = document.createElement('b'); b.textContent = label; el.appendChild(b);
+    if (value) el.appendChild(document.createTextNode(' ' + value));
+  }
+  function paintState(){
+    var st = ST.state, j = ST.job, more = $('.mdl-more');
+    if (st){
+      var lo = st.local, w = st.web;
+      if (lo) line($('.mdl-st-local'), md4T('만든 음성'), lo.label + (lo.stale ? ' — ' + md4T('본문이 바뀌어 바뀐 섹션을 다시 만들어야 해요') : ''), lo.stale);
+      else line($('.mdl-st-local'), md4T('만든 음성 없음'), md4T('— 지금은 컴퓨터 목소리로 읽어요'));
+      if (w.configured){
+        var wt = !w.connected ? md4T('연결 안 됨') : (!w.on ? md4T('없음') :
+          (w.audio === 'same' ? md4T('있음 · 이 음성') : (w.audio ? md4T('있음 · 다른 음성') : md4T('있음 · 음성 없음'))));
+        line($('.mdl-st-web'), md4T('웹 리더'), wt);
+      } else line($('.mdl-st-web'), '');
+      $('[data-a="send"]').hidden = !w.configured;
+      more.classList.toggle('stale', !!(lo && lo.stale));
+    }
+    var run = !!j;
+    $('.mdl-job').hidden = !run; $('[data-a="stop"]').hidden = !run; $('[data-a="make"]').hidden = run;
+    $('.mdl-prog').classList.toggle('on', run); more.classList.toggle('busy', run);
+    if (run){
+      var pct = j.pct == null ? 0 : j.pct;
+      $('.mdl-prog i').style.width = pct + '%'; $('.mdl-pbar i').style.width = pct + '%';
+      $('.mdl-job span').textContent = j.queued ? md4T('차례를 기다리는 중…')
+        : md4T('음성 만드는 중') + (j.pct != null ? ' ' + j.pct + '%' : '…') + (j.section ? ' · ' + j.section : '');
+    }
+  }
+  function refreshState(){
+    var tok = L.tok;
+    if (!tok) return;
+    fetch('/listen/' + tok + '/state').then(function(r){ if (!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function(d){ if (tok === L.tok){ ST.state = d.state; ST.job = d.job; paintState(); } }).catch(function(){});
+  }
+  function menu(open){ $('.mdl-menu').hidden = !open; if (open) refreshState(); }
+  document.addEventListener('mousedown', function(e){
+    if ($('.mdl-menu').hidden || !e.target.closest || e.target.closest('.mdl-menu, .mdl-more')) return;
+    menu(false);
+  }, true);
   function fillVoices(){
     var sel = $('.mdl-voice');
     if (!L.d || L.src !== 'web'){ sel.style.display = 'none'; return; }
@@ -569,7 +729,7 @@ JS = r"""
     if (L.tl){ if (andPlay) play(); return; }
     L.want = !!andPlay; load(null, null);
   }
-  function close(){ savePos(); stopAll(); bar.classList.remove('on'); document.body.classList.remove('md-listening'); note(''); L.d = null; }
+  function close(){ menu(false); savePos(); stopAll(); bar.classList.remove('on'); document.body.classList.remove('md-listening'); note(''); L.d = null; }
   function toggle(){ if (bar.classList.contains('on')) close(); else open(false); }
   function pp(){ if (!L.tl){ open(true); return; } if (au.paused) play(); else au.pause(); }
   function jumpSec(dir){
@@ -584,6 +744,11 @@ JS = r"""
     var a = b.getAttribute('data-a');
     if (a === 'pp') pp();
     else if (a === 'close') close();
+    else if (a === 'more') menu($('.mdl-menu').hidden);
+    else if (a === 'make' || a === 'send' || a === 'stop'){
+      menu(false);
+      if (typeof emitEvent === 'function') emitEvent('md4-listen-' + a, {tok: L.tok});
+    }
     else if (!L.tl) return;
     else if (a === 'prev') jumpSec(-1);
     else if (a === 'next') jumpSec(1);
@@ -726,7 +891,15 @@ JS = r"""
       });
       return b;
     },
-    setPaper: function(tok){ if (tok === L.tok) return; if (L.tok) close(); L.tok = tok; },
+    setPaper: function(tok){ if (tok === L.tok) return; if (L.tok) close(); L.tok = tok; ST.state = null; ST.job = null; paintState(); },
+    // 음성 만들기 진행(§ui/listen.py job_info) — 뷰어가 작업에 붙어 1초마다 민다. null이면 끝
+    setJob: function(j){ ST.job = j || null; paintState(); },
+    refreshState: refreshState,
+    // 새 음성이 생겼다 — 열려 있으면 만든 음성으로 다시 받고, 닫혀 있으면 다음에 열 때 받는다
+    reload: function(){
+      lsSet('narani:listen:src', 'made'); ST.job = null; paintState();
+      if (bar.classList.contains('on')){ savePos(); load(L.side, 'made'); } else { L.d = null; L.tl = null; }
+    },
     toggle: toggle, open: open, playPause: pp
   };
 })();
