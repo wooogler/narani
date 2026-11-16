@@ -88,9 +88,9 @@ def _main(argv: list[str]) -> int:
     icon = str(desktop.ICON) if not sys.platform.startswith("win") and Path(desktop.ICON).is_file() else None
     # private_mode=False — 본 창과 같은 WKWebView 기본 데이터 스토어를 쓰고 지우지 않는다
     # (켜 두면 이 창이 뜰 때 본 창의 localStorage, 곧 읽던 자리까지 지운다; §ui/desktop.py configure).
-    from narani.ui import page_zoom  # ⌘+ / ⌘− / ⌘0 — 본 창과 같은 배율
+    from narani.ui import menu_bar  # ⌘+ / ⌘− / ⌘0(본 창과 같은 배율)과 메뉴 막대 — 이 창도 자기 프로세스의 메뉴를 갖는다
 
-    webview.start(func=page_zoom.webview_started, private_mode=False, **({"icon": icon} if icon else {}))
+    webview.start(func=menu_bar.webview_started, private_mode=False, **({"icon": icon} if icon else {}))
     return 0
 
 

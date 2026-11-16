@@ -55,6 +55,7 @@ HTML = """
   if (window.__mdFind) return; window.__mdFind = true;
   var bar = document.getElementById('md4-find');
   if (!bar) return;
+  window.__md4Find = {open: function(){ if (!zoomOpen()) open(); }, close: function(){ close(); }};   // 메뉴 막대 '찾기' (§ui/menu_bar.py)
   var input = bar.querySelector('input'), countEl = bar.querySelector('.md4f-count');
   var HL = window.Highlight && window.CSS && CSS.highlights;   // 없으면 window.find()로 물러선다
   // 인라인 태그는 문단을 쪼개지 않는다 — <em>으로 끊긴 낱말도 한 낱말로 찾히게.

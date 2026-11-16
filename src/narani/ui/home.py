@@ -42,7 +42,7 @@ from narani import config, dupes, langs, library, projects
 from narani.phone import pages
 from narani.phone import service as phone_service
 from narani.ui import (
-    agent_panel, batch_translate_dialog, collection_glossary_dialog, desktop, find_bar, jobs, jump_back,
+    agent_panel, batch_translate_dialog, collection_glossary_dialog, desktop, find_bar, jobs, jump_back, menu_bar,
     listen, scroll_memory, settings_dialog, setup_wizard, spa, split_view, translate_job, update_banner,
 )
 from narani.libsync import service as library_sync
@@ -2611,7 +2611,7 @@ def build_home(state: dict) -> None:
                 sidebar_rows()
             with ui.column().classes("md4-hfoot gap-0 w-full"):
                 ui.button(t("설정"), icon="settings", color=None, on_click=lambda: open_settings()) \
-                    .props("flat dense no-caps").classes("w-full") \
+                    .props("flat dense no-caps data-md4menu=settings").classes("w-full") \
                     .tooltip(t("AI 키 · 저장 위치 · 변환·번역 기본값 · 고급"))
                 with ui.row().classes("items-center gap-1 no-wrap w-full"):
                     update_banner.version_line(state)  # v0.1.0 · 커밋 · 최신 여부
@@ -2633,7 +2633,7 @@ def build_home(state: dict) -> None:
                     recent_list.refresh()
 
                 ui.input(placeholder=t("제목·저자·venue 검색…")).on_value_change(on_search) \
-                    .props("dense outlined clearable").classes("flex-grow")
+                    .props("dense outlined clearable data-md4menu=search").classes("flex-grow")
                 ui.select({k: t(v) for k, v in _SORTS.items()}, value="recent", on_change=on_sort).props("dense outlined").classes("w-32")
                 phone_chip()
                 with ui.element("div").classes("md4-upwrap"):
@@ -2665,6 +2665,31 @@ def build_home(state: dict) -> None:
             ui.element("div").classes("md4-colgrip").props('data-col="prev"')  # 끌어서 폭 조절 · 더블클릭 = 기본 폭
             preview_pane()
         sync_preview()
+
+    # ===== macOS 메뉴 막대 (§ui/menu_bar.py) — 이 화면에서 부를 것 (설정·올리기는 페이지가 단추를 직접 누른다) =====
+    async def menu_export() -> None:
+        roots = sorted(selected) if pick["bulk"] and selected else ([pick["root"]] if pick["root"] else [])
+        if not roots:
+            ui.notify(t("내보낼 논문을 먼저 고르세요."), type="info")
+            return
+        from narani.ui import export_dialog
+
+        await export_dialog.open_dialog([Path(p) for p in roots], to_library=save_to_library)
+
+    def menu_reveal() -> None:
+        if pick["root"] and not pick["bulk"]:
+            desktop.reveal(Path(pick["root"]))   # 고른 논문의 폴더
+        elif state.get("upload_dir"):
+            desktop.open_file(Path(state["upload_dir"]))   # 안 골랐으면 작업 폴더를 연다
+        else:
+            ui.notify(t("Finder에서 보여 줄 논문을 먼저 고르세요."), type="info")
+
+    async def menu_new_window() -> None:
+        from narani.ui.app import _spawn_path
+
+        await _spawn_path("/home", state, "Narani", dup_note=t("홈은 이미 다른 창에 떠 있습니다."))
+
+    menu_bar.register(export=menu_export, reveal=menu_reveal, new_window=menu_new_window)
 
     ui.timer(0.6, poll)
     if setup_wizard.needs_setup():
