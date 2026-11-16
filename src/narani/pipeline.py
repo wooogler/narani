@@ -111,8 +111,20 @@ def run_frontmatter(wd: WorkDir, provider=None, force: bool = False) -> dict:
     ops: dict = {"allow_pull": allow_pull, "trust_order": trust_order, "pulled": [],
                  "pull_runs": [], "pulled_heads": [], "sections_after_body": 0,
                  "authors_after_body": 0, "authors_pulled": [], "authors_split": []}
+    # 첫 페이지 이미지 + 텍스트 층 — 비전 구조화와 서지 고정의 근거. PDF가 없거나(.md 입력)
+    # OCR 논문(텍스트 층이 근거가 못 된다)이면 둘 다 건너뛴다.
+    page = _front_page(wd, image=provider is not None)
+    vision = None
+    if provider is not None and page is not None:
+        from narani.extract import front_vision
+
+        vision, vinfo = front_vision.read_cached(provider, page, wd.extract / "front_vision.json")
+        ops["vision"] = vinfo
+    from narani import paper_meta
+
     new, authors = front_matter.normalize_authors(
-        provider, raw, config.resolve_author_parts(), allow_pull, ops, trust_order)
+        provider, raw, config.resolve_author_parts(), allow_pull, ops, trust_order,
+        vision=vision, bib=paper_meta.load(wd), page_text=page.text if page is not None else None)
     if new != raw:
         wd.raw_md.write_text(new, encoding="utf-8")
     # 구조화 저자 저장 → 나중에 표기(author_parts) 변경 시 LLM 재호출 없이 재렌더
@@ -125,6 +137,22 @@ def run_frontmatter(wd: WorkDir, provider=None, force: bool = False) -> dict:
 
 
 _FRONT_PAGE = 1  # 저자 그리드가 있는 쪽 — 여기 읽기 순서를 못 믿으면 저자 순서도 못 믿는다
+
+
+def _front_page(wd: WorkDir, image: bool = True):  # noqa: ANN202 — front_vision.FrontPage | None
+    """원본 PDF 1쪽 (이미지 + 텍스트 층). PDF가 없거나, OCR로 추출했거나, 텍스트 층이 비면 None."""
+    import json
+
+    try:
+        meta = json.loads(wd.meta_json.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001
+        return None
+    src = str(meta.get("source") or "")
+    if meta.get("ocr") or not src.lower().endswith(".pdf") or not Path(src).is_file():
+        return None
+    from narani.extract import front_vision
+
+    return front_vision.load_front_page(src, image=image)
 
 
 def _extract_meta(wd: WorkDir) -> dict:
