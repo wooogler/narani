@@ -175,9 +175,9 @@ HTML = """
 <div id="md4-fx-crop" role="dialog" aria-label="⦃수식 영역 지정⦄">
   <div class="fxc-panel">
     <div class="fxc-bar">
-      <button data-c="prev" title="⦃이전 쪽⦄">‹</button><span class="fxc-pg"></span>
-      <button data-c="next" title="⦃다음 쪽⦄">›</button>
-      <button data-c="zout" title="⦃축소⦄">−</button><button data-c="zin" title="⦃확대⦄">+</button>
+      <button data-c="prev" aria-label="⦃이전 쪽⦄">‹</button><span class="fxc-pg"></span>
+      <button data-c="next" aria-label="⦃다음 쪽⦄">›</button>
+      <button data-c="zout" aria-label="⦃축소⦄">−</button><button data-c="zin" aria-label="⦃확대⦄">+</button>
       <span class="fxc-hint"></span>
       <span class="fxc-gap"></span>
       <button data-c="extra" style="display:none"></button>
@@ -253,7 +253,7 @@ HTML = """
     var d = cur.info, h = '', page = cur.region ? cur.region.page : d.page;
     h += '<div class="fx-head"><b>' + (d.inline ? md4T('인라인 수식') : md4T('수식')) + '</b><span>'
       + (page ? 'p.' + esc(page) : '') + (d.number ? ' · ' + md4T('식 ({n})', {n: esc(d.number)}) : '')
-      + '</span><button class="fx-x" data-act="close" title="' + md4T('닫기') + '">×</button></div>';
+      + '</span><button class="fx-x" data-act="close" aria-label="' + md4T('닫기') + '">×</button></div>';
     var src = cand && cand.crop ? cand.crop : (cur.region ? '' : d.img);
     h += '<div class="fx-lbl">' + (cur.region ? md4T('원본 PDF — 지정한 영역') : md4T('원본 PDF')) + '</div><div class="fx-src">'
       + (src ? '<img src="' + esc(src) + '" alt="' + md4T('원본 수식') + '"/>'

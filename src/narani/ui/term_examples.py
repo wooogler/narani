@@ -278,8 +278,7 @@ def render(examples: list[Example], rows: int, *, goto=None, max_note: bool = Tr
                 where = f"r{e.row}" + (f" · {e.heading[:40]}" if e.heading else "")
                 if goto is not None:
                     ui.button(where, on_click=lambda _, r=e.row: goto(r)) \
-                        .props("flat dense no-caps size=xs color=grey-7").classes("md4-tex-meta") \
-                        .tooltip(t("본문의 이 자리로 이동"))
+                        .props("flat dense no-caps size=xs color=grey-7").classes("md4-tex-meta")
                 else:
                     ui.label(where).classes("md4-tex-meta")
                 if e.ko and not e.ko_exact:

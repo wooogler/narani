@@ -1032,7 +1032,7 @@ _ANNO_HTML = """
            : (miss[a.id] ? '<span class="ap-lostb">' + (miss[a.id][0] === 'ko' ? md4T('번역 쪽 못 찾음') : md4T('원문 쪽 못 찾음')) + '</span>' : ''))
         + (isGuess(a) ? '<button class="ap-guessb" title="' + md4T('문구가 바뀌어 가장 비슷한 문장에 붙였습니다. 눌러서 맞다고 확인') + ''
            + esc(origText(a)).replace(/"/g, '&quot;') + '">' + md4T('추정 · 확인') + '</button>' : '')
-        + '<span class="apop-sp"></span><button class="ap-del" title="' + md4T('삭제') + '">&#10005;</button></div>'
+        + '<span class="apop-sp"></span><button class="ap-del" aria-label="' + md4T('삭제') + '">&#10005;</button></div>'
         + (en ? '<div class="ap-q">' + esc(cut(en, 170)) + '</div>' : '')
         + (ko ? '<div class="ap-q ap-ko">' + esc(cut(ko, 170)) + '</div>' : '')
         + ((a.note || '').trim() ? '<div class="ap-n">' + esc(a.note) + '</div>' : '')
@@ -1349,7 +1349,7 @@ _CITE_TIP_HTML = """
       // 고정 시: 우상단 압정 + 그 아래 제목 복사 아이콘(DOI 안 될 때 구글 스콜라 검색용)
       var t = e.title || e.text || '';
       html += PIN;
-      html += '<button class="md-cite-copy" title="' + md4T('제목 복사') + '" data-title="' + escAttr(t) + '">' + COPY_SVG + '</button>';
+      html += '<button class="md-cite-copy" aria-label="' + md4T('제목 복사') + '" data-title="' + escAttr(t) + '">' + COPY_SVG + '</button>';
     }
     tip.innerHTML = html;
   }
@@ -1531,19 +1531,19 @@ _IMG_ZOOM_HTML = """
 <div id="md-img-zoom">
   <img alt="">
   <div class="mdz-bar">
-    <button data-act="out" title="⦃축소 (-)⦄">&#8722;</button>
+    <button data-act="out" aria-label="⦃축소 (-)⦄">&#8722;</button>
     <span class="mdz-pct">100%</span>
-    <button data-act="in" title="⦃확대 (+)⦄">&#43;</button>
+    <button data-act="in" aria-label="⦃확대 (+)⦄">&#43;</button>
     <button data-act="fit" title="⦃화면에 맞추기 (0)⦄">
       <svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" aria-hidden="true">
         <path d="M4 9V4h5v2H6v3H4zm11-5h5v5h-2V6h-3V4zM4 15h2v3h3v2H4v-5zm14 3v-3h2v5h-5v-2h3z"/>
       </svg></button>
     <span class="mdz-sep"></span>
-    <button data-act="copy" title="⦃그림 복사 (⌘/Ctrl+C)⦄">
+    <button data-act="copy" aria-label="⦃그림 복사 (⌘/Ctrl+C)⦄" title="⌘/Ctrl+C">
       <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor" aria-hidden="true">
         <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/>
       </svg></button>
-    <button data-act="save" title="⦃그림 저장 (⌘/Ctrl+S)⦄">
+    <button data-act="save" aria-label="⦃그림 저장 (⌘/Ctrl+S)⦄" title="⌘/Ctrl+S">
       <svg viewBox="0 0 24 24" width="15" height="15" fill="currentColor" aria-hidden="true">
         <path d="M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z"/>
       </svg></button>
@@ -1553,7 +1553,7 @@ _IMG_ZOOM_HTML = """
       </svg></button>
     <button data-act="figko" title="⦃그림 속 글자 번역 — 번역 그림 보기·만들기·고치기⦄">⦃가⦄</button>
     <span class="mdz-sep"></span>
-    <button data-act="close" title="⦃닫기 (Esc)⦄">&#10005;</button>
+    <button data-act="close" aria-label="⦃닫기 (Esc)⦄">&#10005;</button>
   </div>
   <div class="mdz-foot"><div class="mdz-cap"></div>
     <details class="mdz-alt"><summary>⦃그림 설명⦄ <span>⦃· 저자가 PDF에 단 대체 텍스트⦄</span></summary>
@@ -1587,7 +1587,7 @@ _IMG_ZOOM_HTML = """
     for (var i = 0; i < imgs.length; i++){
       var has = !!altOf(imgs[i].getAttribute('src'));
       imgs[i].classList.toggle('md-has-alt', has);
-      if (has && !imgs[i].title) imgs[i].title = md4T('그림 설명 있음 — 클릭해서 확대');
+      if (has && !imgs[i].title) imgs[i].title = md4T('그림 설명 있음');
     }
   }
   hidpi(document); markAlts(document);
@@ -2709,7 +2709,6 @@ def agent_button() -> None:
         ui.icon("forum", size="16px")
         ui.label(t("에이전트")).classes("md4-agentbtn-t")
     b.on("click", js_handler="() => window.__md4Agent && window.__md4Agent.toggle()")
-    b.tooltip(t("에이전트 — 이 논문·라이브러리에 묻고, 근거 문단으로 이동"))
 
 
 def tab_bar(state: dict, here: Path | None, here_title: str | Callable[[], str] = "", tools=None):  # noqa: ANN001, ANN201
@@ -2750,7 +2749,6 @@ def tab_bar(state: dict, here: Path | None, here_title: str | Callable[[], str] 
         with tab:
             ui.icon("home", size="16px").classes("md4-tab-ico")
             ui.label(t("홈")).classes("md4-tab-t")
-        tab.tooltip(t("홈 — 업로드 · 논문 목록"))
         if not active:
             tab.on("click", lambda: ui.navigate.to("/home"))
 
@@ -2771,8 +2769,9 @@ def tab_bar(state: dict, here: Path | None, here_title: str | Callable[[], str] 
             with x:
                 ui.html("&#10005;")
             x.on("click.stop", lambda _, r=root, a=active: close_tab(r, a))
-            x.tooltip(t("탭 닫기") + (t(" — 도는 작업은 계속됩니다") if busy else ""))
-        tip = title if active else title + "\n" + t("클릭하면 이 논문으로 이동")
+            if busy:  # 닫아도 도는 작업은 계속된다 — 그때만 알린다(×가 탭을 닫는다는 건 누구나 안다)
+                x.tooltip(t("도는 작업은 탭을 닫아도 계속됩니다"))
+        tip = title  # 잘린 제목을 다 보여 주는 용도 — '누르면 이동' 같은 뻔한 안내는 붙이지 않는다
         if busy:
             tip += "\n" + t("백그라운드 작업 진행 중")
         tab.tooltip(tip)
@@ -2874,7 +2873,7 @@ def tab_bar(state: dict, here: Path | None, here_title: str | Callable[[], str] 
         if not active and not conv:
             return
         btn = ui.button(color=None).props("flat dense no-caps text-color=white size=sm") \
-            .classes("md4-jobsbtn").tooltip(t("백그라운드 작업 진행 중 — 눌러서 보기"))
+            .classes("md4-jobsbtn")
         with btn:
             ui.icon("autorenew", size="16px").classes("md4-spin")
             ui.label(f"{len(active) + len(conv)}").classes("q-ml-xs")
@@ -4737,7 +4736,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                     example_button(ex_get, ex_ref)
                     ui.button(icon="delete_outline", on_click=lambda _, idx=i: (
                         gloss_entries.pop(idx), gloss_rows.refresh(), gloss_autosave())) \
-                        .props("flat dense round size=sm color=grey-6").classes("md4-gl-del").tooltip(t("삭제"))
+                        .props("flat dense round size=sm color=grey-6").classes("md4-gl-del")
             example_block(ex_get, ex_ref)
 
     def add_gloss_row() -> None:
@@ -6213,7 +6212,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                     tab.on("dragend", js_handler=_drag_end)
                     tab.tooltip(t("더블클릭하면 이름 바꾸기 · 메모 칸 아래쪽으로 끌어 놓으면 위아래로 나눠 보기"))
                 ui.button(icon="add", on_click=add_tab).props("flat dense round size=xs color=grey-7") \
-                    .classes("md4-notetab-add").tooltip(t("메모 탭 추가"))
+                    .classes("md4-notetab-add")
 
         @ui.refreshable
         def note_heads() -> None:

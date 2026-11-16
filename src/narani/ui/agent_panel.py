@@ -461,18 +461,18 @@ a.chat-cite-note:hover { background: #f7cf60; }
 # 서랍 마크업. body에 고정돼 있어 화면을 갈아 끼워도 대화·진행 중인 답이 그대로 남는다.
 HTML = """
 <div id="md4-agent" role="complementary" aria-label="⦃에이전트⦄">
-  <div class="ag-handle" title="⦃드래그해서 너비 조절⦄"></div>
+  <div class="ag-handle"></div>
   <div class="ag-head">
     <button type="button" class="ag-sess" title="⦃세션 목록 — 더블클릭하면 이름 바꾸기⦄"><span
       class="ag-sess-t">⦃에이전트⦄</span><span class="ag-sess-c">&#9662;</span></button>
-    <button type="button" class="ag-btn ag-new" title="⦃새 세션⦄">+ ⦃새 세션⦄</button>
+    <button type="button" class="ag-btn ag-new">+ ⦃새 세션⦄</button>
     <button type="button" class="ag-btn ag-gear" title="⦃에이전트 설정 — 글자 크기 · 모델⦄"
       aria-label="⦃에이전트 설정⦄" aria-haspopup="true"><i class="material-icons"
       aria-hidden="true">settings</i></button>
     <a class="ag-btn ag-pop" href="/agent" target="_blank" rel="noopener"
       title="⦃새 창으로 열기 — 이 창의 서랍은 닫힙니다⦄"><i class="material-icons"
       aria-hidden="true">open_in_new</i></a>
-    <button type="button" class="ag-btn ag-x" title="⦃닫기 (Esc)⦄">&#10005;</button>
+    <button type="button" class="ag-btn ag-x" aria-label="⦃닫기 (Esc)⦄">&#10005;</button>
     <div class="ag-menu" role="menu"></div>
     <div class="ag-setm" role="dialog" aria-label="⦃에이전트 설정⦄">
       <div class="ag-setm-l">⦃글자 크기⦄</div>
@@ -499,8 +499,8 @@ HTML = """
       <button type="button" class="ag-at-btn" title="⦃맥락 넣기 — 논문·섹션·메모 탭·컬렉션 (@)⦄"
         aria-label="⦃맥락 넣기⦄">@</button>
       <div class="ag-input" contenteditable="true" role="textbox" aria-multiline="true" spellcheck="false"
-        data-ph="⦃무엇이든 물어보세요 · @로 맥락 넣기⦄" title="⦃Enter 보내기 · Shift+Enter 줄바꿈⦄"></div>
-      <button type="button" class="ag-send" title="⦃전송 (Enter)⦄">&#10148;</button>
+        data-ph="⦃무엇이든 물어보세요 · @로 맥락 넣기⦄"></div>
+      <button type="button" class="ag-send" aria-label="⦃전송⦄">&#10148;</button>
     </div>
   </div>
 </div>
@@ -1031,7 +1031,7 @@ JS = r"""
       box.appendChild(a);
     }
     var x = document.createElement('a'); x.href = '#'; x.className = 'ag-ctxnote-x';
-    x.innerHTML = '&#10005;'; x.setAttribute('aria-label', md4T('닫기')); x.title = md4T('닫기');
+    x.innerHTML = '&#10005;'; x.setAttribute('aria-label', md4T('닫기'));
     x.addEventListener('click', function(ev){
       ev.preventDefault();
       if (ctxNote && ctxNote.kind === 'hint') markCtx();   // 안내를 닫았다 = 지금 세션으로 이어 간다

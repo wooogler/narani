@@ -48,7 +48,7 @@ HTML = """
   <span class="md4f-count"></span>
   <button data-act="prev" title="⦃이전 (Shift+Enter)⦄">&#8593;</button>
   <button data-act="next" title="⦃다음 (Enter)⦄">&#8595;</button>
-  <button data-act="close" title="⦃닫기 (Esc)⦄">&#10005;</button>
+  <button data-act="close" aria-label="⦃닫기 (Esc)⦄">&#10005;</button>
 </div>
 <script>
 (function(){

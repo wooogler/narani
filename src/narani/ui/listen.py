@@ -460,20 +460,20 @@ HTML = f"""
   <audio id="mdl-au" preload="auto"></audio>
   <div class="mdl-note"></div>
   <button data-a="prev" title="⦃이전 섹션 (Alt+[)⦄">{_svg("prev")}</button>
-  <button data-a="back" title="⦃15초 뒤로⦄">{_svg("back")}</button>
+  <button data-a="back" aria-label="⦃15초 뒤로⦄">{_svg("back")}</button>
   <button data-a="pp" class="mdl-pp" title="⦃재생 · 일시정지 (Alt+Space)⦄">{_svg("play")}</button>
-  <button data-a="fwd" title="⦃15초 앞으로⦄">{_svg("fwd")}</button>
+  <button data-a="fwd" aria-label="⦃15초 앞으로⦄">{_svg("fwd")}</button>
   <button data-a="next" title="⦃다음 섹션 (Alt+])⦄">{_svg("next")}</button>
   <div class="mdl-mid">
     <div class="mdl-sec"></div>
     <div class="mdl-row"><span class="mdl-cur">0:00</span><input class="mdl-seek" type="range" min="0" max="0" step="1" value="0"><span class="mdl-dur">0:00</span></div>
   </div>
-  <select class="mdl-side" title="⦃읽을 쪽⦄"></select>
-  <select class="mdl-src" title="⦃목소리⦄"></select>
-  <select class="mdl-voice" title="⦃컴퓨터 목소리⦄"></select>
-  <select class="mdl-rate" title="⦃속도⦄"></select>
+  <select class="mdl-side" aria-label="⦃읽을 쪽⦄"></select>
+  <select class="mdl-src" aria-label="⦃목소리⦄"></select>
+  <select class="mdl-voice" aria-label="⦃컴퓨터 목소리⦄"></select>
+  <select class="mdl-rate" aria-label="⦃속도⦄"></select>
   <button data-a="more" class="mdl-more" title="⦃음성 만들기 · 휴대폰⦄">{_svg("more")}<i class="mdl-dot"></i></button>
-  <button data-a="close" title="⦃듣기 닫기⦄">{_svg("close")}</button>
+  <button data-a="close" aria-label="⦃듣기 닫기⦄">{_svg("close")}</button>
   <div class="mdl-prog"><i></i></div>
   <div class="mdl-menu" hidden>
     <div class="mdl-st mdl-st-local"></div>

@@ -167,7 +167,7 @@ def _ai_panel(ui, provider_name, key_hint, model_options, short_provider) -> Non
             ui.label(f"· {src}").classes("text-xs text-gray-400 shrink-0")
             ui.button(icon="visibility_off" if reveal["on"] else "visibility",
                       on_click=lambda: (reveal.__setitem__("on", not reveal["on"]), key_detail.refresh())) \
-                .props("flat dense round size=sm").tooltip(t("전체 보기 / 가리기"))
+                .props("flat dense round size=sm")
             if info["source"] == "file":
                 ui.button(icon="delete", on_click=delete_key) \
                     .props("flat dense round size=sm color=negative").tooltip(t("저장된 키 삭제"))
@@ -324,7 +324,7 @@ def _library_panel(ui, run, state, on_change, can_pick, recent_workdirs) -> None
                 inp.on("blur", lambda _, w=which, i=inp: set_dir(w, (i.value or "").strip() or None))
                 inp.on("keydown.enter", lambda _, w=which, i=inp: set_dir(w, (i.value or "").strip() or None))
                 btn = ui.button(icon="folder_open", on_click=lambda _, w=which: pick(w)) \
-                    .props("dense outline").tooltip(t("폴더 선택 대화상자 열기"))
+                    .props("dense outline")
                 if not can_pick:
                     _no_dialog(btn)
                 clear = ui.button(icon="close", on_click=lambda _, w=which: set_dir(w, None)) \
@@ -810,8 +810,7 @@ def open_project_dialog(state: dict, pid: str | None, on_saved: Callable[[dict, 
                                placeholder=t("폴더를 고르거나 경로를 붙여넣으세요")) \
                 .props("dense outlined clearable").classes("flex-grow min-w-0")
             root_in.on("keydown.enter", save)
-            btn = ui.button(icon="folder_open", on_click=pick).props("dense outline") \
-                .tooltip(t("폴더 선택 대화상자 열기"))
+            btn = ui.button(icon="folder_open", on_click=pick).props("dense outline")
             if not can_pick:
                 _no_dialog(btn)
 

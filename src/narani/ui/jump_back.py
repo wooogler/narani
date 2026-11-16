@@ -92,8 +92,7 @@ HTML = """
   <button type="button" class="mjb-split" aria-label="⦃같이 보기 — 아래 칸에 이 자리, 위 칸은 읽던 자리⦄"
     title="⦃같이 보기 — 아래 칸에 지금 본 곳을 띄우고 위 칸은 읽던 자리로⦄"><span
     aria-hidden="true">&#8693;</span> ⦃같이 보기⦄</button>
-  <button type="button" class="mjb-x" aria-label="⦃되돌아가기 버튼 닫기⦄"
-    title="⦃닫기 (Esc)⦄">&#10005;</button>
+  <button type="button" class="mjb-x" aria-label="⦃되돌아가기 버튼 닫기⦄">&#10005;</button>
 </div>
 """
 

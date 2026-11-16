@@ -1422,7 +1422,6 @@ def build_home(state: dict) -> None:
                 # 꺾쇠만 접고 편다 — 행 클릭(범위 고르기)까지 번지지 않게 막고 서버에 알린다
                 tw.on("click", lambda _, p=value: toggle_collapsed(p),
                       js_handler="(e) => { e.stopPropagation(); emit(); }")
-                tw.tooltip(t("하위 컬렉션 펴기") if collapsed else t("하위 컬렉션 접기"))
             ui.icon(icon, size="18px").classes("md4-prow-i")
             with ui.element("div").classes("md4-prow-t"):
                 ui.label(label).classes("md4-prow-name")
@@ -1784,7 +1783,7 @@ def build_home(state: dict) -> None:
                             else:
                                 ui.button(icon="stop_circle", on_click=lambda _, j=j: (j.cancel(), queue_panel.refresh())) \
                                     .props("flat dense round size=sm color=grey-7").classes("shrink-0") \
-                                    .tooltip(t("멈추기")).on("click.stop", lambda _: None)
+                                    .on("click.stop", lambda _: None)
             if hidden_waits:
                 ui.label(t("외 {n}편 번역 대기 중 — 동시에 {limit}편씩 차례로 돕니다", n=len(hidden_waits), limit=translate_job.gate().limit)) \
                     .classes("text-xs text-gray-400 q-px-sm")
@@ -1841,8 +1840,7 @@ def build_home(state: dict) -> None:
                     if st in ("pending", "failed"):
                         ui.button(icon="close", on_click=lambda _, it=it: (
                             state["queue"].remove(it) if it in state["queue"] else None, queue_panel.refresh())) \
-                            .props("flat dense round size=sm color=grey").classes("shrink-0") \
-                            .tooltip(t("취소") if st == "pending" else t("닫기"))
+                            .props("flat dense round size=sm color=grey").classes("shrink-0")
 
     def project_pick_menu(on_pick, only: set[str] | None = None, with_new: bool = False) -> None:  # noqa: ANN001
         """미리보기 일괄 동작 칸의 '컬렉션에 추가/빼기' 메뉴 — 프로젝트 이름만 늘어놓는다."""
@@ -2054,7 +2052,7 @@ def build_home(state: dict) -> None:
                                     js_handler="(e) => { e.stopPropagation(); emit(); }")
                         tags_box.on("dblclick", js_handler=_STOP_JS)
                 if r["pinned"]:
-                    ui.icon("push_pin", size="16px").classes("md4-pinmark").tooltip(t("고정한 논문"))
+                    ui.icon("push_pin", size="16px").classes("md4-pinmark")
                 acts = ui.row().classes("md4-pacts items-center gap-0 no-wrap")
                 acts.on("click", js_handler=_STOP_JS).on("dblclick", js_handler=_STOP_JS)
                 with acts:
@@ -2350,8 +2348,7 @@ def build_home(state: dict) -> None:
         # 아래 줄은 자주 쓰는 것만 — 서지 다시 받기·공유 링크·휴대폰은 ⋯ 메뉴로
         with foot, ui.row().classes("items-center gap-1 w-full no-wrap"):
             ui.button(t("열기"), icon="menu_book", on_click=lambda: open_wd(r["root"])) \
-                .props("unelevated dense no-caps color=primary").classes("q-px-sm") \
-                .tooltip(t("논문 화면으로 — 카드를 두 번 눌러도 됩니다"))
+                .props("unelevated dense no-caps color=primary").classes("q-px-sm")
             new_window_button(r["root"], state, r["title"], small=True)
             if _has_source_pdf(wd):
                 ui.button(icon="picture_as_pdf", on_click=lambda: open_source_pdf(UIController(wd))) \
@@ -2611,8 +2608,7 @@ def build_home(state: dict) -> None:
                 sidebar_rows()
             with ui.column().classes("md4-hfoot gap-0 w-full"):
                 ui.button(t("설정"), icon="settings", color=None, on_click=lambda: open_settings()) \
-                    .props("flat dense no-caps data-md4menu=settings").classes("w-full") \
-                    .tooltip(t("AI 키 · 저장 위치 · 변환·번역 기본값 · 고급"))
+                    .props("flat dense no-caps data-md4menu=settings").classes("w-full")
                 with ui.row().classes("items-center gap-1 no-wrap w-full"):
                     update_banner.version_line(state)  # v0.1.0 · 커밋 · 최신 여부
                     sync_badge()   # 서재 동기화 상태 — 누르면 설정으로
@@ -2642,8 +2638,7 @@ def build_home(state: dict) -> None:
                     # 클릭은 위 CSS가 펼쳐 놓은 진짜 <input type=file>이 그대로 받는다 (JS 개입 없음).
                     # 파일을 창 위로 끄는 동안에는 같은 업로더가 목록 열 전체로 펼쳐져 놓기를 받는다.
                     ui.upload(on_upload=handle, multiple=True, auto_upload=True) \
-                        .props('accept=".pdf,.md,.markdown"').classes("md4-upload") \
-                        .tooltip(t("PDF·마크다운 고르기 — 창 위로 끌어다 놓아도 됩니다"))
+                        .props('accept=".pdf,.md,.markdown"').classes("md4-upload")
                 with ui.button(icon="more_horiz", color=None).props("flat dense round").classes("text-grey-7") \
                         .tooltip(t("숨긴 논문 · 내보내기 형식 · 이 목록 저장")):
                     more_menu()
