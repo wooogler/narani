@@ -504,6 +504,7 @@ def audio_state(root: Path) -> dict:
     same = bool(a and local and (a.get("hash") == local["hash"]
                                  or (a.get("voice") == local["voice"] and float(a.get("built") or 0) == local["built"])))
     return {"local": local, "web": {"configured": configured(), "connected": connected(), "on": e is not None,
+                                    "library": _library_on(),   # 서재 동기화 중이면 서재 전체가 휴대폰에 — 보내기 단추는 숨긴다
                                     "audio": ("same" if same else "other") if a else None}}
 
 

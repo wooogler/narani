@@ -402,8 +402,8 @@ async def ask(host, roots: list[Path], send: bool | None = None) -> dict | None:
         total()
         send_cb = None
         if send is None and off_web:   # 웹 리더에 없는 논문 — 보낼지는 고른다 (있는 논문은 저절로 올린다)
-            send_cb = ui.checkbox(t("휴대폰에도 받아 두기"), value=False).props("dense").classes("text-sm")
-            send_cb.tooltip(t("휴대폰({site})이 미리 내려받아 거기서도 듣습니다 — 논문과 메모도 함께 올립니다",
+            send_cb = ui.checkbox(t("휴대폰으로도 보내기"), value=False).props("dense").classes("text-sm")
+            send_cb.tooltip(t("Google Drive를 거쳐 휴대폰({site})에서도 듣습니다 — 논문과 메모도 함께 올립니다",
                               site=pages.DOMAIN))
             if not phone_service.configured():
                 send_cb.disable()

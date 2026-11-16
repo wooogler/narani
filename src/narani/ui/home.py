@@ -1040,7 +1040,8 @@ def build_home(state: dict) -> None:
     async def export_bulk() -> None:
         from narani.ui import export_dialog
 
-        await export_dialog.open_dialog([Path(p) for p in selected])  # 열 때의 선택을 붙잡는다
+        # 열 때의 선택을 붙잡는다 · 저장 위치에 저장(library.export_many)도 이 창의 받는 곳 선택지로
+        await export_dialog.open_dialog([Path(p) for p in selected], to_library=save_to_library)
 
     # ===== 휴대폰 (§phone) — Google Drive를 거쳐 휴대폰 웹 리더에서 읽는다 =====
     def mobile_changed() -> None:
@@ -1070,7 +1071,7 @@ def build_home(state: dict) -> None:
 
     async def make_mobile_audio(roots: list[Path]) -> None:
         """듣기 음성 — 공용 창(§ui.audio_dialog)으로 고르고 이 컴퓨터에 만든다. 휴대폰에서 열 수 있는 논문은 만든 뒤 그쪽에도
-        올리고, 없는 논문은 창의 '휴대폰에도 받아 두기'를 켰을 때만 보낸다(그때만 Drive 연결을 묻는다)."""
+        올리고, 없는 논문은 창의 '휴대폰으로도 보내기'를 켰을 때만 보낸다(그때만 Drive 연결을 묻는다)."""
         titles = {k: (r or {}).get("title", "") for k, r in data["by_root"].items()}
         started = await audio_dialog.make(host, [Path(r) for r in roots], titles, on_connect=mobile_changed)
         if started:
@@ -1090,10 +1091,10 @@ def build_home(state: dict) -> None:
         Narani 폴더에 올리고(이미 있으면 바뀐 것만) 받아 둔 표시를 켠다. 하이라이트·메모도 이때 오간다."""
         if not roots:
             return
-        s = await mobile_call(phone_service.send, roots, t("휴대폰에 받아 두는 중… ({n}편)", n=len(roots)))
+        s = await mobile_call(phone_service.send, roots, t("휴대폰으로 보내는 중… ({n}편)", n=len(roots)))
         if s is None:
             return
-        msg = t("휴대폰에 받아 뒀습니다 — {n}편", n=len(roots))
+        msg = t("휴대폰으로 보냈습니다 — {n}편", n=len(roots))
         if s["merged"]:
             msg += t(" · 휴대폰에서 단 메모 {n}개를 합쳤습니다", n=s["merged"])
         ui.notify(msg, type="positive")
@@ -1116,30 +1117,18 @@ def build_home(state: dict) -> None:
         mobile_changed()
 
     async def toggle_phone(roots: list[Path]) -> None:
-        """'휴대폰에 받아 두기' 한 단추 — 모두 받아 뒀으면 빼고, 아니면 아직 안 받아 둔 것을 받아 둔다."""
+        """'휴대폰으로 보내기/빼기' — 모두 보냈으면 빼고, 아니면 아직 안 보낸 것을 보낸다(서재 동기화를 끈 사람만 본다)."""
         roots = [Path(r) for r in roots]
         if roots and all(r.stem in data["mobile"] for r in roots):
             await drop_from_phone(roots)
         else:
             await keep_on_phone([r for r in roots if r.stem not in data["mobile"]])
 
-    def phone_toggle_button(roots: list[Path], *, flat: bool = True):  # noqa: ANN202 — ui.button
-        """받아 두기 켜고 끄는 단추 — 단일 논문 미리보기·여러 편 일괄 동작이 같은 것을 쓴다."""
-        kept = sum(1 for r in roots if Path(r).stem in data["mobile"])
-        on = bool(roots) and kept == len(roots)
-        label = (t("휴대폰에 받아 둠") if on else
-                 t("휴대폰에 받아 두기") if len(roots) == 1 or not kept else
-                 t("휴대폰에 받아 두기 ({n}편 더)", n=len(roots) - kept))
-        tip = (t("휴대폰이 미리 내려받아 오프라인에서도 읽습니다 — 누르면 뺍니다")
-               + (t(" (휴대폰에서는 컬렉션에서 계속 열 수 있습니다)") if library_sync.enabled() else
-                  t(" (휴대폰에서 빠지고 공유 링크도 꺼집니다)"))) if on else \
-            t("휴대폰({site})이 미리 내려받아 오프라인에서도 읽습니다 — 하이라이트·메모는 이 컴퓨터와 오갑니다",
-              site=pages.DOMAIN)
-        b = ui.button(label, icon="offline_pin" if on else "download_for_offline", color=None,
-                      on_click=lambda: toggle_phone(roots))
-        b.props("flat dense no-caps" + (" size=sm" if flat else "")).classes("md4-act" if not flat else "") \
-            .classes("text-primary" if on else "text-grey-8")
-        return b.tooltip(tip)
+    def phone_tip(sent: bool) -> str:
+        """휴대폰으로 보내기/빼기 툴팁 — 서재 동기화를 끈 사람만 본다(켜면 서재 전체가 휴대폰에 있다)."""
+        return (t("휴대폰에서 뺍니다 — 휴대폰에서 단 메모는 먼저 이 컴퓨터에 합치고, 공유 링크도 꺼집니다") if sent else
+                t("Google Drive를 거쳐 휴대폰({site})에서 읽습니다 — 오프라인에서도, 하이라이트·메모는 이 컴퓨터와 오갑니다",
+                  site=pages.DOMAIN))
 
     # ---- 휴대폰 웹 리더 바로가기 · 공유 링크 ----
     def open_web_reader(key: str | None = None) -> None:
@@ -1735,13 +1724,14 @@ def build_home(state: dict) -> None:
                 ui.menu_item(("✓ " if key == cur_target else "    ") + t(label),
                              on_click=lambda _, k=key: set_export_target(k)).props("dense")
             ui.separator()
-            ui.menu_item(t("이 목록의 논문을 폴더로 저장"),
+            ui.menu_item(t("이 목록의 논문을 저장 위치에 저장"),
                          on_click=lambda: save_to_library([r["root"] for r in visible_rows()])).props("dense")
-            ui.separator()
-            ui.menu_item(t("이 목록의 번역한 논문을 모두 휴대폰에 받아 두기"),
-                         on_click=lambda: keep_on_phone([r["root"] for r in visible_rows()
-                                                         if r["has_ko"] and r["name"] not in data["mobile"]])) \
-                .props("dense")
+            if not library_sync.enabled():   # 동기화를 켜면 서재 전체가 휴대폰에 있다
+                ui.separator()
+                ui.menu_item(t("이 목록의 번역한 논문을 모두 휴대폰으로 보내기"),
+                             on_click=lambda: keep_on_phone([r["root"] for r in visible_rows()
+                                                             if r["has_ko"] and r["name"] not in data["mobile"]])) \
+                    .props("dense")
 
     def toggle_hidden_view() -> None:
         view["show_hidden"] = not view["show_hidden"]
@@ -1959,7 +1949,8 @@ def build_home(state: dict) -> None:
             with ui.column().classes("md4-empty w-full gap-1"):
                 if view["phone"]:   # 휴대폰 필터 — 올리기 안내 대신 받아 두는 길만
                     ui.icon("smartphone", size="44px").classes("text-grey-5")
-                    ui.label(t("여기에는 휴대폰에 받아 둔 논문이 없습니다 — 논문을 고르고 '휴대폰에 받아 두기'를 누르세요.")) \
+                    ui.label(t("여기에는 휴대폰에 받아 둔 논문이 없습니다 — 휴대폰 카드의 '받아 두기'로, 서재 동기화를 껐다면 "
+                               "논문 ⋯의 '휴대폰으로 보내기'로 더합니다.")) \
                         .classes("text-sm text-gray-500")
                     return
                 ui.icon("cloud_upload", size="44px").classes("text-primary")
@@ -2356,20 +2347,7 @@ def build_home(state: dict) -> None:
             notes_box = ui.column().classes("gap-1 w-full")
             load_into(notes_box, root, "notes", "", draw_notes)
         foot = ui.column().classes("md4-pv-foot gap-1 w-full")
-        with foot, ui.row().classes("md4-pv-redo items-center gap-1 w-full no-wrap"):
-            card.redo_buttons()
-        # 휴대폰 — 받아 두기(켜고 끄는 한 단추) · 공유 링크 · (휴대폰에서 열 수 있으면) 브라우저로 열기
-        shared = bool(share_of(Path(root)))
-        with foot, ui.row().classes("items-center gap-1 w-full no-wrap"):
-            phone_toggle_button([Path(root)])
-            ui.button(t("공유 링크"), icon="link" if shared else "share", color=None,
-                      on_click=lambda: share_dialog([Path(root)])) \
-                .props("flat dense no-caps size=sm").classes("text-primary" if shared else "text-grey-8") \
-                .tooltip(t("공유 링크 — 링크를 켜 둔 논문") if shared else t("공유 링크 만들기"))
-            if Path(root).stem in data["reader"]:
-                ui.button(icon="open_in_new", color=None, on_click=lambda: open_web_reader(Path(root).stem)) \
-                    .props("flat dense round size=sm").classes("text-grey-7") \
-                    .tooltip(t("휴대폰 화면으로 열기 — 기본 브라우저에서"))
+        # 아래 줄은 자주 쓰는 것만 — 서지 다시 받기·공유 링크·휴대폰은 ⋯ 메뉴로
         with foot, ui.row().classes("items-center gap-1 w-full no-wrap"):
             ui.button(t("열기"), icon="menu_book", on_click=lambda: open_wd(r["root"])) \
                 .props("unelevated dense no-caps color=primary").classes("q-px-sm") \
@@ -2386,6 +2364,23 @@ def build_home(state: dict) -> None:
                     .props("flat dense no-caps size=sm color=primary") \
                     .tooltip(t("번역 마크다운 zip — {native} (마크다운+이미지)", native=langs.get(r.get('lang') or 'ko').native))
             ui.space()
+            # 툴팁은 달지 않는다 — 위로 열리는 메뉴를 가린다
+            more = ui.button(icon="more_horiz", color=None).props("flat dense round size=sm").classes("text-grey-7")
+            with more, ui.menu().props("anchor='top right' self='bottom right'"):
+                card.redo_menu_items(more)
+                ui.separator()
+                shared = bool(share_of(Path(root)))
+                ui.menu_item(t("공유 링크…") + (" ✓" if shared else ""),
+                             on_click=lambda: share_dialog([Path(root)])).props("dense") \
+                    .tooltip(t("공유 링크 — 링크를 켜 둔 논문") if shared else t("공유 링크 만들기"))
+                if Path(root).stem in data["reader"]:
+                    ui.menu_item(t("휴대폰 화면으로 열기"), on_click=lambda: open_web_reader(Path(root).stem)) \
+                        .props("dense").tooltip(t("휴대폰 화면으로 열기 — 기본 브라우저에서"))
+                if not library_sync.enabled():   # 동기화를 켜면 서재 전체가 휴대폰에 있다 — 보내기는 끈 사람에게만
+                    sent = Path(root).stem in data["mobile"]
+                    ui.menu_item(t("휴대폰에서 빼기") if sent else t("휴대폰으로 보내기"),
+                                 on_click=lambda: toggle_phone([Path(root)])).props("dense") \
+                        .tooltip(phone_tip(sent))
             ui.button(icon="push_pin", on_click=lambda: toggle_pin(r)) \
                 .props("flat dense round size=sm " + ("color=primary" if r["pinned"] else "color=grey-6")) \
                 .tooltip(t("고정 해제") if r["pinned"] else t("목록 맨 위에 고정"))
@@ -2441,6 +2436,10 @@ def build_home(state: dict) -> None:
                         lambda: make_mobile_audio(paths),
                         t("번역 본문을 읽은 음성을 이 컴퓨터에 만듭니다 — 뷰어의 듣기에서 바로 듣고, 휴대폰에서 열 수 있는 "
                           "논문은 휴대폰에서도 듣습니다(화면을 꺼도, CarPlay에서도)"))
+                    if not library_sync.enabled():   # 동기화를 켜면 서재 전체가 휴대폰에 있다 — 보내기는 끈 사람에게만
+                        sent = bool(paths) and all(p.stem in data["mobile"] for p in paths)
+                        act(t("휴대폰에서 빼기") if sent else t("휴대폰으로 보내기"),
+                            "phonelink_erase" if sent else "smartphone", lambda: toggle_phone(paths), phone_tip(sent))
                 if len(paths) == 1 and with_audio:   # 지금 있는 음성 — 무엇으로·언제 (다시 만들지 고를 때 보라고)
                     ui.label("🎧 " + audio_label(data["reader"][paths[0].stem]["audio"])).classes("md4-act-note")
                 if with_audio:
@@ -2449,21 +2448,11 @@ def build_home(state: dict) -> None:
                             .props("flat dense no-caps") \
                             .tooltip(t("만든 듣기 음성을 이 컴퓨터와 휴대폰에서 지웁니다(서재 동기화가 켜져 있으면 다른 컴퓨터에서도) — 논문은 그대로"))
 
-            def phone_part() -> None:
-                """휴대폰 — 받아 두기(켜고 끄는 한 단추) · 공유 링크. 서재 동기화를 꺼도 화면은 같다(받아 두기가 올린다)."""
-                ui.label(t("휴대폰")).classes("md4-act-h")
-                with ui.element("div").classes("md4-act-grid"):
-                    phone_toggle_button(paths, flat=False)
-                    act(t("공유 링크"), "link", lambda: share_dialog(paths),
-                        t("링크가 있는 사람 누구나 읽기 전용으로 — '제목 — 링크'로 한꺼번에 복사합니다"))
-
             def export_part() -> None:
                 ui.label(t("내보내기")).classes("md4-act-h")
                 with ui.element("div").classes("md4-act-grid"):
                     act(t("내보내기…"), "download", export_bulk,
-                        t("영어·번역 마크다운, 원본 PDF, 메모 등을 골라 zip 하나로 — 논문마다 자기 폴더"))
-                    if settings_dialog.any_library_dirs():
-                        act(t("폴더로 저장"), "drive_file_move", lambda: save_to_library(paths), t("저장 위치로 내보내기"))
+                        t("영어·번역 마크다운, 원본 PDF, 메모 등을 골라 zip 하나로 받거나, 저장 위치(컬렉션 폴더)에 저장합니다"))
 
             def collection_part() -> None:
                 # 추가 = 다른 소속은 그대로 두고 더하기, 빼기 = 그 소속만 떼기(그 폴더의 사본도 정리)
@@ -2492,7 +2481,6 @@ def build_home(state: dict) -> None:
             with ui.column().classes("md4-pv-bulk gap-0 w-full q-mt-sm"):
                 process_part(main=bool(untranslated))
                 export_part()
-                phone_part()
                 collection_part()
 
     def draw_summary() -> None:
@@ -2657,7 +2645,7 @@ def build_home(state: dict) -> None:
                         .props('accept=".pdf,.md,.markdown"').classes("md4-upload") \
                         .tooltip(t("PDF·마크다운 고르기 — 창 위로 끌어다 놓아도 됩니다"))
                 with ui.button(icon="more_horiz", color=None).props("flat dense round").classes("text-grey-7") \
-                        .tooltip(t("숨긴 논문 · 내보내기 형식 · 이 목록 저장 · 휴대폰에 받아 두기")):
+                        .tooltip(t("숨긴 논문 · 내보내기 형식 · 이 목록 저장")):
                     more_menu()
                 pv["btn"] = ui.button(icon="view_sidebar", color=None, on_click=toggle_preview) \
                     .props("flat dense round").classes("text-primary") \

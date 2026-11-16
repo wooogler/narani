@@ -579,6 +579,19 @@ class MetaCard:
         if not ok:
             ai.disable()
 
+    def redo_menu_items(self, busy_btn) -> None:  # noqa: ANN001 — 도는 동안 돌 단추(홈 미리보기의 ⋯)
+        """홈 미리보기 ⋯ 메뉴의 '서지 다시 받기' 두 줄 — redo_buttons와 같은 동작(메뉴는 닫히니 도는 표시는 busy_btn에)."""
+        from nicegui import ui
+
+        ui.menu_item(t("온라인에서 다시 찾기"), on_click=lambda: self.redo_online(busy_btn)).props("dense") \
+            .tooltip(t("OpenAlex·Crossref 등에서 출판 기록(BibTeX용)을 새로 받습니다 — 손으로 고친 칸은 그대로"))
+        ok = ai_ready()
+        item = ui.menu_item(t("AI로 다시 추출"), on_click=lambda: self.redo_ai(busy_btn)).props("dense")
+        item.tooltip(t("본문 앞부분에서 제목·저자·연도·venue를 AI로 다시 뽑습니다 — 손으로 고친 칸은 그대로")
+                     if ok else t("AI 키가 없어 쓸 수 없습니다 — ⚙ 설정 → AI에서 키를 넣으세요"))
+        if not ok:
+            item.props("disable")
+
     # ----- 다시 받기 -----
 
     async def redo_online(self, btn) -> None:  # noqa: ANN001
