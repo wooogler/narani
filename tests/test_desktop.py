@@ -153,6 +153,14 @@ def test_configure_sets_window_icon_and_downloads():
         assert Path(app.native.start_args["icon"]).is_file()  # macOS Dock 아이콘
         # private_mode(기본 True)면 시작할 때 웹뷰 데이터가 지워져 읽던 자리(localStorage)가 사라진다
         assert app.native.start_args["private_mode"] is False
+        # ⌘+/⌘−는 웹뷰 프로세스에서 — spawn으로 넘어가니 pickle돼야 한다
+        import pickle
+
+        from narani.ui import page_zoom
+
+        func = app.native.start_args["func"]
+        assert func is page_zoom.webview_started
+        assert pickle.loads(pickle.dumps(func)) is func
     finally:
         for cfg in (app.native.window_args, app.native.settings, app.native.start_args):
             cfg.clear()

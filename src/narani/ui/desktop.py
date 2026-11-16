@@ -267,6 +267,11 @@ def configure() -> None:
     # webview.start()의 인자라 start_args에 넣는다. 형제 창(§ui/window.py)도 같은 값이어야 한다 —
     # 하나라도 켜져 있으면 그 창이 뜰 때 같은 스토어를 지워 버린다.
     app.native.start_args["private_mode"] = False
+    # ⌘+ / ⌘− / ⌘0 — 웹뷰의 페이지 확대(§ui/page_zoom.py). 웹뷰 프로세스에서 돌아야 해서 start의 func로 넘긴다
+    # (모듈 함수라 이름으로 pickle된다).
+    from narani.ui import page_zoom
+
+    app.native.start_args["func"] = page_zoom.webview_started
     if ICON.is_file():
         # macOS Dock 아이콘 (setApplicationIconImage_). 번들 없이 띄워도 파이썬 아이콘이 뜨지 않는다.
         app.native.start_args["icon"] = str(ICON)
