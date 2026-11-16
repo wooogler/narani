@@ -150,6 +150,7 @@ def test_upload_then_import_on_other_computer(two):
 def test_quiet_after_sync_and_after_viewing(two):
     a, b = two
     amd4 = make_paper(a.ws)
+    (amd4 / pack.FIG_ALTS).write_text(json.dumps({"version": 3, "key": "a-path-key", "alts": {"f1": "x"}}))
     with a.on():
         x = projects.create("X")
     st = json.loads((amd4 / "status.json").read_text())       # 옛 파일처럼 소속이 앞에 — 받는 쪽이 다시 적으면 순서가 바뀐다
@@ -164,9 +165,14 @@ def test_quiet_after_sync_and_after_viewing(two):
     st = json.loads((bmd4 / "status.json").read_text())
     st.update(opened_at=time.time(), left_panel="notes", ko_display="side")
     (bmd4 / "status.json").write_text(json.dumps(st))
+    # 그림 설명 기록의 열쇠는 PDF 절대경로·mtime으로 만든다 — 컴퓨터마다 다르다
+    (bmd4 / pack.FIG_ALTS).write_text(json.dumps({"version": 3, "key": "b-path-key", "alts": {"f1": "x"}}))
     (bmd4 / "notes").mkdir(exist_ok=True)
     (bmd4 / "notes" / "_tabs.json").write_text(json.dumps({"tabs": [], "view": {"ratio": 30}}))
     b.sync()
+    assert a.sync()["down"] == 1                                 # 메모 탭 목록 파일(새 파일)만 받았다
+    assert json.loads((amd4 / pack.FIG_ALTS).read_text())["key"] == "a-path-key"   # 받아도 A의 열쇠
+    assert b.sync()["up"] == 0 and a.sync()["up"] == 0
     (bmd4 / "notes" / "_tabs.json").write_text(json.dumps({"tabs": [], "view": {"ratio": 70}}))
     out = b.sync()
     assert out["up"] == 0 and out["same"] == 1
@@ -417,3 +423,51 @@ def test_worker_uploads_only_after_changes_settle(tmp_path, monkeypatch):
     assert manifests(store)[0].split(".")[-3] == "2"
     assert service.info()["papers"] == 1
     monkeypatch.setattr(service, "_workspace", None)
+
+
+def test_readding_a_deleted_paper_uploads_it_again(two):
+    a, b = two
+    amd4 = make_paper(a.ws)
+    a.sync()
+    pid = workdir.hash_bytes(PDF)
+    with a.on() as lib:
+        assert lib.delete_remote(pid)
+    workdir.delete_workdir(amd4, a.ws, with_library=False)
+    again = make_paper(a.ws, name="converted_again")              # 같은 PDF를 다시 넣었다
+    assert a.sync()["up"] == 1
+    assert "remote_deleted" not in engine.read_state(again)
+    with b.on() as lib:
+        lib.refresh()
+        assert list(lib.drive_only()) == [pid]                    # 다른 컴퓨터에서 다시 가져올 수 있다
+
+
+def test_runs_through_google_drive_adapter(tmp_path, monkeypatch):
+    """실제 사용자가 쓰는 DriveStore(평평한 이름·목록·id 캐시·지우기)로 — 가짜 Drive 하나를 두 컴퓨터가 함께 쓴다."""
+    import httpx
+
+    from narani.phone import gdrive
+    from test_phone_gdrive import FakeDrive
+
+    fake = FakeDrive()
+
+    def drive_store() -> gdrive.DriveStore:
+        http = httpx.Client(transport=httpx.MockTransport(fake))
+        creds = gdrive.Credentials({"refresh_token": "rt", "access_token": "at0", "expires_at": time.time() + 3600},
+                                   "cid", "secret", http, persist=False)
+        return gdrive.DriveStore(creds, http)
+
+    a, b = Computer(tmp_path, "A", drive_store()), Computer(tmp_path, "B", drive_store())
+    amd4 = make_paper(a.ws)
+    annotations.save(WorkDir(amd4), [item("x1")])
+    a.sync()
+    bmd4 = _import_all(b)[0]
+    assert {it["id"] for it in annotations.load(WorkDir(bmd4))} == {"x1"}
+    assert b.sync()["up"] == 0
+    bump(amd4 / "out" / "paper.en.md", "edited on A\n")
+    assert a.sync()["up"] == 1
+    assert b.sync()["down"] == 1
+    assert (bmd4 / "out" / "paper.en.md").read_text() == "edited on A\n"
+    names = sorted(f["name"] for f in fake.files.values() if f.get("mimeType") != gdrive.FOLDER_MIME)
+    assert len([n for n in names if n.startswith("library/m/")]) == 1          # 옛 판은 치웠다
+    assert len([n for n in names if ".text." in n]) == 1
+    assert len(names) == len(set(names))                                      # 같은 이름이 두 벌 생기지 않았다

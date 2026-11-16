@@ -1032,11 +1032,22 @@ def build_home(state: dict) -> None:
         refresh_views()
 
     async def connect_drive() -> bool:
-        """웹 리더용 Google Drive 연결 (§ui.audio_dialog) — 되면 목록을 다시 그린다."""
+        """웹 리더용 Google Drive 연결 (§ui.audio_dialog) — 되면 목록을 다시 그리고, 서재 동기화를 아직 안 물었으면 묻는다
+        (새 컴퓨터: 연결 → '서재 N편 있습니다' → 켜기 → Drive 서재에서 모두 가져오기)."""
         ok = await audio_dialog.connect_drive()
         if ok:
             mobile_changed()
+            if library_sync.should_ask():
+                with host:   # 머리 줄은 방금 다시 그려졌다 — 대화상자는 고정 자리에
+                    await library_sync_ui.ask(after_ask)
         return ok
+
+    def after_ask() -> None:
+        """서재 동기화를 켰으면 'Drive 서재'로 — 첫 올리기 진행과 가져올 논문이 거기 보인다."""
+        if library_sync.enabled():
+            pick_scope(DRIVE)
+        else:
+            refresh_views(rescan=True)
 
     async def mobile_call(fn, roots: list[Path], busy: str, progress: dict | None = None):  # noqa: ANN001, ANN202
         """연결을 확인하고(없으면 연결부터) fn(roots)를 돌린다 (§ui.audio_dialog.drive_call)."""
@@ -2658,4 +2669,4 @@ def build_home(state: dict) -> None:
         open_wizard(first=True)
     elif library_sync.should_ask():   # Drive를 연결했는데 서재 동기화를 켤지 아직 안 물었다 — 한 번
         with host:   # 타이머 콜백은 이 자리(host) 안에서 돈다 — 대화상자를 거기 짓는다
-            ui.timer(0.8, lambda: library_sync_ui.ask(lambda: refresh_views(rescan=True)), once=True)
+            ui.timer(0.8, lambda: library_sync_ui.ask(after_ask), once=True)

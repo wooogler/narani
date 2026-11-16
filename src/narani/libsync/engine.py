@@ -302,9 +302,13 @@ class Library:
             rsum = self.manifest(R[2])
             if rsum is None:
                 raise NotReady(R[2])
+            if int(rsum.get("format") or 1) > FORMAT:
+                raise NotReady(f"새 Narani가 쓴 형식({rsum.get('format')}) — 앱을 업데이트하세요")
             if rsum.get("deleted"):
-                if S != (R[0], R[1]):
-                    st["remote_deleted"] = rsum["deleted"]
+                if S is None:   # 지운 뒤에 이 컴퓨터에서 같은 PDF를 새로 넣었다 — 새 판으로 되살린다
+                    self._upload(md4, st, files, pid, R[0] + 1, rsum)
+                    return "up"
+                st["remote_deleted"] = rsum["deleted"]
                 write_state(md4, st)
                 return "deleted"
             st.pop("remote_deleted", None)
@@ -590,6 +594,8 @@ class Library:
             man = self.manifest(R[2])
             if man is None or man.get("deleted"):
                 raise FileNotFoundError(pid)
+            if int(man.get("format") or 1) > FORMAT:
+                raise NotReady(f"새 Narani가 쓴 형식({man.get('format')}) — 앱을 업데이트하세요")
             try:   # 소속을 맞추려면 컬렉션 목록이 먼저 있어야 한다
                 self.sync_collections()
             except Exception:  # noqa: BLE001

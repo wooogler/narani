@@ -31,8 +31,12 @@ META = "extract/meta.json"
 TABS = "notes/_tabs.json"
 ANNOS = "annotations.json"
 PHONE = "phone.json"
+FIG_ALTS = "extract/figure_alts.json"
 # status.json에서 컴퓨터마다 다른 값 — 올리지 않고, 받을 때 이 컴퓨터 값을 지킨다
 DEVICE_STATUS_KEYS = ("opened_at", "left_panel", "pinned_at", "hidden", "ko_display")
+# 파일별로 컴퓨터마다 다른 JSON 키 — PDF 절대경로(source)와 그 경로·mtime으로 만든 캐시 열쇠(figure_alts의 key)는
+# 컴퓨터마다 달라 올리면 두 컴퓨터가 번갈아 다시 올리게 된다
+DEVICE_KEYS = {STATUS: DEVICE_STATUS_KEYS, META: ("source",), TABS: ("view",), FIG_ALTS: ("key",)}
 
 
 def excluded(rel: str) -> bool:
@@ -70,19 +74,12 @@ def _dump(obj: object) -> bytes:
 
 
 def stored(rel: str, raw: bytes) -> bytes:
-    """올릴 바이트 — 컴퓨터마다 다른 값을 뗀다(JSON이 아니면 그대로)."""
-    if rel == STATUS:
+    """올릴 바이트 — 컴퓨터마다 다른 값(DEVICE_KEYS)을 뗀다(JSON이 아니면 그대로)."""
+    keys = DEVICE_KEYS.get(rel)
+    if keys:
         d = _json(raw)
-        if isinstance(d, dict):
-            return _dump({k: v for k, v in d.items() if k not in DEVICE_STATUS_KEYS})
-    elif rel == META:
-        d = _json(raw)
-        if isinstance(d, dict) and "source" in d:
-            return _dump({k: v for k, v in d.items() if k != "source"})
-    elif rel == TABS:
-        d = _json(raw)
-        if isinstance(d, dict) and "view" in d:
-            return _dump({k: v for k, v in d.items() if k != "view"})
+        if isinstance(d, dict) and any(k in d for k in keys):
+            return _dump({k: v for k, v in d.items() if k not in keys})
     return raw
 
 
@@ -112,13 +109,12 @@ def applied(rel: str, remote: bytes, local: bytes | None, *, source: str | None 
             return _dump({**d, "source": source})
     if local is None:
         return remote
-    if rel in (STATUS, TABS, PHONE):
+    keys = DEVICE_KEYS.get(rel)
+    if keys or rel == PHONE:
         r, lo = _json(remote), _json(local)
         if isinstance(r, dict) and isinstance(lo, dict):
-            if rel == STATUS:
-                return _dump({**r, **{k: lo[k] for k in DEVICE_STATUS_KEYS if k in lo}})
-            if rel == TABS:
-                return _dump({**r, **({"view": lo["view"]} if "view" in lo else {})})
+            if keys:
+                return _dump({**r, **{k: lo[k] for k in keys if k in lo}})
             try:
                 best = max(float(r.get("applied") or 0), float(lo.get("applied") or 0))
             except (TypeError, ValueError):

@@ -96,11 +96,21 @@ def _open_store():  # noqa: ANN202
 def library() -> engine.Library:
     """엔진 — 작업 폴더·설정 폴더·저장소가 같으면 하나를 다시 쓴다(원격 목록·manifest 캐시를 들고 있다)."""
     global _lib
-    key = (str(workspace()), str(config.CONFIG_DIR), str(local_store_dir()), bool(available()))
+    key = (str(workspace()), str(config.CONFIG_DIR), str(local_store_dir()), bool(available()), _token_tag())
     if _lib is None or _lib[0] != key:
         _lib = (key, engine.Library(_open_store(), workspace(), config.CONFIG_DIR,
                                     busy=lambda md4: (_busy or _default_busy)(md4)))
     return _lib[1]
+
+
+def _token_tag() -> str:
+    """Drive 연결이 바뀌면(끊고 다시 연결) 엔진을 새로 — 옛 토큰을 든 저장소를 계속 쓰지 않게."""
+    if local_store_dir() is not None:
+        return ""
+    from narani.phone import gdrive
+
+    tok = gdrive.load_token() or {}
+    return pack.sha(str(tok.get("refresh_token", "")).encode())[:12]
 
 
 # ---- 설정 ----
@@ -218,6 +228,7 @@ def sync_now(on_progress: Callable[[int, int, str], None] | None = None) -> dict
 def import_papers(pids: list[str], on_progress: Callable[[int, int, str], None] | None = None) -> dict:
     """Drive 서재 논문들을 이 컴퓨터로. 반환: {done: [작업 디렉토리], failed: [(pid, 까닭)]}."""
     lib = library()
+    lib.refresh()   # 그사이 다른 컴퓨터가 고쳤으면 옛 manifest의 묶음은 이미 지워졌다
     rows = {r["pid"]: r for r in drive_only()}
     done: list[Path] = []
     failed: list[tuple[str, str]] = []
@@ -318,7 +329,12 @@ class _Worker(threading.Thread):
             lib.refresh()
             self.listed = time.time()
             _retry_deletes(lib)
-            lib.sync_collections()
+            coll_error = ""
+            try:
+                lib.sync_collections()
+            except Exception as e:  # noqa: BLE001 — 컬렉션 문서 하나 때문에 논문 동기화가 멈추지 않게
+                log.info("컬렉션 동기화 실패: %s", e)
+                coll_error = str(e) or type(e).__name__
             for pid, h in lib.heads.items():
                 md4 = local.get(pid)
                 if md4 is not None:
@@ -338,8 +354,12 @@ class _Worker(threading.Thread):
                     out["errors"].append((md4.stem, str(e) or type(e).__name__))
             if out["up"] or out["down"] or out["merged"]:
                 log.info("서재 동기화: 올림 %d · 받음 %d · 병합 %d", out["up"], out["down"], out["merged"])
+            if coll_error:
+                out["errors"].insert(0, ("collections", coll_error))
             _bump(last=out, last_ok=time.time(), done=len(todo),
                   error="; ".join(f"{a}: {b}" for a, b in out["errors"][:3]))
+            if out["errors"]:   # 할당량·서버 오류 — 30초마다 다시 두드리지 않고 간격을 늘린다
+                raise RuntimeError(out["errors"][0][1])
         finally:
             _bump(running=False, phase="")
 
