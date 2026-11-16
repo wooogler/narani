@@ -624,15 +624,15 @@
     var kind = err && err.kind;
     if (kind === 'gone') return {text: md4T('이 공유 링크는 열 수 없어요 — 보낸 사람이 공유를 껐거나 지웠어요.')};
     // 꺼진 망에서는 다시 연결도 못 한다 — 승인이 만료됐어도 오프라인 안내만
-    if (navigator.onLine === false) return {text: md4T('오프라인 — 받아 둔 논문만 열려요')};
+    if (navigator.onLine === false) return {text: md4T('오프라인 — 내려받은 논문만 열려요')};
     if (reconnecting && kind === 'auth') return {text: md4T('Google Drive에 다시 연결하는 중…')};
     if (source && source.drive && (kind === 'auth' || authError)){
       var first = true;
       try { first = !localStorage.getItem('narani:gconn'); } catch (e) {}
-      return {text: first ? md4T('Google Drive에 연결해 데스크톱에서 보낸 논문을 받아요.') : md4T('Google Drive 연결이 만료됐어요.'),
+      return {text: first ? md4T('Google Drive에 연결해 데스크톱 서재의 논문을 읽어요.') : md4T('Google Drive 연결이 만료됐어요.'),
               button: first ? md4T('Google Drive 연결') : md4T('다시 연결'), act: function(){ gSignIn(); }};
     }
-    if (kind === 'nofolder') return {text: md4T('Drive에 Narani 폴더가 없어요. 데스크톱 앱에서 먼저 웹 리더로 보내 주세요.')};
+    if (kind === 'nofolder') return {text: md4T('Drive에 Narani 폴더가 없어요. 데스크톱 앱에서 먼저 논문을 휴대폰에 받아 두세요.')};
     return {text: md4T('목록을 불러오지 못했어요. 인터넷 연결을 확인하세요.')};
   }
 
@@ -728,13 +728,55 @@
   function el(tag, cls, text){ var n = doc.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
   // ---- 범위 (컬렉션) ----
   // 데스크톱이 목록에 컬렉션 계층(collections)과 논문마다 소속(projects)을 실으면 첫 화면은 범위 고르기 —
-  // 보낸 논문 / 전체 / 컬렉션(접기) / 미분류. 들어가면 그 논문들. 하위 컬렉션에서 온 논문은 '↳ 하위'(데스크톱 홈과 같은 규칙).
-  // 옛 목록(collections 없음)이나 컬렉션이 없으면 지금처럼 평평한 목록 하나. sent가 없는 옛 줄은 보낸 논문으로 읽는다.
+  // 받아 둔 논문 / 전체 / 컬렉션(접기) / 미분류. 들어가면 그 논문들. 하위 컬렉션에서 온 논문은 '↳ 하위'(데스크톱 홈과 같은 규칙).
+  // 옛 목록(collections 없음)이나 컬렉션이 없으면 지금처럼 평평한 목록 하나.
+  // '받아 둔 논문' = 휴대폰이 미리 내려받는 논문 — 목록 줄의 sent(없는 옛 줄은 받아 둔 것으로). 휴대폰에서도 논문마다 켜고
+  // 끈다: 고른 것은 이 기기(narani:keep)에 먼저 두고 mobile/keep.json에 올린다 — 데스크톱이 그것을 sent로 읽고 다음에 목록에
+  // 적는다. 데스크톱이 더 나중에 정했으면(sent_at) 그것이 이긴다. 같은 표시를 데스크톱 홈의 휴대폰 아이콘·'휴대폰' 필터가 쓴다.
   var S_ALL = '__all__', S_NONE = '__none__', S_SENT = '__sent__';
   var VIEW = 'list', SCOPE = lsGet('narani:scope', '') || '';
+  var KEEP_FILE = 'mobile/keep.json', KEEP = lsGet('narani:keep', {}) || {};
   function colls(){ return INDEX && Array.isArray(INDEX.collections) ? INDEX.collections : []; }
   function useScopes(){ return colls().length > 0; }
-  function isSent(e){ return e.sent !== false; }
+  function isSent(e){
+    var k = KEEP[e.key];
+    if (k && k.at > (e.sent_at || 0)) return !!k.on;
+    return e.sent !== false;
+  }
+  function canKeep(){ return !!source && !SHARE_ID; }
+  function pushKeep(){   // 이 기기에서 고른 것을 Drive의 휴대폰 기록에 — 실패하면 다음에 목록을 받을 때 다시
+    if (!canKeep()) return Promise.resolve();
+    lsSet('narani:keepup', 1);
+    return source.put(KEEP_FILE, {format: 1, items: KEEP}).then(function(){ lsSet('narani:keepup', 0); }, function(){});
+  }
+  function syncKeep(){   // 목록을 받을 때 — 다른 휴대폰이 고른 것과 합치고(나중 것), 못 올린 것이 있으면 올린다
+    if (!canKeep()) return;
+    source.get(KEEP_FILE).then(function(d){ return (d && d.items) || {}; }, function(){ return {}; }).then(function(remote){
+      var changed = false, k;
+      for (k in remote){
+        var r = remote[k];
+        if (r && typeof r.on === 'boolean' && (!KEEP[k] || KEEP[k].at < r.at)){ KEEP[k] = {on: r.on, at: +r.at || 0}; changed = true; }
+      }
+      var ahead = lsGet('narani:keepup', 0);
+      for (k in KEEP) if (!remote[k] || remote[k].at < KEEP[k].at) ahead = 1;
+      lsSet('narani:keep', KEEP);
+      if (ahead) pushKeep();
+      if (changed && INDEX){ renderLib(); if (autoSave()) saveOffline(); }
+    });
+  }
+  function toggleKeep(e){
+    var on = !isSent(e);
+    KEEP[e.key] = {on: on, at: Date.now()};
+    lsSet('narani:keep', KEEP);
+    if (!on && have0(e) && !OFFLINE && navigator.onLine !== false){   // 빼면 이 기기에 내려받은 사본도 지운다(저장 공간) —
+      // 다시 열면 그때 받는다. 오프라인이면 그것이 하나뿐인 사본이라 남긴다
+      setHave(e.file, null);
+      if (window.caches) caches.open(DC).then(function(c){ c.delete('__data/' + e.file); }).catch(function(){});
+    }
+    pushKeep(); renderLib();
+    if (on && autoSave()) saveOffline();
+  }
+  function have0(e){ return !!haveMap()[e.file]; }
   function libPapers(){   // 같은 논문(pid)을 두 컴퓨터가 서로 다른 이름으로 실었으면 하나만 — 보낸 쪽을 앞세운다
     if (!INDEX) return [];
     var seen = {}, out = [];
@@ -774,7 +816,7 @@
     return ps.filter(function(p){ return under[p] && p !== s; });
   }
   function scopeName(s, T){
-    if (s === S_SENT) return md4T('보낸 논문');
+    if (s === S_SENT) return md4T('받아 둔 논문');
     if (s === S_NONE) return md4T('미분류');
     if (T.by[s]) return T.by[s].name;
     return md4T('모든 논문');
@@ -805,9 +847,17 @@
       au.appendChild(doc.createTextNode(fmtT(e.audio.duration)));
       tags.appendChild(au);
     }
-    // '받아 두지 않음'은 미리 받아 둘 논문(보낸 논문)에만 — 서재에서 온 논문은 열 때 받는 게 보통이다
-    if (isSent(e) && !off && !OFFLINE && !autoSave()) tags.appendChild(el('span', 'tag', md4T('받아 두지 않음')));
-    if (li.className === 'na') tags.appendChild(el('span', 'tag na-t', md4T('받아 두지 않음')));
+    // 받아 두기 — 눌러서 켜고 끈다(연결돼 있을 때). '아직 내려받지 않음'은 받아 둔 논문인데 이 기기에 아직 없을 때만
+    if (canKeep() || isSent(e)){
+      var kp = el('span', 'tag keep' + (isSent(e) ? ' on' : ''), isSent(e) ? '✓ ' + md4T('받아 둠') : '⤓ ' + md4T('받아 두기'));
+      if (canKeep()){
+        kp.setAttribute('role', 'button'); kp.setAttribute('data-keep', e.key);
+        kp.setAttribute('aria-label', isSent(e) ? md4T('받아 둔 논문에서 빼기') : md4T('이 논문을 받아 두기 — 미리 내려받아 오프라인에서도'));
+      }
+      tags.appendChild(kp);
+    }
+    if (isSent(e) && !off && !OFFLINE && !autoSave()) tags.appendChild(el('span', 'tag', md4T('아직 내려받지 않음')));
+    if (li.className === 'na') tags.appendChild(el('span', 'tag na-t', md4T('내려받지 않음')));
     if (tags.childNodes.length) a.appendChild(tags);
     li.appendChild(a);
     return li;
@@ -837,7 +887,7 @@
     }
     libList.appendChild(el('li', 'cap', md4T('서재')));
     var sent = count(S_SENT);
-    if (sent && sent < all.length) libList.appendChild(scopeRow(S_SENT, md4T('보낸 논문'), sent, 0, T));
+    if (sent && sent < all.length) libList.appendChild(scopeRow(S_SENT, md4T('받아 둔 논문'), sent, 0, T));
     libList.appendChild(scopeRow(S_ALL, md4T('모든 논문'), all.length, 0, T));
     var fold = lsGet('narani:folded', {}) || {}, hidden = {};
     T.order.forEach(function(x){
@@ -859,7 +909,7 @@
       a.href = '#!lib'; a.setAttribute('data-scope', ''); up.appendChild(a); libList.appendChild(up);
     }
     rows.forEach(function(e){ libList.appendChild(card(e, have, viaSubs(e, s, T), T)); });
-    if (INDEX && !INDEX.papers.length) libList.appendChild(el('li', 'empty', md4T('올린 논문이 없어요. 데스크톱 앱에서 웹 리더로 보내 주세요.')));
+    if (INDEX && !INDEX.papers.length) libList.appendChild(el('li', 'empty', md4T('올린 논문이 없어요. 데스크톱 앱에서 논문을 휴대폰에 받아 두세요.')));
     else if (INDEX && !rows.length) libList.appendChild(el('li', 'empty', md4T('이 범위에는 논문이 없어요.')));
   }
   function renderLib(note){
@@ -871,9 +921,9 @@
     // 머리 한 줄 — 언제 올린 목록인지, 받는 중이면 진행, 덜 받았을 때만 몇 편 받았는지. 그리고 새로 고침(↻)
     var info = [];
     if (INDEX && INDEX.updated) info.push(md4T('{date} 업데이트', {date: fmtWhen(INDEX.updated)}));
-    if (SAVING) info.push(md4T('받는 중 {n}/{m}', {n: SAVING.done, m: SAVING.total}));
-    else if (saveSet.length && n < saveSet.length) info.push(md4T('받아 둠 {n}/{m}편', {n: n, m: saveSet.length}));
-    if (OFFLINE && !note) note = md4T('오프라인 — 받아 둔 논문만 열려요');
+    if (SAVING) info.push(md4T('내려받는 중 {n}/{m}', {n: SAVING.done, m: SAVING.total}));
+    else if (saveSet.length && n < saveSet.length) info.push(md4T('내려받음 {n}/{m}편', {n: n, m: saveSet.length}));
+    if (OFFLINE && !note) note = md4T('오프라인 — 내려받은 논문만 열려요');
     if (note) info.push(note);
     libBar.appendChild(el('span', 'grow', info.join(' · ')));
     if (source){
@@ -891,13 +941,13 @@
       cb.type = 'checkbox'; cb.checked = autoSave();
       cb.onchange = function(){
         try { localStorage.setItem('narani:auto', cb.checked ? '1' : '0'); } catch (e) {}
-        renderLib();   // '음성도 받아 두기'가 바로 보이게
+        renderLib();   // '음성도 내려받기'가 바로 보이게
         if (cb.checked) saveOffline();
       };
-      // 서재 동기화가 서재 전체를 실었으면 미리 받는 건 보낸 논문뿐 — 휴대폰 저장 공간이 서재 크기로 늘지 않게
+      // 서재 동기화가 서재 전체를 실었으면 미리 받는 건 받아 둔 논문뿐 — 휴대폰 저장 공간이 서재 크기로 늘지 않게
       var some = saveSet.length < libPapers().length;
-      lab.appendChild(cb); lab.appendChild(doc.createTextNode(some ? md4T('보낸 논문을 이 기기에 받아 두기 (오프라인에서도)')
-                                                                   : md4T('모든 논문을 이 기기에 받아 두기 (오프라인에서도)')));
+      lab.appendChild(cb); lab.appendChild(doc.createTextNode(some ? md4T('받아 둔 논문을 이 기기에 내려받기 (오프라인에서도)')
+                                                                   : md4T('모든 논문을 이 기기에 내려받기 (오프라인에서도)')));
       opts.appendChild(lab);
       var withAudio = saveSet.filter(function(e){ return audioOf(e); });
       if (withAudio.length && cb.checked){   // 음성은 편당 십수 MB라 따로 고른다
@@ -908,7 +958,7 @@
           try { localStorage.setItem('narani:autoaudio', ca.checked ? '1' : '0'); } catch (e) {}
           if (ca.checked) saveOffline();
         };
-        la.appendChild(ca); la.appendChild(doc.createTextNode(md4T('음성도 받아 두기 ({n}편 · {mb}MB)', {n: withAudio.length, mb: Math.round(mb)})));
+        la.appendChild(ca); la.appendChild(doc.createTextNode(md4T('음성도 내려받기 ({n}편 · {mb}MB)', {n: withAudio.length, mb: Math.round(mb)})));
         opts.appendChild(la);
       }
     }
@@ -921,7 +971,7 @@
   var SAVING = null, OFFLINE = false;
   function saveOffline(){
     if (!INDEX || !source || SAVING || OFFLINE) return;
-    var have = haveMap(), all = libPapers().filter(isSent), failed = 0;   // 미리 받는 건 보낸 논문만
+    var have = haveMap(), all = libPapers().filter(isSent), failed = 0;   // 미리 받는 건 받아 둔 논문만
     var todo = all.filter(function(e){ return have[e.file] !== e.hash; });
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
     SAVING = {done: 0, total: todo.length};
@@ -972,7 +1022,7 @@
       }
       return source.get('index.json').then(function(ix){
         OFFLINE = false;
-        cachePut('index.json', ix); setUiLang(ix.ui_lang); pruneCache(ix); showIndex(ix); flushPending();
+        cachePut('index.json', ix); setUiLang(ix.ui_lang); pruneCache(ix); showIndex(ix); flushPending(); syncKeep();
         if (autoSave()) saveOffline();
       }, function(err){
         var pr = sourceProblem(err);
@@ -1054,6 +1104,13 @@
   doc.getElementById('back').onclick = function(){ showLib(true); };
   window.addEventListener('popstate', route);
   libList.addEventListener('click', function(e){
+    var kp = e.target.closest ? e.target.closest('[data-keep]') : null;
+    if (kp){   // 받아 두기 켜고 끄기 — 논문을 열지 않는다
+      e.preventDefault(); e.stopPropagation();
+      var ke = (INDEX ? INDEX.papers : []).filter(function(x){ return x.key === kp.getAttribute('data-keep'); })[0];
+      if (ke) toggleKeep(ke);
+      return;
+    }
     var f = e.target.closest ? e.target.closest('button[data-fold]') : null;
     if (f){   // 하위 컬렉션 접기·펴기 (이 휴대폰에 기억)
       e.preventDefault();
