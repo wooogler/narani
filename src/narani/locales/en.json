@@ -1594,5 +1594,10 @@
  "보낸 논문에서 빼기": "Remove from Sent",
  "휴대폰의 '보낸 논문'에서 빼고 미리 받아 두지 않게 합니다 — 서재 동기화가 켜져 있어 휴대폰에서는 컬렉션에서 계속 열 수 있습니다": "Removes them from 'Sent papers' on the phone and stops keeping them offline — with library sync on, they can still be opened from collections on the phone",
  "휴대폰에서 읽을 수 있게 준비하는 중… {done}/{total} {label}": "Preparing papers for the phone… {done}/{total} {label}",
- "올리는 것: 원본 PDF, 마크다운·그림, 번역(용어집·번역 캐시), 인용·서지, 하이라이트·메모, 만든 듣기 음성, 컬렉션 목록. 올리지 않는 것: API 키·설정, 음성 섹션 조각, 미리보기 캐시, 컬렉션 폴더 위치, 고정 표시.": "Uploaded: original PDF, Markdown and figures, translations (glossary and translation cache), citations and bibliography, highlights and notes, listening audio you made, collection list. Not uploaded: API keys and settings, audio section pieces, preview cache, collection folder locations, pins."
+ "올리는 것: 원본 PDF, 마크다운·그림, 번역(용어집·번역 캐시), 인용·서지, 하이라이트·메모, 만든 듣기 음성, 컬렉션 목록. 올리지 않는 것: API 키·설정, 음성 섹션 조각, 미리보기 캐시, 컬렉션 폴더 위치, 고정 표시.": "Uploaded: original PDF, Markdown and figures, translations (glossary and translation cache), citations and bibliography, highlights and notes, listening audio you made, collection list. Not uploaded: API keys and settings, audio section pieces, preview cache, collection folder locations, pins.",
+ "화면을 따라 대화 바꾸기": "Follow the screen",
+ "다른 논문·컬렉션으로 옮기면 그것을 두고 나눈 대화로 바꿉니다. 끄면 창을 열 때만 맞춥니다.": "Switches to the conversation about the paper or collection you move to. When off, it only matches when you open the panel.",
+ "이전 대화: {t}": "Previous conversation: {t}",
+ "바꾸기 전에 보던 대화로 돌아갑니다": "Go back to the conversation you had before the switch",
+ "설정을 저장하지 못했습니다: {e}": "Could not save the setting: {e}"
 }

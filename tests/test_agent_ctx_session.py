@@ -97,7 +97,39 @@ def test_panel_picks_context_session_on_first_open_and_only_hints_while_open():
     # 열린 채 화면이 바뀌면 세션을 바꾸지 않고 안내만 (보는 중 칩을 다시 그리는 자리에서)
     assert "ctxHint();\n  }" in js
     # 메뉴에서 고르기·새 세션·질문 보내기 = 이 맥락에서 이 세션을 쓴다
-    assert "closeMenu(); markCtx();" in js
-    assert "if (q){ markCtx(); ctxNote = null; }" in js
-    assert "function(){ markCtx(); newSession(); }" in js
+    assert "closeMenu(); markCtx(); backTo = null;" in js
+    assert "if (q){ markCtx(); ctxNote = null; backTo = null; }" in js
+    assert "function(){ markCtx(); backTo = null; newSession(); }" in js
     assert ".ag-ctxnote" in agent_panel.CSS
+
+
+def test_follow_setting_defaults_on_and_saves_to_ui(monkeypatch):
+    fastapi = pytest.importorskip("fastapi")
+    from fastapi.testclient import TestClient
+
+    from narani import config
+    from narani.ui.agent.routes import register_routes
+
+    app = fastapi.FastAPI()
+    register_routes(app, wd_for=lambda t: None, register_token=lambda wd: "x")
+    c = TestClient(app)
+    assert config.agent_follow_screen() is True                    # 기본 켜짐
+    assert c.get("/agent/models").json()["follow"] is True
+    assert c.put("/agent/prefs", json={"follow": False}).json() == {"ok": True, "follow": False}
+    assert config.load_config()["ui"]["agent_follow_screen"] is False
+    assert c.get("/agent/models").json()["follow"] is False
+
+
+def test_panel_follows_screen_but_never_interrupts_a_streaming_answer():
+    js = agent_panel.HTML if "function ctxHint" in agent_panel.HTML else agent_panel.JS
+    # 화면이 바뀌면 처음 열 때와 같은 규칙으로 — 흐르는 중·승인 대기면 바꾸지 않고 안내만
+    assert "if (follow && !streaming && !pending){" in js
+    assert "var pr = pickForContext();" in js
+    assert "if (streaming && !follow) return;" in js
+    # 쓰던 글은 떠나는 세션의 초안으로, 돌아오면 되살린다
+    assert "drafts[sid] = clearInput();" in js and "restoreInput(drafts[d.id])" in js
+    # 자동 전환 직후 머리 띠 '← 이전 대화', 누르면 그 맥락에서 다시 바꾸지 않는다(markCtx)
+    assert "backTo = null; markCtx(); ctxNote = null;" in js
+    assert 'class="ag-back"' in agent_panel.HTML and ".ag-back.on { display: block; }" in agent_panel.CSS
+    # 설정 체크 — /agent/prefs로 [ui] 전역에 저장
+    assert 'class="ag-follow"' in agent_panel.HTML and "api('PUT', '/agent/prefs', {follow: follow})" in js

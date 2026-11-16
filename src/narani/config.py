@@ -571,6 +571,14 @@ def set_section_value(section: str, field: str, value) -> None:  # noqa: ANN001
     CONFIG_PATH.chmod(0o600)
 
 
+def agent_follow_screen() -> bool:
+    """에이전트 창이 화면(논문·컬렉션)을 따라 대화를 바꾸나 — [ui].agent_follow_screen, 기본 켜짐.
+
+    끄면 창을 그 화면에서 처음 열 때만 맞춘다(열린 채 화면을 옮기면 안내 줄만).
+    """
+    return bool(load_config().get("ui", {}).get("agent_follow_screen", True))
+
+
 def set_default(field: str, value: str) -> None:
     """default_provider 등 최상위 설정 갱신."""
     cfg = load_config()

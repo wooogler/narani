@@ -1594,5 +1594,10 @@
  "보낸 논문에서 빼기": "Quitar de Enviados",
  "휴대폰의 '보낸 논문'에서 빼고 미리 받아 두지 않게 합니다 — 서재 동기화가 켜져 있어 휴대폰에서는 컬렉션에서 계속 열 수 있습니다": "Los quita de «Artículos enviados» en el móvil y deja de guardarlos sin conexión; con la sincronización activada, se pueden seguir abriendo desde las colecciones del móvil",
  "휴대폰에서 읽을 수 있게 준비하는 중… {done}/{total} {label}": "Preparando los artículos para el móvil… {done}/{total} {label}",
- "올리는 것: 원본 PDF, 마크다운·그림, 번역(용어집·번역 캐시), 인용·서지, 하이라이트·메모, 만든 듣기 음성, 컬렉션 목록. 올리지 않는 것: API 키·설정, 음성 섹션 조각, 미리보기 캐시, 컬렉션 폴더 위치, 고정 표시.": "Se sube: PDF original, Markdown e imágenes, traducciones (glosario y caché de traducción), citas y bibliografía, resaltados y notas, el audio de escucha que creaste, lista de colecciones. No se sube: claves de API y ajustes, fragmentos de audio por sección, caché de vista previa, ubicación de carpetas de colecciones, fijados."
+ "올리는 것: 원본 PDF, 마크다운·그림, 번역(용어집·번역 캐시), 인용·서지, 하이라이트·메모, 만든 듣기 음성, 컬렉션 목록. 올리지 않는 것: API 키·설정, 음성 섹션 조각, 미리보기 캐시, 컬렉션 폴더 위치, 고정 표시.": "Se sube: PDF original, Markdown e imágenes, traducciones (glosario y caché de traducción), citas y bibliografía, resaltados y notas, el audio de escucha que creaste, lista de colecciones. No se sube: claves de API y ajustes, fragmentos de audio por sección, caché de vista previa, ubicación de carpetas de colecciones, fijados.",
+ "화면을 따라 대화 바꾸기": "Seguir la pantalla",
+ "다른 논문·컬렉션으로 옮기면 그것을 두고 나눈 대화로 바꿉니다. 끄면 창을 열 때만 맞춥니다.": "Cambia a la conversación sobre el artículo o la colección a la que vas. Si está desactivado, solo se ajusta al abrir el panel.",
+ "이전 대화: {t}": "Conversación anterior: {t}",
+ "바꾸기 전에 보던 대화로 돌아갑니다": "Vuelve a la conversación que tenías antes del cambio",
+ "설정을 저장하지 못했습니다: {e}": "No se pudo guardar el ajuste: {e}"
 }
