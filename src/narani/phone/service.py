@@ -665,6 +665,11 @@ def push_library(roots: list[Path], *, phone_notes: bool = False, on_progress=No
         for k in ("uploaded", "skipped", "merged"):
             out[k] += got[k]
         out["failed"] += got["failed"]
+    try:   # 이 컴퓨터에 만든(또는 서재 동기화로 받은) 듣기 음성이 웹 리더 것보다 새것이면 올린다 — 다시 합성하지 않는다
+        out["audio"] = sync.put_audio(store, roots, newer_only=True)["sent"] if roots else 0
+    except Exception as e:  # noqa: BLE001
+        log.info("서재 논문의 음성을 웹 리더에 올리지 못함: %s", e)
+        out["audio"] = 0
     if connected():
         _remember(sync.read_index(store), store)
     return out

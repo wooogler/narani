@@ -1575,7 +1575,6 @@
  "Google Drive를 연결하면 서재(논문·번역·메모·컬렉션)를 Drive에 올려 다른 컴퓨터의 Narani에서도 같은 서재를 쓸 수 있습니다.": "Conecta Google Drive para subir tu biblioteca (artículos, traducciones, notas, colecciones) y usar la misma biblioteca en Narani en otros ordenadores.",
  "서재를 Drive에 동기화": "Sincronizar la biblioteca con Drive",
  "논문을 추가·번역·편집하거나 메모·용어집·컬렉션을 바꾸면 바뀐 논문만 뒤에서 Drive에 올리고, 다른 컴퓨터에서 바꾼 것은 받아 옵니다": "Al añadir, traducir o editar artículos, o cambiar notas, glosarios o colecciones, solo se suben a Drive en segundo plano los artículos modificados, y se descargan los cambios de otros ordenadores",
- "올리는 것: 원본 PDF, 마크다운·그림, 번역(용어집·번역 캐시), 인용·서지, 하이라이트·메모, 컬렉션 목록. 올리지 않는 것: API 키·설정, 듣기 음성, 미리보기 캐시, 컬렉션 폴더 위치.": "Se sube: PDF original, Markdown e imágenes, traducciones (glosario y caché de traducción), citas y bibliografía, resaltados y notas, lista de colecciones. No se sube: claves de API y ajustes, audio de escucha, caché de vista previa, ubicación de carpetas de colecciones.",
  "시험용 폴더를 Drive 대신 쓰는 중: {p}": "Usando una carpeta de prueba en lugar de Drive: {p}",
  "서재를 Google Drive에 동기화할까요?": "¿Sincronizar tu biblioteca con Google Drive?",
  "Drive에 다른 컴퓨터에서 올린 서재가 {n}편 있습니다. 켜면 홈의 'Drive 서재'에서 가져올 수 있고, 이 컴퓨터의 논문도 올립니다.": "Drive tiene una biblioteca de {n} artículos subida desde otro ordenador. Activa la sincronización para importarlos desde «Biblioteca de Drive» en la pantalla de inicio; también se suben los artículos de este ordenador.",
@@ -1594,5 +1593,6 @@
  "휴대폰 웹 리더의 '보낸 논문'에 올려 휴대폰이 미리 받아 둡니다(오프라인에서도) — 서재 동기화가 켜져 있어 다른 논문도 휴대폰에서 컬렉션별로 열어 읽을 수 있습니다": "Los añade a «Artículos enviados» en el lector web del móvil para que el móvil los guarde sin conexión; con la sincronización activada, los demás artículos también se pueden abrir por colecciones en el móvil",
  "보낸 논문에서 빼기": "Quitar de Enviados",
  "휴대폰의 '보낸 논문'에서 빼고 미리 받아 두지 않게 합니다 — 서재 동기화가 켜져 있어 휴대폰에서는 컬렉션에서 계속 열 수 있습니다": "Los quita de «Artículos enviados» en el móvil y deja de guardarlos sin conexión; con la sincronización activada, se pueden seguir abriendo desde las colecciones del móvil",
- "휴대폰에서 읽을 수 있게 준비하는 중… {done}/{total} {label}": "Preparando los artículos para el móvil… {done}/{total} {label}"
+ "휴대폰에서 읽을 수 있게 준비하는 중… {done}/{total} {label}": "Preparando los artículos para el móvil… {done}/{total} {label}",
+ "올리는 것: 원본 PDF, 마크다운·그림, 번역(용어집·번역 캐시), 인용·서지, 하이라이트·메모, 만든 듣기 음성, 컬렉션 목록. 올리지 않는 것: API 키·설정, 음성 섹션 조각, 미리보기 캐시, 컬렉션 폴더 위치, 고정 표시.": "Se sube: PDF original, Markdown e imágenes, traducciones (glosario y caché de traducción), citas y bibliografía, resaltados y notas, el audio de escucha que creaste, lista de colecciones. No se sube: claves de API y ajustes, fragmentos de audio por sección, caché de vista previa, ubicación de carpetas de colecciones, fijados."
 }

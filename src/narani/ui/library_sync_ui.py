@@ -76,8 +76,8 @@ def settings_block(ui, on_change: Callable[[], None] | None = None) -> None:  # 
                 if on_change:
                     on_change()
             ui.button(t("지금 동기화"), icon="sync", on_click=now).props("dense outline no-caps")
-        ui.label(t("올리는 것: 원본 PDF, 마크다운·그림, 번역(용어집·번역 캐시), 인용·서지, 하이라이트·메모, 컬렉션 목록. "
-                   "올리지 않는 것: API 키·설정, 듣기 음성, 미리보기 캐시, 컬렉션 폴더 위치.")) \
+        ui.label(t("올리는 것: 원본 PDF, 마크다운·그림, 번역(용어집·번역 캐시), 인용·서지, 하이라이트·메모, 만든 듣기 음성, "
+                   "컬렉션 목록. 올리지 않는 것: API 키·설정, 음성 섹션 조각, 미리보기 캐시, 컬렉션 폴더 위치, 고정 표시.")) \
             .classes("text-xs text-gray-400")
         if i["local"]:
             ui.label(t("시험용 폴더를 Drive 대신 쓰는 중: {p}", p=str(library_sync.local_store_dir()))) \

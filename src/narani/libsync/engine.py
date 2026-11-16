@@ -3,7 +3,7 @@
 저장소 안의 이름 (웹 리더 파일과 섞이지 않게 모두 `library/`로 시작):
   library/m/<pid>.<ver>.<dev>.json        — 논문 manifest. 판 번호·쓴 컴퓨터가 이름에 있어 목록 한 번으로 최신 판을 안다
                                            (공유 index가 없어 두 컴퓨터가 index를 덮어쓰는 경합이 없다). 가장 큰 (ver, dev)가 최신.
-  library/d/<pid>.<group>.<digest>.zip     — 묶음(text·media). 이름에 내용 지문 → 같은 묶음은 다시 올리지 않는다.
+  library/d/<pid>.<group>.<digest>.zip     — 묶음(text·media·audio). 이름에 내용 지문 → 같은 묶음은 다시 올리지 않는다.
   library/d/<pid>.pdf                      — 원본 PDF (pid가 곧 PDF 해시라 바뀌지 않는다)
   library/c/<ver>.<dev>.json               — 컬렉션 목록(이름·부모·순서·지운 id·컬렉션 용어집)
 
@@ -512,7 +512,7 @@ class Library:
         from narani import workdir
 
         packs: dict[str, str] = {}
-        for group in ("text", "media"):
+        for group in pack.GROUPS:
             rels = [r for r in files if pack.group_of(r) == group]
             if not rels:
                 continue

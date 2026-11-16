@@ -1575,7 +1575,6 @@
  "Google Drive를 연결하면 서재(논문·번역·메모·컬렉션)를 Drive에 올려 다른 컴퓨터의 Narani에서도 같은 서재를 쓸 수 있습니다.": "Connect Google Drive to upload your library (papers, translations, notes, collections) and use the same library in Narani on other computers.",
  "서재를 Drive에 동기화": "Sync library to Drive",
  "논문을 추가·번역·편집하거나 메모·용어집·컬렉션을 바꾸면 바뀐 논문만 뒤에서 Drive에 올리고, 다른 컴퓨터에서 바꾼 것은 받아 옵니다": "When you add, translate or edit papers, or change notes, glossaries or collections, only the changed papers are uploaded to Drive in the background, and changes from other computers are downloaded",
- "올리는 것: 원본 PDF, 마크다운·그림, 번역(용어집·번역 캐시), 인용·서지, 하이라이트·메모, 컬렉션 목록. 올리지 않는 것: API 키·설정, 듣기 음성, 미리보기 캐시, 컬렉션 폴더 위치.": "Uploaded: original PDF, Markdown and figures, translations (glossary and translation cache), citations and bibliography, highlights and notes, collection list. Not uploaded: API keys and settings, listening audio, preview cache, collection folder locations.",
  "시험용 폴더를 Drive 대신 쓰는 중: {p}": "Using a test folder instead of Drive: {p}",
  "서재를 Google Drive에 동기화할까요?": "Sync your library to Google Drive?",
  "Drive에 다른 컴퓨터에서 올린 서재가 {n}편 있습니다. 켜면 홈의 'Drive 서재'에서 가져올 수 있고, 이 컴퓨터의 논문도 올립니다.": "Drive has a library of {n} papers uploaded from another computer. Turn sync on to import them from 'Drive library' on the home screen; papers on this computer are uploaded too.",
@@ -1594,5 +1593,6 @@
  "휴대폰 웹 리더의 '보낸 논문'에 올려 휴대폰이 미리 받아 둡니다(오프라인에서도) — 서재 동기화가 켜져 있어 다른 논문도 휴대폰에서 컬렉션별로 열어 읽을 수 있습니다": "Adds them to 'Sent papers' in the phone web reader so the phone keeps them offline — with library sync on, other papers can also be opened by collection on the phone",
  "보낸 논문에서 빼기": "Remove from Sent",
  "휴대폰의 '보낸 논문'에서 빼고 미리 받아 두지 않게 합니다 — 서재 동기화가 켜져 있어 휴대폰에서는 컬렉션에서 계속 열 수 있습니다": "Removes them from 'Sent papers' on the phone and stops keeping them offline — with library sync on, they can still be opened from collections on the phone",
- "휴대폰에서 읽을 수 있게 준비하는 중… {done}/{total} {label}": "Preparing papers for the phone… {done}/{total} {label}"
+ "휴대폰에서 읽을 수 있게 준비하는 중… {done}/{total} {label}": "Preparing papers for the phone… {done}/{total} {label}",
+ "올리는 것: 원본 PDF, 마크다운·그림, 번역(용어집·번역 캐시), 인용·서지, 하이라이트·메모, 만든 듣기 음성, 컬렉션 목록. 올리지 않는 것: API 키·설정, 음성 섹션 조각, 미리보기 캐시, 컬렉션 폴더 위치, 고정 표시.": "Uploaded: original PDF, Markdown and figures, translations (glossary and translation cache), citations and bibliography, highlights and notes, listening audio you made, collection list. Not uploaded: API keys and settings, audio section pieces, preview cache, collection folder locations, pins."
 }

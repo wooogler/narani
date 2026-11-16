@@ -274,3 +274,15 @@ def test_drive_delete_also_leaves_the_web_reader(env):
 def test_stale_remembered_scope_falls_back_to_scope_list():
     js = web.site_files(local=True)["app.js"][0].decode()
     assert "SCOPE && !validScope(SCOPE)" in js
+
+
+def test_library_paper_audio_reaches_the_web_reader(env):
+    ws, store = env
+    root = paper(ws, "p1")
+    from narani.ui import listen
+
+    listen.keep_local(root, b"m4a-bytes" * 20, {"duration": 12.0, "voice": "mac:Yuna", "src": "x", "sections": []})
+    phone.push_library([root])
+    e = index(store)["papers"][0]
+    assert e["audio"]["voice"] == "mac:Yuna" and store.read(e["audio"]["file"]) == b"m4a-bytes" * 20
+    assert e["sent"] is False                                       # 음성이 있어도 보낸 논문이 되지는 않는다

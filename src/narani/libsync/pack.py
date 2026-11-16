@@ -1,8 +1,9 @@
 """논문 꾸러미 — 작업 폴더(.md4)에서 Drive 서재에 올릴 파일을 고르고, 컴퓨터마다 다른 값을 떼고, 묶는다.
 
 넣는 것: 원본 PDF(따로) + 작업 폴더에서 다시 만들기 어렵거나 불가능한 것 — 추출 결과(raw.md·json·그림), 구조,
-마크다운·그림, 번역(용어집·cache.json), 인용, 서지, 하이라이트·메모, 상태. 빼는 것(EXCLUDE_*): 로그, 듣기 음성,
-홈 렌더 캐시, 이 기능의 로컬 상태, 메모 휴지통, 백업·임시 파일.
+마크다운·그림, 번역(용어집·cache.json), 인용, 서지, 하이라이트·메모, 상태, 만든 듣기 음성(audio/listen.* — 따로 묶음).
+빼는 것(EXCLUDE_*): 로그, 음성 섹션 조각(audio/의 나머지 — 다시 만들 수 있고 크다), 홈 렌더 캐시, 이 기능의 로컬 상태,
+메모 휴지통, 백업·임시 파일.
 
 파일마다 두 지문을 쓴다 — blob(올리는 바이트의 sha: 묶음 안의 항목 이름)과 sig(같은 내용인지 견줄 때: 열기만 해도
 바뀌는 값(annotations의 updated)을 뺀 것). 컴퓨터마다 다른 값(status.json의 열람·패널·고정·숨김, meta.json의
@@ -19,12 +20,14 @@ import zipfile
 from pathlib import Path
 
 # .md4 맨 위에서 통째로 빼는 폴더
-EXCLUDE_DIRS = frozenset({"logs", "audio", "sync", "conflicts"})
+EXCLUDE_DIRS = frozenset({"logs", "sync", "conflicts"})
+# audio/에서는 만든 듣기 음성(§ui.listen)만 — 섹션 조각·읽을 목록 캐시는 다시 만들 수 있다
+AUDIO_KEEP = frozenset({"listen.m4a", "listen.json", "listen-rec.json"})
 # .md4 맨 위에서 빼는 파일
 EXCLUDE_FILES = frozenset({"preview.json", "thumb.png", "sync.json"})
 # 어디서든 빼는 경로 조각
 EXCLUDE_PARTS = frozenset({".trash", "__pycache__"})
-RULES = 2   # 무엇을 떼고 어떻게 지문을 내는지(stored·sig_of)가 바뀌면 올린다 — 파일 sha 캐시를 버리게
+RULES = 3   # 무엇을 떼고 어떻게 지문을 내는지(stored·sig_of)가 바뀌면 올린다 — 파일 sha 캐시를 버리게
 MEDIA_EXT = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp"})
 
 STATUS = "status.json"
@@ -43,6 +46,8 @@ DEVICE_KEYS = {STATUS: DEVICE_STATUS_KEYS, META: ("source",), TABS: ("view",), F
 def excluded(rel: str) -> bool:
     parts = rel.split("/")
     name = parts[-1]
+    if parts[0] == "audio":
+        return not (len(parts) == 2 and name in AUDIO_KEEP)
     if parts[0] in EXCLUDE_DIRS and len(parts) > 1:
         return True
     if len(parts) == 1 and name in EXCLUDE_FILES:
@@ -54,9 +59,15 @@ def excluded(rel: str) -> bool:
     return False
 
 
+GROUPS = ("text", "media", "audio")
+
+
 def group_of(rel: str) -> str:
-    """묶음 — 그림은 media(압축 안 함), 나머지는 text."""
-    return "media" if os.path.splitext(rel)[1].lower() in MEDIA_EXT else "text"
+    """묶음 — 듣기 음성은 audio(크고 드물게 바뀐다 — 글을 고쳐도 다시 올리지 않게), 그림은 media(압축 안 함), 나머지는 text."""
+    ext = os.path.splitext(rel)[1].lower()
+    if ext == ".m4a":
+        return "audio"
+    return "media" if ext in MEDIA_EXT else "text"
 
 
 def sha(data: bytes) -> str:
@@ -131,7 +142,7 @@ def walk(md4: Path) -> dict[str, tuple[int, int]]:
     for dirpath, dirnames, filenames in os.walk(md4):
         rel_dir = os.path.relpath(dirpath, md4)
         rel_dir = "" if rel_dir == "." else rel_dir.replace(os.sep, "/") + "/"
-        dirnames[:] = [d for d in dirnames if not excluded(rel_dir + d + "/x")]
+        dirnames[:] = [d for d in dirnames if not (excluded(rel_dir + d + "/x") and (rel_dir + d) != "audio")]
         for f in filenames:
             rel = rel_dir + f
             if excluded(rel):
@@ -193,7 +204,7 @@ def build(md4: Path, rels: list[str], group: str) -> tuple[bytes, str]:
         if data is not None:
             blobs.setdefault(sha(data), data)
     buf = io.BytesIO()
-    mode = zipfile.ZIP_STORED if group == "media" else zipfile.ZIP_DEFLATED
+    mode = zipfile.ZIP_DEFLATED if group == "text" else zipfile.ZIP_STORED
     with zipfile.ZipFile(buf, "w", mode) as z:
         for key in sorted(blobs):
             info = zipfile.ZipInfo(key, date_time=(2020, 1, 1, 0, 0, 0))

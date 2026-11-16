@@ -80,7 +80,9 @@ def make_paper(ws: Path, name: str = "2024_Paper_Kim", pdf: bytes = PDF) -> Path
     (md4 / "status.json").write_text(json.dumps({"extract": {"done": True}, "lang": "ko", "opened_at": 1.0,
                                                  "left_panel": "toc"}))
     (md4 / "notes.md").write_text("first note\n", encoding="utf-8")
-    (md4 / "audio" / "listen.m4a").write_bytes(b"audio" * 100)   # 빼는 것
+    (md4 / "audio" / "listen.m4a").write_bytes(b"audio" * 100)   # 만든 듣기 음성 — 넣는다
+    (md4 / "audio" / "listen.json").write_text(json.dumps({"duration": 3.0, "voice": "mac:Yuna"}))
+    (md4 / "audio" / "9ca8b64c0a24e4b73dbe33ec.m4a").write_bytes(b"piece" * 100)   # 섹션 조각 — 뺀다
     (md4 / "preview.json").write_text("{}")                      # 빼는 것
     (md4 / "logs" / "run.log").write_text("log")                 # 빼는 것
     return md4
@@ -133,7 +135,10 @@ def test_upload_then_import_on_other_computer(two):
     assert (bmd4 / "out" / "paper.ko.md").read_text(encoding="utf-8") == "# 논문\n\n안녕.\n"
     assert (bmd4 / "translate" / "cache.json").exists()           # 번역 캐시는 넣는다
     assert (bmd4 / "out" / "images" / "fig1.png").read_bytes() == PNG
-    assert not (bmd4 / "audio").exists() and not (bmd4 / "preview.json").exists() and not (bmd4 / "logs").exists()
+    assert not (bmd4 / "preview.json").exists() and not (bmd4 / "logs").exists()
+    assert (bmd4 / "audio" / "listen.m4a").read_bytes() == b"audio" * 100          # 만든 듣기 음성은 간다
+    assert json.loads((bmd4 / "audio" / "listen.json").read_text())["voice"] == "mac:Yuna"
+    assert not (bmd4 / "audio" / "9ca8b64c0a24e4b73dbe33ec.m4a").exists()         # 섹션 조각은 안 간다
     meta = json.loads((bmd4 / "extract" / "meta.json").read_text())
     assert meta["source"] == str(bmd4.parent / f"{bmd4.stem}.pdf")   # 이 컴퓨터 경로로
     st = json.loads((bmd4 / "status.json").read_text())
@@ -527,3 +532,26 @@ def test_merge_result_is_uploaded_later_if_upload_fails(two):
     assert b.sync()["up"] == 1                                    # 다시 연결되면 병합 결과를 올린다
     a.sync()
     assert {it["id"] for it in annotations.load(WorkDir(amd4))} == {"fromA", "fromB"}
+
+
+def test_text_edit_does_not_reupload_audio(two):
+    a, b = two
+    amd4 = make_paper(a.ws)
+    a.sync()
+    audio_pack = [n for n in a.store.list("library/d/") if ".audio." in n]
+    assert len(audio_pack) == 1
+    writes: list[str] = []
+    real = a.store.write
+
+    def spy(name, data, mime="application/json"):  # noqa: ANN001, ANN202
+        writes.append(name)
+        return real(name, data, mime)
+    a.store.write = spy                                           # type: ignore[method-assign]
+    bump(amd4 / "out" / "paper.en.md", "edited\n")
+    a.sync()
+    assert not [n for n in writes if ".audio." in n]              # 글만 고쳤으면 음성 묶음은 그대로
+    (amd4 / "audio" / "listen.m4a").write_bytes(b"new voice" * 50)
+    a.sync()
+    assert [n for n in writes if ".audio." in n]
+    bmd4 = _import_all(b)[0]
+    assert (bmd4 / "audio" / "listen.m4a").read_bytes() == b"new voice" * 50
