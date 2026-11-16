@@ -646,11 +646,14 @@ def _build_llm(provider: Provider, md: str, parts: list[str] | None,
     # 저자: LLM이 저자별로 재구성한 authors_detail이 원문 근거를 통과하면 일관된 형식으로 렌더,
     # 아니면(검증 실패·미제공) 기존처럼 원본 블록을 그대로 내보낸다(환각 없는 보수적 폴백).
     author_src = "\n\n".join(author_text.get(i, blocks[i]) for i in author_idx)
-    if vision is not None:
-        grounded = list(vision.authors)  # 쪽 이미지로 읽고 텍스트 층에 대조한 것 — 순서도 그 쪽이 맞다
+    grounded = _grounded_authors(layout.authors_detail, author_src, trust_order) or []
+    if vision is not None and not (_thin(vision.authors) and not _thin(grounded)):
+        # 쪽 이미지로 읽고 텍스트 층에 대조한 것 — 순서도 그 쪽이 맞다. 단 비전 저자가 이름뿐인데
+        # 블록 근거 저자는 이메일·소속을 갖고 있으면(표지 쪽을 첫 쪽으로 읽은 경우 등) 블록 쪽을 쓴다.
+        grounded = list(vision.authors)
     else:
-        grounded = _grounded_authors(layout.authors_detail, author_src, trust_order) or []
-    if grounded and vision is None:
+        vision = vision if vision is None else _without_authors(vision)
+    if grounded and (vision is None or vision.authors == []):
         # 열 우선으로 읽힌 그리드에서는 블록 순서도 LLM 판단도 순서를 틀린다. 앞부분에 인용
         # 상용구가 있으면 논문이 스스로 적어 둔 저자 순서가 거기 있다 — 그게 유일한 평문 근거다.
         ordered = _citation_order(
@@ -668,8 +671,9 @@ def _build_llm(provider: Provider, md: str, parts: list[str] | None,
     seen = {layout.title, *(i for i in layout.authors if i < layout.body_start), *pulled_authors}
     # 저자 주석(∗ …)은 라벨 유무와 무관하게 저자 바로 뒤에 붙인다 — 추출 단계가 앵커로 표시해 둔다.
     # 비전 주석이 있으면 그것을 쓰고 docling 주석 블록은 자리에서만 뺀다(같은 주석이 두 번 나오지 않게).
-    if vision is not None:  # 비전 저자·주석에 통째로 덮이는 앞부분 블록은 라벨이 빠뜨려도 버린다
-        keys = _vision_keys(vision)
+    if vision is not None:  # 비전 저자에 통째로 덮이는 앞부분 블록은 라벨이 남겨도 버린다
+        # 저자 키만 쓴다 — 제목 키의 앞/뒤 조각 규칙은 제목 끝과 같은 키워드 블록까지 지울 수 있다
+        keys = _vision_keys(vision, notes=False, title=False)
         for i in range(min(layout.body_start, len(blocks))):
             if i not in seen and not _is_figure_block(blocks[i]) and _covered(blocks[i], keys):
                 seen.add(i)
@@ -691,7 +695,7 @@ def _build_llm(provider: Provider, md: str, parts: list[str] | None,
     # 본문은 원본 순서 그대로. 단이 뒤집혀 본문 뒤로 밀려났던 front matter 블록(위에서 이미
     # 앞으로 옮긴 것)만 제외한다 — 그대로 두면 Abstract가 Introduction 중간에 또 나온다.
     # 저자 조각도 마찬가지로 빼되, 본문 문단이 이어 붙어 있던 블록은 그 산문만 되돌린다.
-    akeys = _vision_keys(vision, notes=False) if vision is not None else []
+    akeys = _vision_keys(vision, notes=False, title=False) if vision is not None else []
     for j in range(layout.body_start, len(blocks)):
         if j in pulled:
             continue
@@ -800,6 +804,18 @@ def _stray_author_rest(block: str, akeys: list[str]) -> str | None:
     if span is None or not _covered(span[0], akeys):
         return None
     return span[1]
+
+
+def _thin(entries: list[AuthorEntry]) -> bool:
+    """이름만 있고 이메일·소속이 하나도 없는 저자 목록인가 (빈 목록도 얇다)."""
+    return not any(e.emails or e.affiliations for e in entries)
+
+
+def _without_authors(vision):  # noqa: ANN001, ANN202
+    """비전 결과에서 저자만 뺀 사본 — 제목·주석은 그대로 쓰고 저자는 블록 근거로."""
+    import dataclasses
+
+    return dataclasses.replace(vision, authors=[])
 
 
 def _vision_notes(vision) -> list[str]:  # noqa: ANN001

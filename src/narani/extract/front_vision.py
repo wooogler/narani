@@ -154,11 +154,19 @@ def _compact(s: str) -> str:
     return re.sub(r"\s+", "", s).lower()
 
 
-def _email_ok(email: str, compact: str) -> bool:
+def _flat(s: str) -> str:
+    """이메일 경계 대조용 — 줄끝 하이픈 표시만 지우고 소문자. 공백은 남겨 낱말 경계로 쓴다."""
+    s = unicodedata.normalize("NFKC", s).replace("\ufffe", "").replace("\u00ad", "").lower()
+    return re.sub(r"\s*@\s*", "@", s)  # 주소가 '@'에서 줄바꿈되는 조판("jacobe@\r\ngatech.edu")
+
+
+def _email_ok(email: str, compact: str, flat: str = "") -> bool:
     e = _compact(email)
     if "@" not in e or e.count("@") != 1:
         return False
-    if e in compact:
+    # 주소 전체가 앞뒤 경계와 함께 있어야 한다 — 'lee@kaist.ac.kr'이 'yoonjoo.lee@kaist.ac.kr' 안에서,
+    # 'asiu@adobe.co'가 'asiu@adobe.com' 안에서 통과하지 않게
+    if re.search(r"(?<![\w.+\-])" + re.escape(e) + r"(?![\w\-]|\.\w)", flat or _flat(compact)):
         return True
     # {alice, bob}@x.com 묶음 — 펼쳐 쓴 주소는 텍스트 층에 그대로 없지만, 지역부·도메인은 각각 있다
     local, domain = e.split("@")
@@ -210,6 +218,7 @@ def verify(read: FrontPageRead, page_text: str) -> tuple[Verified | None, str]:
         return None, "not first page"
     src = norm(page_text)
     compact = _compact(page_text)
+    flat = _flat(page_text)
 
     title = _strip_marks(read.title)
     if len(norm(title)) < 8:
@@ -236,7 +245,7 @@ def verify(read: FrontPageRead, page_text: str) -> tuple[Verified | None, str]:
             em = _clean(em).strip(" ,;<>")
             if not em:
                 continue
-            if not _email_ok(em, compact):
+            if not _email_ok(em, compact, flat):
                 return None, f"email not in text layer: {em}"
             emails.append(em)
         affils: list[str] = []
@@ -307,7 +316,8 @@ def read_cached(provider: Provider, page: FrontPage, cache_path) -> tuple[Verifi
         except NotImplementedError:
             return None, {**info, "status": "skipped", "reason": "provider has no image input"}
         except Exception as e:  # noqa: BLE001 — 실패하면 기존 경로
-            return None, {**info, "status": "error", "reason": f"{type(e).__name__}: {str(e)[:120]}"}
+            # 예외 문구는 남기지 않는다 — 공급자 인증 오류가 키 일부를 되풀이하는 일이 있다
+            return None, {**info, "status": "error", "reason": type(e).__name__}
         data = read.model_dump()
         try:
             cache_path.parent.mkdir(parents=True, exist_ok=True)
@@ -318,7 +328,7 @@ def read_cached(provider: Provider, page: FrontPage, cache_path) -> tuple[Verifi
     try:
         read = FrontPageRead(**data)
     except Exception as e:  # noqa: BLE001 — 깨진 캐시
-        return None, {**info, "status": "error", "reason": f"bad cache: {e}"[:120]}
+        return None, {**info, "status": "error", "reason": f"bad cache: {type(e).__name__}"}
     verified, why = verify(read, page.text)
     if verified is None:
         return None, {**info, "status": "rejected", "reason": why}

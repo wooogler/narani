@@ -101,13 +101,17 @@ def test_verify_rejects_any_invented_string():
     bad_name = _read()
     bad_name.authors.append(fv.VisionAuthor(name="Tong Sun"))
     assert fv.verify(bad_name, PAGE)[0] is None
+    for partial in ("lee@kaist.ac.kr", "asiu@adobe.co"):  # 더 긴 주소의 일부는 그 주소가 아니다
+        r = _read()
+        r.authors[0].emails = [partial]
+        assert fv.verify(r, PAGE)[0] is None, partial
     bad_note = _read(author_notes=[fv.VisionNote(mark="†", text="Equal contribution.")])
     assert fv.verify(bad_note, PAGE)[0] is None
     assert fv.verify(_read(is_first_page=False), PAGE)[0] is None
 
 
 def test_verify_grouped_email_and_affiliation_numbers():
-    page = PAGE + "{alice, bob}@x.edu\r\n1Department of Computer Science\r\n"
+    page = PAGE + "{alice, bob}@x.edu\r\n1Department of Computer Science\r\nUSA, dave@\r\nx.edu; Eve\r\n"
     r = _read()
     r.authors[0].emails = ["alice@x.edu"]  # 묶음 표기를 펼친 주소
     r.authors[0].affiliation_lines = ["1Department of Computer Science"]
@@ -115,6 +119,8 @@ def test_verify_grouped_email_and_affiliation_numbers():
     assert v is not None, why
     assert v.authors[0].emails == ["alice@x.edu"]
     assert v.authors[0].affiliations == ["Department of Computer Science"]  # 소속 번호는 뗀다
+    r.authors[0].emails = ["dave@x.edu"]  # '@'에서 줄이 바뀐 주소
+    assert fv.verify(r, page)[0] is not None
     r.authors[0].emails = ["carol@x.edu"]
     assert fv.verify(r, page)[0] is None
 
@@ -204,6 +210,30 @@ def test_label_path_uses_vision_strings_when_direct_assembly_bails():
     assert [e.name for e in entries] == ["Yoonjoo Lee", "Nedim Lipka", "Alexa Siu"]
     assert "Daejeon, Republic of Korea" in out and "| j School" not in out
     assert out.count("Work done during") == 1
+
+
+def test_label_path_prefers_block_authors_when_vision_authors_are_bare():
+    """표지 쪽처럼 이름만 읽힌 비전 저자보다, 이메일·소속까지 근거가 있는 블록 저자를 쓴다."""
+    raw = "Contents lists available at SomeJournalSite\n\n" + RAW
+    blocks = fm._split_blocks(raw)
+    body = next(i for i, b in enumerate(blocks) if b.startswith("## 1 Introduction"))
+    from narani.ir import AuthorEntry as AE
+
+    layout = FrontMatterLayout(
+        title=1, authors=[2, 3], body_start=body,
+        authors_detail=[AE(name="Nedim Lipka", emails=["lipka@adobe.com"], affiliations=["Adobe Research"]),
+                        AE(name="Alexa Siu", emails=["asiu@adobe.com"], affiliations=["Adobe Research"])])
+    prov, _ = _label_provider(layout)
+    bare = _read()
+    for a in bare.authors:
+        a.emails, a.affiliation_lines = [], []
+    v, why = fv.verify(bare, PAGE)
+    assert v is not None, why
+    ops: dict = {}
+    out, entries = fm.normalize_authors(prov, raw, None, ops=ops, vision=v)
+    assert ops["path"] == "label+vision"
+    assert [e.emails for e in entries] == [["lipka@adobe.com"], ["asiu@adobe.com"]]
+    assert out.startswith("## DocVoyager: Anticipating User’s")  # 제목은 여전히 비전 것
 
 
 def test_no_vision_keeps_previous_paths():
