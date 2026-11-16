@@ -273,8 +273,10 @@ class Library:
                 write_state(md4, st)
                 bound[pid] = md4
             g = self.load_global()
-            g["bound"] = {pid: str(p) for pid, p in bound.items()}
-            self.save_global(g)
+            now = {pid: str(p) for pid, p in bound.items()}
+            if g.get("bound") != now:
+                g["bound"] = now
+                self.save_global(g)
             return bound
 
     # ---- 맞추기 ----

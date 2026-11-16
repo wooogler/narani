@@ -383,3 +383,31 @@ def test_secrets_never_uploaded(two):
     for n in [n for n in a.store.list("") if n.endswith(".zip")]:
         blob += b"".join(pack.unpack(a.store.read(n)).values())
     assert b"SECRET" not in blob
+
+
+def test_worker_uploads_only_after_changes_settle(tmp_path, monkeypatch):
+    from narani.libsync import service
+
+    cfg = tmp_path / "cfg"
+    cfg.mkdir()
+    monkeypatch.setattr(config, "CONFIG_DIR", cfg)
+    monkeypatch.setattr(projects, "PROJECTS_PATH", cfg / "projects.json")
+    monkeypatch.setenv(service.ENV_STORE, str(tmp_path / "drive"))
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    service.set_workspace(ws)
+    assert service.should_ask()                         # 저장소가 있고 아직 안 물었다
+    service._set(enabled=True)                          # noqa: SLF001 — 일꾼 스레드 없이 tick만
+    md4 = make_paper(ws)
+    w = service._Worker()                               # noqa: SLF001
+    w.tick()                                            # 처음 보는 논문은 바로 올린다(첫 켜기)
+    store = LocalStore(tmp_path / "drive")
+    assert len(manifests(store)) == 1
+    w.tick()                                            # 확인만
+    bump(md4 / "out" / "paper.en.md", "edited\n")
+    w.tick()                                            # 방금 바뀜 — 아직 안정되지 않았다
+    assert manifests(store)[0].split(".")[-3] == "1"
+    w.tick()                                            # 그대로 — 이제 올린다
+    assert manifests(store)[0].split(".")[-3] == "2"
+    assert service.info()["papers"] == 1
+    monkeypatch.setattr(service, "_workspace", None)

@@ -6859,6 +6859,9 @@ async def _process_queue(state: dict) -> None:
                 # '저장 위치'가 지정돼 있으면 결과 마크다운을 거기에 쌓는다 (리네임 후 최종 이름으로)
                 await run.io_bound(library.auto_export, wd)
                 item["status"], item["done_at"] = "done", time.monotonic()
+                from narani.libsync import service as library_sync
+
+                library_sync.nudge()  # 서재 Drive 동기화가 켜져 있으면 새 논문을 곧 올린다
             except Exception as ex:  # noqa: BLE001 — 항목 실패가 큐 전체를 막지 않게
                 item["status"], item["error"] = "failed", str(ex)
     finally:
@@ -7071,6 +7074,20 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
         from narani.phone import service as phone_service
 
         threading.Thread(target=phone_service.refresh_quietly, daemon=True, name="mobile-refresh").start()
+
+    @fastapi_app.on_startup
+    def _library_sync() -> None:
+        # 서재 Drive 동기화 (§libsync.service) — 켜져 있으면 뒤 일꾼을 띄운다. 변환 큐·번역 중인 논문은 건드리지 않는다
+        from narani.libsync import service as library_sync
+        from narani.ui import jobs
+
+        def busy(md4: Path) -> bool:
+            here = str(Path(md4))
+            return bool(jobs.running(md4)) or any(
+                str(q.get("wd_root") or "") == here and q["status"] in _QUEUE_ACTIVE for q in state["queue"])
+
+        library_sync.set_busy(busy)
+        library_sync.start_if_enabled(state["upload_dir"])
 
     @fastapi_app.on_shutdown
     def _close_extra_windows() -> None:

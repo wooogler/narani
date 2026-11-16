@@ -11,8 +11,6 @@ import json
 
 from narani.i18n import t
 
-MERGED_NOTE = "다른 컴퓨터에서 고친 판 — 양쪽에서 함께 고쳐 덮지 않고 덧붙였어요"
-
 
 def _clean(it: dict) -> str:
     return json.dumps({k: v for k, v in it.items() if k != "updated"}, ensure_ascii=False, sort_keys=True)
@@ -52,7 +50,8 @@ def text(base: str | None, local: str | None, remote: str | None) -> str | None:
         return remote
     if remote is None:
         return local
-    return local.rstrip() + "\n\n<!-- " + t(MERGED_NOTE) + " -->\n" + remote.strip() + "\n"
+    note = t("다른 컴퓨터에서 고친 판 — 양쪽에서 함께 고쳐 덮지 않고 덧붙였어요")
+    return local.rstrip() + "\n\n<!-- " + note + " -->\n" + remote.strip() + "\n"
 
 
 def tabs(base: list[dict], local: list[dict], remote: list[dict]) -> list[dict]:
