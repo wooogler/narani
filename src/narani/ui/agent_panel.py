@@ -145,6 +145,15 @@ a.ag-pop, .ag-gear { display: inline-flex; align-items: center; }
 .ag-fs button + button { border-left: 1px solid #e0ded9; }
 .ag-fs button:hover { background: #f7f6f3; }
 .ag-fs button.on { background: #eef4fd; color: #1668c4; font-weight: 600; }
+.ag-setm-ck { display: flex; align-items: center; gap: 6px; margin: 12px 0 2px; font-size: 12px;
+  font-weight: 600; color: #37352f; cursor: pointer; }
+.ag-setm-h { font-size: 10.5px; line-height: 1.45; }
+/* 자동 전환 직후 '← 이전 대화' — 머리줄 바로 아래 얇은 띠 */
+.ag-back { display: none; padding: 0 10px 4px; }
+.ag-back.on { display: block; }
+.ag-back-b { max-width: 100%; border: none; background: none; padding: 1px 2px; font: inherit; font-size: 11px;
+  color: #2383e2; cursor: pointer; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ag-back-b:hover { text-decoration: underline; }
 .ag-setm-model { width: 100%; font: inherit; font-size: 12px; padding: 5px 6px; border: 1px solid #e0ded9;
   border-radius: 8px; background: #fff; color: inherit; }
 /* 글자 크기 — 대화 목록과 입력칸만 함께 키운다(머리줄은 그대로). px로 적힌 크기들을 한꺼번에 바꾸려고 zoom */
@@ -475,8 +484,11 @@ HTML = """
       </div>
       <div class="ag-setm-l">⦃모델⦄ <span class="ag-setm-s">⦃번역 설정과 별개⦄</span></div>
       <select class="ag-setm-model" aria-label="⦃에이전트가 쓸 모델⦄"></select>
+      <label class="ag-setm-ck"><input type="checkbox" class="ag-follow"> ⦃화면을 따라 대화 바꾸기⦄</label>
+      <div class="ag-setm-s ag-setm-h">⦃다른 논문·컬렉션으로 옮기면 그것을 두고 나눈 대화로 바꿉니다. 끄면 창을 열 때만 맞춥니다.⦄</div>
     </div>
   </div>
+  <div class="ag-back"><button type="button" class="ag-back-b"></button></div>
   <div class="ag-list"></div>
   <div class="ag-foot">
     <div class="ag-sel"><span>⦃선택한 글 함께 보냄:⦄</span><span class="ag-sel-t"></span>
@@ -508,6 +520,8 @@ JS = r"""
   var newBtn = panel.querySelector('.ag-new');
   var gearBtn = panel.querySelector('.ag-gear'), setm = panel.querySelector('.ag-setm');
   var setModel = panel.querySelector('.ag-setm-model');
+  var followCk = panel.querySelector('.ag-follow');
+  var backBar = panel.querySelector('.ag-back'), backBtn = panel.querySelector('.ag-back-b');
   var selBar = panel.querySelector('.ag-sel');
   var selT = panel.querySelector('.ag-sel-t');
   var popBtn = panel.querySelector('.ag-pop');
@@ -543,6 +557,9 @@ JS = r"""
   var notice = null;         // 단독 창의 화면 이동 안내 {url} — 다음 질문을 보내면 걷힌다
   // 맥락 세션 안내 — {kind:'opened'|'fresh'|'hint', what:'paper'|'collection', to, toTitle, prev, prevTitle}
   var ctxNote = null;
+  var follow = true;          // 화면을 따라 대화 바꾸기 ([ui].agent_follow_screen — /agent/models가 실어 준다)
+  var backTo = null;          // 자동으로 바꾼 직후 돌아갈 세션 {id, title} — 한 단계만
+  var drafts = {};            // 세션 id → 입력창에 쓰던 글(노드) — 세션이 바뀌어도 초안을 잃지 않게
   var PH_IDLE = input.getAttribute('data-ph');
   var PH_WAIT = md4T('승인을 기다리는 중 — 그냥 보내면 건너뜁니다');
   var models = [], modelInfo = {ready: true, reason: '', provider: '', model: ''};
@@ -772,6 +789,7 @@ JS = r"""
     models = j.models || models;
     modelInfo = {ready: !!j.ready, reason: j.reason || '', provider: j.provider || '',
                  model: j.model || ''};
+    if (typeof j.follow === 'boolean'){ follow = j.follow; followCk.checked = follow; }
   }
   function loadModels(){
     return api('GET', '/agent/models').then(function(j){ takeModels(j); render(); })
@@ -787,7 +805,14 @@ JS = r"""
     return (d.getMonth() + 1) + '/' + d.getDate();
   }
   function setSession(d){
-    if (d.id !== sid){ apprByTurn = {}; capRetry = null; ctxNote = null; }
+    if (d.id !== sid){
+      apprByTurn = {}; capRetry = null; ctxNote = null;
+      // 쓰던 글은 떠나는 세션의 초안으로 두고, 돌아온 세션의 초안을 되살린다
+      if (sid && (inputText().trim() || input.querySelector('.ag-pill'))) drafts[sid] = clearInput();
+      else if (sid) delete drafts[sid];
+      if (drafts[d.id]){ clearInput(); restoreInput(drafts[d.id]); delete drafts[d.id]; }
+      if (backTo && backTo.id === d.id) backTo = null;
+    }
     sess = d; sid = d.id; lsSet(LS_SESSION, sid);
     turns = d.turns || []; pending = d.pending || null; decisions = {};   // 다시 열면 대기 카드도 되살아난다
     live = null; errMsg = null;
@@ -923,13 +948,14 @@ JS = r"""
     if (best){
       if (best.id === prev) return null;
       note.kind = 'opened';
-      return openSession(best.id).then(function(){ ctxNote = note; render(); });
+      return openSession(best.id).then(function(){ ctxNote = note; setBack(note); render(); });
     }
     // 이 맥락으로 나눈 대화가 없다 — 지금 세션이 비어 있으면 그대로, 아니면 빈 세션(없으면 새로)
     if (pm && !pm.turns) return null;
     note.kind = 'fresh';
     var empty = sessList.filter(function(s){ return !s.turns; })[0];
-    return (empty ? openSession(empty.id) : newSession()).then(function(){ ctxNote = note; render(); });
+    return (empty ? openSession(empty.id) : newSession()).then(function(){ ctxNote = note; setBack(note);
+      render(); });
   }
   // 창이 열린 채 화면(논문·컬렉션)이 바뀌었다 — 대화가 끊기지 않게 바꾸지 않고, 그 맥락의 세션이 따로
   // 있으면 안내 줄만 띄운다
@@ -939,7 +965,16 @@ JS = r"""
       ctxNote = null;
       if (panel.classList.contains('open') && !live) render();
     }
-    if (!panel.classList.contains('open') || live || busy) return;
+    if (!panel.classList.contains('open')) return;
+    // 화면을 따라 대화 바꾸기 — 처음 열 때와 같은 규칙. 답이 흐르는 중이거나 승인을 기다리면 끊지 않고
+    // 아래 안내('그 대화로')만 띄운다. 같은 맥락이 다시 그려진 것뿐이면(열쇠가 같으면) pick이 null.
+    var streaming = !!live || busy;
+    if (follow && !streaming && !pending){
+      var pr = pickForContext();
+      if (pr) pr.then(loadList).then(renderHead).catch(function(e){ errMsg = e.message; render(); });
+      return;
+    }
+    if (streaming && !follow) return;          // 끈 상태는 예전처럼 — 흐르는 동안엔 안내도 미룬다
     var best = key && key !== lsGet(LS_CTXKEY) ? bestFor(key) : null;
     var was = ctxNote && ctxNote.kind === 'hint' ? ctxNote.to : null;
     if (best && best.id !== sid){
@@ -949,6 +984,24 @@ JS = r"""
       render();
     } else if (was){ ctxNote = null; render(); }
   }
+  function setBack(note){
+    backTo = note.prev && note.prev !== sid ? {id: note.prev, title: note.prevTitle || ''} : null;
+    paintBack();
+  }
+  function paintBack(){
+    var on = !!backTo && backTo.id !== sid && !SA;
+    backBar.classList.toggle('on', on);
+    if (!on) return;
+    backBtn.textContent = '← ' + md4T('이전 대화: {t}', {t: backTo.title || md4T('새 세션')});
+    backBtn.title = md4T('바꾸기 전에 보던 대화로 돌아갑니다');
+    backBtn.disabled = busy;
+  }
+  backBtn.addEventListener('click', function(){
+    if (busy || !backTo) return;
+    var go = backTo.id;
+    backTo = null; markCtx(); ctxNote = null;     // 직접 돌아갔다 — 같은 맥락에 있는 동안 다시 바꾸지 않는다
+    openSession(go).then(loadList).then(renderHead).catch(function(e){ errMsg = e.message; render(); });
+  });
   function ctxNoteNode(){
     var n = ctxNote, paperish = n.what === 'paper';
     var box = document.createElement('div'); box.className = 'ag-note ag-ctxnote';
@@ -962,7 +1015,7 @@ JS = r"""
       : (paperish ? md4T('이 논문을 두고 나눈 대화가 따로 있습니다: {t}', {t: n.toTitle || md4T('새 세션')})
                   : md4T('이 컬렉션을 두고 나눈 대화가 따로 있습니다: {t}', {t: n.toTitle || md4T('새 세션')}));
     box.appendChild(t);
-    var go = n.kind === 'hint' ? n.to : n.prev;
+    var go = n.kind === 'hint' ? n.to : (backTo ? null : n.prev);   // 돌아가기는 머리 띠('← 이전 대화')가
     if (go && go !== sid){
       var a = document.createElement('a'); a.href = '#';
       a.textContent = n.kind === 'hint' ? md4T('그 대화로') : md4T('이전 대화로');
@@ -970,6 +1023,8 @@ JS = r"""
       a.addEventListener('click', function(ev){
         ev.preventDefault();
         if (busy) return;
+        // 안내를 눌러 옮겼다 — 머리 띠로 지금 대화에 돌아올 수 있게 (이전 대화로 간 거면 띠를 걷는다)
+        backTo = n.kind === 'hint' && sid ? {id: sid, title: (sess && sess.title) || ''} : null;
         markCtx(); ctxNote = null;
         openSession(go).then(loadList).then(renderHead).catch(function(e){ errMsg = e.message; render(); });
       });
@@ -1030,6 +1085,11 @@ JS = r"""
     api('PUT', '/agent/model', {provider: v[0], model: v.slice(1).join('/')})
       .then(function(j){ takeModels(j); errMsg = null; render(); renderSetModel(); })
       .catch(function(e){ errMsg = md4T('모델을 바꾸지 못했습니다: {e}', {e: e.message}); render(); });
+  });
+  followCk.addEventListener('change', function(){
+    follow = followCk.checked;
+    api('PUT', '/agent/prefs', {follow: follow}).then(function(j){ follow = !!j.follow; followCk.checked = follow; })
+      .catch(function(e){ errMsg = md4T('설정을 저장하지 못했습니다: {e}', {e: e.message}); render(); });
   });
   function closeSet(){ setm.classList.remove('open'); gearBtn.classList.remove('on'); }
   gearBtn.addEventListener('click', function(){
@@ -1114,7 +1174,7 @@ JS = r"""
         if (ev.detail >= 2) return renameInline(tEl, s.id, renderMenu);   // 더블클릭 = 이름 바꾸기
         var pick = function(){
           if (b.querySelector('.ag-name-in')) return;
-          closeMenu(); markCtx();
+          closeMenu(); markCtx(); backTo = null;
           if (s.id !== sid) openSession(s.id).then(renderHead)
             .catch(function(e){ errMsg = e.message; render(); });
         };
@@ -1504,6 +1564,7 @@ JS = r"""
     if (!sessBtn.querySelector('.ag-name-in')) sessT.textContent = (sess && sess.title) || md4T('새 세션');
     sessBtn.disabled = busy; newBtn.disabled = busy;
     if (popBtn) popBtn.setAttribute('href', popHref());   // 가운데 클릭·⌘클릭도 지금 세션으로
+    paintBack();
   }
   function render(){
     renderHead();
@@ -1681,7 +1742,7 @@ JS = r"""
       if (q){ draft = clearInput(); lastSel = null; paintSel(); autoOff = ''; atClose(); paintCtx(); }
     }
     capRetry = null; notice = null;
-    if (q){ markCtx(); ctxNote = null; }
+    if (q){ markCtx(); ctxNote = null; backTo = null; }
     // 대기 중이던 승인 카드를 잠근다 — 승인/거절을 보냈거나, 그냥 새 질문을 보내 건너뛰었다.
     // 잠긴 카드는 마지막 턴(그 승인을 부른 질문) 뒤에 남는다. 스트림 전에 거절되면 되돌린다.
     var rec = null, key = null, was = pending;
@@ -2132,7 +2193,7 @@ JS = r"""
     context: ctxNow
   };
   panel.querySelector('.ag-x').addEventListener('click', closePanel);
-  newBtn.addEventListener('click', function(){ markCtx(); newSession(); });
+  newBtn.addEventListener('click', function(){ markCtx(); backTo = null; newSession(); });
   sendBtn.addEventListener('click', ask);
   input.addEventListener('input', tidyInput);
   input.addEventListener('paste', function(ev){

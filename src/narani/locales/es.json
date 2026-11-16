@@ -1538,5 +1538,10 @@
  "번역 본문을 읽은 음성을 이 컴퓨터에 만듭니다 — 뷰어의 듣기에서 바로 듣고, 웹 리더에 있는 논문은 웹 리더에서도 듣습니다": "Crea en este equipo un audio de la traducción — escúchalo enseguida con Escuchar en el visor; los artículos del lector web también se pueden escuchar allí",
  "음성 만들기를 시작했습니다 — {n}편 · 목록 위 '백그라운드 작업'에서 진행이 보입니다": "Se empezó a crear el audio — {n} artículos · el progreso aparece en 'Tareas en segundo plano' sobre la lista",
  "더 보기 · {n}곳 더": "Ver más · {n} más",
- "나머지 {n}곳 보기": "Ver los {n} restantes"
+ "나머지 {n}곳 보기": "Ver los {n} restantes",
+ "화면을 따라 대화 바꾸기": "Seguir la pantalla",
+ "다른 논문·컬렉션으로 옮기면 그것을 두고 나눈 대화로 바꿉니다. 끄면 창을 열 때만 맞춥니다.": "Cambia a la conversación sobre el artículo o la colección a la que vas. Si está desactivado, solo se ajusta al abrir el panel.",
+ "이전 대화: {t}": "Conversación anterior: {t}",
+ "바꾸기 전에 보던 대화로 돌아갑니다": "Vuelve a la conversación que tenías antes del cambio",
+ "설정을 저장하지 못했습니다: {e}": "No se pudo guardar el ajuste: {e}"
 }

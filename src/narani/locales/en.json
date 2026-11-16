@@ -1538,5 +1538,10 @@
  "번역 본문을 읽은 음성을 이 컴퓨터에 만듭니다 — 뷰어의 듣기에서 바로 듣고, 웹 리더에 있는 논문은 웹 리더에서도 듣습니다": "Makes audio of the translated text on this computer — listen right away with Listen in the viewer; papers in the web reader can be heard there too",
  "음성 만들기를 시작했습니다 — {n}편 · 목록 위 '백그라운드 작업'에서 진행이 보입니다": "Started making audio — {n} papers · progress shows under 'Background jobs' above the list",
  "더 보기 · {n}곳 더": "Show more · {n} more",
- "나머지 {n}곳 보기": "Show the remaining {n}"
+ "나머지 {n}곳 보기": "Show the remaining {n}",
+ "화면을 따라 대화 바꾸기": "Follow the screen",
+ "다른 논문·컬렉션으로 옮기면 그것을 두고 나눈 대화로 바꿉니다. 끄면 창을 열 때만 맞춥니다.": "Switches to the conversation about the paper or collection you move to. When off, it only matches when you open the panel.",
+ "이전 대화: {t}": "Previous conversation: {t}",
+ "바꾸기 전에 보던 대화로 돌아갑니다": "Go back to the conversation you had before the switch",
+ "설정을 저장하지 못했습니다: {e}": "Could not save the setting: {e}"
 }
