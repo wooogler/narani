@@ -20,7 +20,7 @@
 항목은 단축키를 **보여 주기만** 하고, 눌렀을 때는 같은 `page_zoom.zoom`을 부른다. 메뉴에 단축키가 있는
 키는 **메뉴가 먼저** 먹고 페이지 keydown까지 가지 않는다(실제 창에서 확인) — 그래서 ⌘F는 찾기 바의 keydown 대신
 메뉴 → `__md4Find.open()`으로 한 번만 돈다. 메뉴에 없는 키(⌘G·⌥←·편집기의 ⌘B 등)는 예전처럼 페이지가 받는다.
-⌘Z·⇧⌘Z는 WKWebView의 undo:/redo:로 가고 CodeMirror는 그것을 beforeinput(historyUndo)으로 받는다.
+그래서 ⌘Z·⇧⌘Z는 메뉴에 키를 달지 않는다(편집기들이 자기 되돌리기 기록으로 받아야 한다 — menus()의 주석).
 
 메뉴 글자는 앱을 켤 때의 화면 언어다(t()). 설정에서 언어를 바꾸면 메뉴는 다시 켜야 바뀐다.
 macOS가 아니거나 브라우저 모드면 아무것도 하지 않는다.
@@ -94,8 +94,11 @@ def menus() -> list[tuple[str, list[Item]]]:
             Item("reveal", N_("Finder에서 보기")),
         ]),
         (EDIT, [
-            Item("undo:", N_("실행 취소"), "z", kind="sel"),
-            Item("redo:", N_("다시 실행"), "Z", kind="sel"),
+            # ⌘Z·⇧⌘Z는 메뉴에 달지 않는다 — 달면 WebKit 되돌리기 목록이 비어 있어도(항목이 흐려도) 메뉴가 키를 먹어
+            # CodeMirror·Crepe·에이전트 입력칸이 자기 기록으로 되돌리지 못한다(⌘B 뒤 ⌘Z가 먹통, 실제 창에서 확인).
+            # 항목은 남겨 마우스로 WebKit 되돌리기를 쓸 수 있게 한다.
+            Item("undo:", N_("실행 취소"), kind="sel"),
+            Item("redo:", N_("다시 실행"), kind="sel"),
             SEP,
             Item("cut:", N_("오려두기"), "x", kind="sel"),
             Item("copy:", N_("복사하기"), "c", kind="sel"),
@@ -366,8 +369,9 @@ async def check_update(state: dict) -> None:
                         ui.label(m)
         with ui.row().classes("justify-end gap-1 w-full"):
             ui.button(t("나중에"), on_click=dlg.close).props("flat no-caps")
+            # 대화상자를 닫지 않는다 — apply가 이 슬롯에 앱 종료 타이머를 다는데, 닫으면(hide → delete) 타이머도 지워진다
             ui.button(t("업데이트하고 다시 시작"), icon="system_update",
-                      on_click=lambda: (dlg.close(), update_banner.apply(state))) \
+                      on_click=lambda: update_banner.apply(state)) \
                 .props("unelevated no-caps color=indigo")
     dlg.open()
 

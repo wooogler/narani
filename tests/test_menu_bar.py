@@ -41,7 +41,7 @@ def test_expected_shortcuts() -> None:
     assert by["find"] == "⌘F"
     assert (by["zoom_in"], by["zoom_out"], by["zoom_reset"]) == ("⌘+", "⌘-", "⌘0")
     assert by["home"] == "⇧⌘H"
-    assert by["redo:"] == "⇧⌘Z"
+    assert by["undo:"] == by["redo:"] == ""  # 메뉴가 먹으면 편집기의 자기 되돌리기가 막힌다
     assert by["toggleFullScreen:"] == "⌃⌘F"
     assert [by[f"tab_{i}"] for i in range(1, 10)] == [f"⌘{i}" for i in range(1, 10)]
     assert by["export"] == by["reveal"] == by["jump_back"] == ""  # ⌥←는 페이지가 듣는다(입력칸의 낱말 이동과 겹치지 않게)
