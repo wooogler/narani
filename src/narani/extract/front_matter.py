@@ -598,8 +598,13 @@ def _ordered_sections(sections: list[int], extra_fig: list[int], pulled: set[int
 
 def _build_llm(provider: Provider, md: str, parts: list[str] | None,
                allow_pull: bool = False, ops: dict | None = None,
-               trust_order: bool = True) -> tuple[str, list[AuthorEntry]] | None:
-    """LLM 라벨 → 코드 재조립. (정규화 md, 검증된 구조화 저자) 반환. 검증 실패 시 None."""
+               trust_order: bool = True, vision=None) -> tuple[str, list[AuthorEntry]] | None:  # noqa: ANN001
+    """LLM 라벨 → 코드 재조립. (정규화 md, 검증된 구조화 저자) 반환. 검증 실패 시 None.
+
+    vision(검증 통과한 첫 페이지 비전 결과)이 있으면 제목 글자·저자·저자 주석은 그것으로 쓴다 —
+    블록 배치(본문 시작·유지 섹션·뒤집힌 단 끌어올리기)만 라벨에 맡긴다. 비전 직접 조립이
+    블록 경계를 확신하지 못한 논문(비전 결과는 맞는데 docling 블록이 낯선 모양)이 이 길로 온다.
+    """
     blocks = _split_blocks(md)
     # 제목이 첫 블록이 아닐 수 있다 — 저작권 고지·arXiv 스탬프·학회 배너가 제목 앞에 오는 논문이 흔하다.
     # (blocks[0]만 검사하면 그런 논문에서 LLM 경로가 통째로 건너뛰어져 저자 줄이 원문 그대로 남는다.)
@@ -620,7 +625,7 @@ def _build_llm(provider: Provider, md: str, parts: list[str] | None,
     if not _valid(layout, n_front, len(blocks)):
         return None
 
-    out = [blocks[layout.title]]
+    out = [_title_heading(blocks[layout.title], vision.title) if vision else blocks[layout.title]]
     # 본문 뒤로 밀려난 저자 조각 — LLM 지목 + 코드 판정을 **둘 다** 통과한 것만 되찾는다.
     # 본문 문단이 이어 붙은 블록은 저자 메타만 떼고 산문은 본문에 되돌린다(author_rest).
     author_pull: list[int] = []
@@ -641,8 +646,11 @@ def _build_llm(provider: Provider, md: str, parts: list[str] | None,
     # 저자: LLM이 저자별로 재구성한 authors_detail이 원문 근거를 통과하면 일관된 형식으로 렌더,
     # 아니면(검증 실패·미제공) 기존처럼 원본 블록을 그대로 내보낸다(환각 없는 보수적 폴백).
     author_src = "\n\n".join(author_text.get(i, blocks[i]) for i in author_idx)
-    grounded = _grounded_authors(layout.authors_detail, author_src, trust_order) or []
-    if grounded:
+    if vision is not None:
+        grounded = list(vision.authors)  # 쪽 이미지로 읽고 텍스트 층에 대조한 것 — 순서도 그 쪽이 맞다
+    else:
+        grounded = _grounded_authors(layout.authors_detail, author_src, trust_order) or []
+    if grounded and vision is None:
         # 열 우선으로 읽힌 그리드에서는 블록 순서도 LLM 판단도 순서를 틀린다. 앞부분에 인용
         # 상용구가 있으면 논문이 스스로 적어 둔 저자 순서가 거기 있다 — 그게 유일한 평문 근거다.
         ordered = _citation_order(
@@ -659,9 +667,17 @@ def _build_llm(provider: Provider, md: str, parts: list[str] | None,
             out.append("\n\n".join(author_lines))
     seen = {layout.title, *(i for i in layout.authors if i < layout.body_start), *pulled_authors}
     # 저자 주석(∗ …)은 라벨 유무와 무관하게 저자 바로 뒤에 붙인다 — 추출 단계가 앵커로 표시해 둔다.
+    # 비전 주석이 있으면 그것을 쓰고 docling 주석 블록은 자리에서만 뺀다(같은 주석이 두 번 나오지 않게).
+    if vision is not None:  # 비전 저자·주석에 통째로 덮이는 앞부분 블록은 라벨이 빠뜨려도 버린다
+        keys = _vision_keys(vision)
+        for i in range(min(layout.body_start, len(blocks))):
+            if i not in seen and not _is_figure_block(blocks[i]) and _covered(blocks[i], keys):
+                seen.add(i)
+        out.extend(_vision_notes(vision))
     for i in range(min(layout.body_start, len(blocks))):
         if i not in seen and _is_author_note(blocks[i]):
-            out.append(_note_text(blocks[i]))
+            if vision is None or not vision.notes:
+                out.append(_note_text(blocks[i]))
             seen.add(i)
     # front matter의 그림(teaser)·캡션 블록은 라벨이 없어도 콘텐츠이므로 유지한다(유실 방지).
     # LLM이 sections에 안 넣은 첫 페이지 teaser가 boilerplate처럼 버려지던 문제를 막는다.
@@ -675,6 +691,7 @@ def _build_llm(provider: Provider, md: str, parts: list[str] | None,
     # 본문은 원본 순서 그대로. 단이 뒤집혀 본문 뒤로 밀려났던 front matter 블록(위에서 이미
     # 앞으로 옮긴 것)만 제외한다 — 그대로 두면 Abstract가 Introduction 중간에 또 나온다.
     # 저자 조각도 마찬가지로 빼되, 본문 문단이 이어 붙어 있던 블록은 그 산문만 되돌린다.
+    akeys = _vision_keys(vision, notes=False) if vision is not None else []
     for j in range(layout.body_start, len(blocks)):
         if j in pulled:
             continue
@@ -682,6 +699,12 @@ def _build_llm(provider: Provider, md: str, parts: list[str] | None,
             if j in author_rest:
                 out.append(author_rest[j])
             continue
+        if akeys and j < layout.body_start + _AUTHOR_SCAN:
+            rest = _stray_author_rest(blocks[j], akeys)
+            if rest is not None:
+                if rest:
+                    out.append(rest)
+                continue
         out.append(blocks[j])
     if ops is not None:  # 조용한 이동을 남기지 않는다 — 무엇을 몇 개 끌어올렸는지 기록
         order = sorted(pulled)
@@ -701,6 +724,357 @@ def _build_llm(provider: Provider, md: str, parts: list[str] | None,
         ops["authors_split"] = sorted(author_rest)
     text = "\n\n".join(out)
     return (text + "\n" if md.endswith("\n") else text), grounded
+
+
+# --- 비전 결과로 직접 조립 -------------------------------------------------------
+# 비전 경로는 제목·저자·주석 글자를 이미 (텍스트 층에 대조해) 갖고 있다. docling 블록에서 할 일은
+# "어느 블록이 그 글자들의 (오염된) 사본인가"를 가려 빼는 것뿐이다. 이걸 **위치가 아니라 덮임**으로 판정한다:
+# 블록에서 비전 문자열을 모두 지우고 남는 게 잡음(낱글자·표 테두리)뿐이면 사본이다. 덮이지 않는 블록이
+# 앞부분에 하나라도 있으면(머리 없는 초록·학술지 머리말 등 낯선 모양) 직접 조립을 포기하고 라벨 경로로 간다
+# — 지우는 쪽으로 틀리면 내용이 사라지기 때문이다.
+_TAG_RE = re.compile(r"<[^>]+>")
+_MD_LINK_RE = re.compile(r"!?\[([^\]]*)\]\([^)]*\)")
+_LEAD_LABEL_RE = re.compile(
+    r"^[\s*_#]*(?:abstract|a\s*b\s*s\s*t\s*r\s*a\s*c\s*t|keywords?|index\s+terms|author\s+keywords)\b", re.I)
+_COVER_SLACK = 0.12  # 블록 글자 중 이만큼까지는 비전 문자열 밖이어도 잡음으로 본다(낱글자·기호)
+_COVER_MIN = 6       # 짧은 블록은 이 글자 수까지 잡음 허용
+
+
+def _vision_keys(vision, notes: bool = True, title: bool = True) -> list[str]:  # noqa: ANN001
+    """블록 덮임 판정에 쓸 정규화 키 — 긴 것부터(짧은 키가 긴 키의 일부를 먼저 먹지 않게)."""
+    from narani.extract.front_vision import norm
+
+    keys: list[str] = []
+    if title:
+        keys.append(norm(vision.title))
+    for a in vision.authors:
+        keys.append(norm(a.name))
+        for em in a.emails:
+            keys.append(norm(em))
+            local, _, domain = em.partition("@")
+            keys += [norm(local), norm(domain)]  # {a, b}@x.com 묶음 표기
+        keys += [norm(x) for x in a.affiliations]
+    if notes:
+        keys += list(vision.note_keys)
+    return sorted({k for k in keys if k}, key=len, reverse=True)
+
+
+def _block_key(block: str) -> str:
+    from narani.extract.front_vision import norm
+
+    s = _AUTHOR_NOTE_ANCHOR_RE.sub("", block)
+    s = _MD_LINK_RE.sub(r"\1", s)
+    return norm(_TAG_RE.sub(" ", s))
+
+
+def _leftover(block: str, keys: list[str]) -> tuple[int, int]:
+    """(원래 글자 수, 비전 문자열을 다 지우고 남은 글자 수)."""
+    s = _block_key(block)
+    n = len(s)
+    for k in keys:
+        if k in s:
+            s = s.replace(k, "")
+    if len(s) >= 8 and any(k.startswith(s) or k.endswith(s) for k in keys):
+        # 남은 것이 비전 문자열의 앞/뒤 조각 — 러닝 헤더에 앞이 잘린 제목, 두 블록으로 쪼개진 소속.
+        # 가운데 조각은 아니다: 제목 한가운데 낱말("Generative AI")은 키워드 같은 진짜 내용일 수 있다.
+        s = ""
+    # 숫자만 남은 건 소속 번호·위첨자("Zhou1,2,∗")다 — 앞부분에서 숫자만으로 된 내용은 없다
+    return n, len(re.sub(r"\d", "", s))
+
+
+def _covered(block: str, keys: list[str]) -> bool:
+    """블록이 비전 문자열의 사본인가 — 지우고 남은 게 잡음 수준이고, 실제로 지운 게 있어야 한다."""
+    n, left = _leftover(block, keys)
+    return n > 0 and left < n and left <= max(_COVER_MIN, _COVER_SLACK * n)
+
+
+def _is_furniture(block: str, fkeys: list[str]) -> bool:
+    """비전이 쪽 장식(venue 줄·저작권·러닝 헤더)으로 지목한 글로 시작하는 블록인가."""
+    k = _block_key(block)
+    return len(k) >= 8 and any(k.startswith(f) or k in f for f in fkeys)
+
+
+def _stray_author_rest(block: str, akeys: list[str]) -> str | None:
+    """본문 뒤로 밀려난 저자 칸이면 본문에 남길 나머지('' = 통째로 저자), 아니면 None."""
+    span = _author_meta_span(block)
+    if span is None or not _covered(span[0], akeys):
+        return None
+    return span[1]
+
+
+def _vision_notes(vision) -> list[str]:  # noqa: ANN001
+    """렌더할 비전 주석 — 저자 이메일만 담은 주석("∗ e-mail: a@x.edu")은 저자 블록과 겹치므로 뺀다."""
+    akeys = _vision_keys(vision, notes=False, title=False)
+    return [n for n in vision.notes if not _covered(n, akeys)]
+
+
+def _title_heading(block: str, title: str) -> str:
+    """제목 블록을 비전 제목 글자로 — 헤딩 수준은 원래 블록 것을 따른다(없으면 ##)."""
+    h = _HEADING_RE.match(block.strip())
+    return f"{h.group(1) if h else '##'} {title}"
+
+
+def _find_title_block(blocks: list[str], title: str, end: int) -> int | None:
+    from narani.extract.front_vision import norm
+
+    key = norm(title)
+    best, best_score = None, 0.0
+    for i in range(min(end, len(blocks))):
+        k = _block_key(blocks[i])
+        if not k:
+            continue
+        score = len(k) / len(key) if k in key else (len(key) / len(k) if key in k else 0.0)
+        if score > best_score:
+            best, best_score = i, score
+    return best if best_score >= 0.3 else None
+
+
+def _locate(blocks: list[str], snippet: str, end: int) -> int | None:
+    """정규화한 글 조각(앞 40자)이 처음 나오는 블록 — 비전이 알려 준 초록 시작을 블록에서 찾는다."""
+    from narani.extract.front_vision import norm
+
+    key = norm(snippet)[:40]
+    if len(key) < 15:
+        return None
+    return next((i for i in range(1, min(end, len(blocks))) if key in _block_key(blocks[i])), None)
+
+
+def _build_vision(vision, md: str, parts: list[str] | None,  # noqa: ANN001 — front_vision.Verified
+                  ops: dict | None = None,
+                  allow_pull: bool = False) -> tuple[str, list[AuthorEntry]] | None:
+    """검증된 비전 결과로 앞부분 재조립 (LLM 추가 호출 없음). 블록 경계를 확신 못 하면 None.
+
+    출력: 제목 헤딩 / 저자 블록 / 저자 주석 / 앞부분의 그림(teaser)·캡션 / 초록부터는 원래 블록.
+    초록부터 본문 시작 사이에서는 서지 상용구(ACM Reference Format …)·저자 주석·흩어진 저자 칸만 뺀다.
+    """
+    blocks = _split_blocks(md)
+    if not blocks:
+        return None
+    body = _find_body_start(blocks)
+    limit = body if body is not None else min(len(blocks), _MAX_FRONT)
+
+    def why(reason: str) -> None:
+        if ops is not None:
+            ops["vision_direct"] = reason
+        return None
+
+    # 앞부분(제목~초록 직전)의 끝 r: 앞부분 섹션 헤딩 / "Abstract—…" 같은 머리글 문단 / 비전이 읽은
+    # 초록 첫머리가 든 블록 / 본문 시작 중 가장 이른 것
+    cands = [limit]
+    cands += [i for i in range(1, limit) if _is_front_heading(blocks[i])
+              or (not _heading(blocks[i]) and _LEAD_LABEL_RE.match(blocks[i]))][:1]
+    at = _locate(blocks, vision.abstract_start, limit) if vision.abstract_start else None
+    if at is not None:
+        # 초록 바로 앞 헤딩은 (모양이 낯설어도 — "$\mathbf{A}_{\mathbf{BSTRACT}}$") 초록의 머리다
+        cands.append(at - 1 if at > 1 and _heading(blocks[at - 1]) else at)
+    r = min(cands)
+    if r < 1:
+        return why("no front region")
+    if body is None and at is None and r == limit:
+        return why("no abstract or body boundary")
+    if allow_pull and body is not None and any(
+            _is_front_heading(b) for b in blocks[body + 1:body + 1 + _BODY_LOOKAHEAD]):
+        return why("front section after body start (column flip)")
+
+    keys = _vision_keys(vision)
+    akeys = _vision_keys(vision, notes=False, title=False)
+    from narani.extract.front_vision import norm
+
+    fkeys = [norm(f) for f in getattr(vision, "furniture", [])]
+    t = _find_title_block(blocks, vision.title, r)
+    kept: list[str] = []          # 앞부분에서 살리는 블록(그림·캡션)
+    dn_notes: list[str] = []      # docling 저자 주석 (비전 주석이 없을 때만 쓴다)
+    for i in range(r):
+        b = blocks[i]
+        if _is_figure_block(b) or (kept and _is_figure_block(kept[-1]) and _FM_CAP_RE.match(kept[-1])
+                                   and b.strip()[:1].islower()):
+            kept.append(b)  # teaser 그림·캡션(과 소문자로 이어지는 캡션 꼬리)은 콘텐츠다
+            continue
+        if _covered(b, keys):  # 각주 기호로 시작해도 저자 칸의 사본이면 사본이다("†University of …")
+            continue
+        if _is_author_note(b):
+            dn_notes.append(_note_text(b))
+            continue
+        h = _heading(b)
+        if _is_biblio_junk(b) or (h and _JUNK_HEADING_RE.match(h[1])) or _is_furniture(b, fkeys):
+            continue
+        n, left = _leftover(b, keys)
+        if left <= _COVER_MIN:  # 낱글자·기호만 있는 블록 (여백 세로 글자, 아이콘 대체 글자)
+            continue
+        return why(f"uncovered front block {i}: {b.strip()[:50]}")
+
+    # 초록 ~ 본문 시작: 원래 순서대로 두되 상용구·주석·흩어진 저자 칸은 뺀다
+    mid: list[str] = []
+    junk_tail = 0  # 0: 아님, 1: 상용구 헤딩 바로 뒤(인용 문단 자리), 2: 그다음
+    for i in range(r, limit):
+        b = blocks[i]
+        h = _heading(b)
+        if h:
+            junk_tail = 1 if _JUNK_HEADING_RE.match(h[1]) else 0
+            if not junk_tail:
+                mid.append(b)
+            continue
+        if _covered(b, akeys):
+            continue
+        if _is_author_note(b):
+            dn_notes.append(_note_text(b))
+            continue
+        if _is_biblio_junk(b) or _is_furniture(b, fkeys):
+            continue
+        rest = _stray_author_rest(b, akeys)
+        if rest is not None:
+            if rest:
+                mid.append(rest)
+            continue
+        if junk_tail == 1:  # "ACM Reference Format:" 아래 인용 문단
+            junk_tail = 2
+            continue
+        if junk_tail == 2:
+            return why(f"unexplained block under reference-format heading {i}: {b.strip()[:50]}")
+        mid.append(b)
+
+    out = [_title_heading(blocks[t] if t is not None else "", vision.title)]
+    entries = list(vision.authors)
+    out.append(_render_authors_detail(entries, parts))
+    # 비전이 주석을 읽었으면 그것만(docling 사본은 위에서 뺐다), 못 읽었으면 docling 주석을 살린다
+    out.extend(_vision_notes(vision) if vision.notes else dn_notes)
+    out.extend(kept)
+    out.extend(mid)
+    for j in range(limit, len(blocks)):
+        b = blocks[j]
+        if body is not None and j < body + _AUTHOR_SCAN:
+            rest = _stray_author_rest(b, akeys)
+            if rest is not None:
+                if rest:
+                    out.append(rest)
+                continue
+        out.append(b)
+    if ops is not None:
+        ops["vision_direct"] = "ok"
+    text = "\n\n".join(x for x in out if x.strip())
+    return (text + "\n" if md.endswith("\n") else text), entries
+
+
+# --- 서지 고정 (LLM 없음) ---------------------------------------------------------
+# 서지 정보(paper_meta.json: OpenAlex 등)는 추출과 독립된 두 번째 근거다. 추출된 제목이 서지 제목의
+# 일부만 남았거나 엉뚱한 글이면 서지 제목을 쓴다 — 단 서지도 틀릴 수 있으므로 **그 제목이 PDF 첫 쪽
+# 텍스트 층에 실제로 있을 때만**. 저자도 같은 원리로 순서·누락을 서지 목록에 맞춘다.
+_WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)
+
+
+def _words(s: str) -> set[str]:
+    return {w.casefold() for w in _WORD_RE.findall(s)}
+
+
+def _title_block_index(blocks: list[str], bib_title: str) -> int | None:
+    """서지 제목과 단어가 가장 많이 겹치는 앞부분 헤딩 — 정규화 결과의 제목 자리."""
+    want = _words(bib_title)
+    best, best_score = None, 0.0
+    for i, b in enumerate(blocks[:12]):
+        h = _heading(b)
+        if not h:
+            continue
+        have = _words(h[1])
+        shared = len(have & want)
+        if shared < 2 or not have:
+            continue
+        score = shared / len(have)
+        if score > best_score:
+            best, best_score = i, score
+    return best if best_score >= 0.5 else None
+
+
+def pin_title(md: str, bib_title: str | None, page_text: str | None) -> tuple[str, bool]:
+    """추출 제목이 서지 제목과 다르고, 서지 제목이 텍스트 층에 있으면 서지 제목으로. (md, 바꿨나)."""
+    from narani.extract.front_vision import norm
+
+    title = (bib_title or "").strip()
+    if not title or not page_text:
+        return md, False
+    want = norm(title)
+    if len(want) < 15 or len(title.split()) < 3 or want not in norm(page_text):
+        return md, False
+    blocks = _split_blocks(md)
+    i = _title_block_index(blocks, title)
+    if i is None:
+        return md, False
+    h = _heading(blocks[i])
+    if want in norm(h[1]):
+        return md, False  # 같은 제목(따옴표·하이픈 차이) 또는 부제까지 더 담은 제목 — 그대로 둔다
+    blocks[i] = f"{_HEADING_RE.match(blocks[i].strip()).group(1)} {title}"
+    text = "\n\n".join(blocks)
+    return (text + "\n" if md.endswith("\n") else text), True
+
+
+def _name_key(name: str) -> tuple[str, str]:
+    """(성, 이름 첫 글자) — 'Garreth W. Tigwell'과 'Garreth Tigwell'을 같은 사람으로 본다."""
+    from narani.extract.front_vision import norm
+
+    toks = [t for t in re.split(r"[\s.]+", strip_author_mark(name)) if t]
+    if not toks:
+        return "", ""
+    return norm(toks[-1]), norm(toks[0])[:1]
+
+
+def pin_authors(entries: list[AuthorEntry], bib_authors: list[str] | None,
+                page_text: str | None) -> tuple[list[AuthorEntry], str]:
+    """구조화 저자를 서지 저자 목록에 맞춘다. (새 목록, 한 일: ''|'reordered'|'added'|'reordered+added').
+
+    - 추출된 저자가 **모두** 서지 목록의 서로 다른 사람에 짝지어질 때만 손댄다(서지가 다른 논문이거나
+      불완전하면 손대지 않는다). 이름 글자는 추출(쪽에 인쇄된) 것을 그대로 쓴다.
+    - 순서: 서지 순서로. 누락: 서지에만 있는 저자는 그 이름이 첫 쪽 텍스트 층에 있을 때만 이름만으로 넣는다.
+    """
+    from narani.extract.front_vision import norm
+
+    bib = [b.strip() for b in (bib_authors or []) if b and b.strip()]
+    if not entries or len(bib) < 2:
+        return entries, ""
+    bkeys = [_name_key(b) for b in bib]
+    match: dict[int, int] = {}  # 서지 위치 → 추출 위치
+    for ei, e in enumerate(entries):
+        ek = _name_key(e.name)
+        full = norm(e.name)
+        cands = [bi for bi, b in enumerate(bib) if bi not in match and norm(b) == full]
+        cands = cands or [bi for bi, bk in enumerate(bkeys) if bi not in match and bk == ek and bk[0]]
+        if len(cands) != 1:
+            return entries, ""
+        match[cands[0]] = ei
+    src = norm(page_text or "")
+    order: list[int | str] = []  # 추출 위치(int) 또는 넣을 서지 이름(str)
+    for bi, name in enumerate(bib):
+        if bi in match:
+            order.append(match[bi])
+        elif src and len(norm(name)) >= 5 and norm(name) in src:
+            order.append(name)
+    idx = [o for o in order if isinstance(o, int)]
+    did = []
+    if idx != sorted(idx):
+        did.append("reordered")
+    if len(idx) != len(order):
+        did.append("added")
+    if not did:
+        return entries, ""
+    out = [entries[o] if isinstance(o, int) else AuthorEntry(name=o) for o in order]
+    return out, "+".join(did)
+
+
+def pin_to_bib(md: str, entries: list[AuthorEntry], bib: dict | None, page_text: str | None,
+               parts: list[str] | None, ops: dict | None = None) -> tuple[str, list[AuthorEntry]]:
+    """서지 고정 — 제목 교체, 구조화 저자 순서·누락 맞춤(저자 블록을 다시 그려 authors.json과 맞춘다)."""
+    if not bib or not page_text:
+        return md, entries
+    md, changed = pin_title(md, bib.get("title"), page_text)
+    if ops is not None:
+        ops["bib_title"] = changed
+    if entries:
+        new, did = pin_authors(entries, bib.get("authors"), page_text)
+        old_block = _render_authors_detail(entries, parts)
+        if did and old_block and old_block in md:
+            md = md.replace(old_block, _render_authors_detail(new, parts), 1)
+            entries = new
+            if ops is not None:
+                ops["bib_authors"] = did
+    return md, entries
 
 
 def _strip_note_anchors(md: str) -> str:
@@ -725,19 +1099,33 @@ def normalize_llm(provider: Provider, md: str, allow_pull: bool = False,
 def normalize_authors(provider: Provider | None, md: str,
                       parts: list[str] | None = None, allow_pull: bool = False,
                       ops: dict | None = None,
-                      trust_order: bool = True) -> tuple[str, list[AuthorEntry]]:
+                      trust_order: bool = True, *, vision=None,  # noqa: ANN001 — front_vision.Verified
+                      bib: dict | None = None,
+                      page_text: str | None = None) -> tuple[str, list[AuthorEntry]]:
     """정규화 + 구조화 저자 반환. LLM 성공 시 (md, authors), 실패/없으면 (규칙 md, []).
 
+    경로는 위에서부터: ① 비전 직접 조립(vision 있음, 추가 호출 없음) ② 블록 라벨 LLM(비전 결과가
+    있으면 제목·저자·주석은 비전 것) ③ 규칙. 어느 경로든 끝에 서지 고정(bib + 텍스트 층)을 한 번 건다.
+
     allow_pull은 "추출 단계가 이 논문에서 되돌리지 못한 단 뒤집힘을 실제로 쟀다"는 뜻이다.
-    끄면 본문 뒤 블록을 앞으로 끌어올리는 복구가 통째로 no-op이 된다.
+    끄면 본문 뒤 블록을 앞으로 끌어올리는 복구가 통째로 no-op이 된다. 뒤집힘을 잰 논문에서 초록 같은
+    앞부분 섹션이 실제로 본문 뒤에 놓여 있으면 비전 직접 조립을 포기하고 라벨 경로(끌어올리기)로 간다.
     trust_order는 그 반대다 — "첫 페이지 읽기 순서를 확인·복구했다". 끄면 저자 순서를 원문
     블록 순서로 되세우지 않고 LLM 판단을 그대로 둔다(원문 순서 자체가 틀린 페이지).
     """
-    if provider is not None:
-        r = _build_llm(provider, md, parts, allow_pull, ops, trust_order)
-        if r is not None:
-            return _strip_note_anchors(r[0]), r[1]
-    return _strip_note_anchors(normalize_heuristic(md)), []
+    r = None
+    path = "heuristic"
+    if vision is not None:
+        r = _build_vision(vision, md, parts, ops, allow_pull)
+        path = "vision" if r is not None else path
+    if r is None and provider is not None:
+        r = _build_llm(provider, md, parts, allow_pull, ops, trust_order, vision=vision)
+        path = ("label+vision" if vision is not None else "label") if r is not None else path
+    text, entries = (r[0], r[1]) if r is not None else (normalize_heuristic(md), [])
+    text, entries = pin_to_bib(text, entries, bib, page_text, parts, ops)
+    if ops is not None:
+        ops["path"] = path
+    return _strip_note_anchors(text), entries
 
 
 def normalize(provider: Provider | None, md: str, allow_pull: bool = False,
