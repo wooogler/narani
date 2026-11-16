@@ -227,3 +227,50 @@ def test_phone_notes_merge_once_across_computers(tmp_path):
         from narani import notes as memo
 
         assert memo.combined(WorkDir(md4)).count("phone memo line") == 1
+
+
+def test_making_audio_for_a_library_paper_does_not_mark_it_sent(env, monkeypatch):
+    ws, store = env
+    root = paper(ws, "p1")
+    phone.push_library([root])
+    monkeypatch.setattr(phone.gdrive, "open_store", lambda: store)
+    phone.send_audio([root], mark_sent=False)                      # make_audio(send=False)가 부르는 길
+    assert index(store)["papers"][0]["sent"] is False
+
+
+def test_reader_pass_survives_a_broken_paper_and_keeps_sends(env, monkeypatch):
+    ws, store = env
+    roots = [paper(ws, f"p{i}") for i in range(4)]
+    real = bundle.build_paper
+
+    def build(root, digest=None):  # noqa: ANN001, ANN202
+        if Path(root).stem == "p1":
+            raise ValueError("깨진 논문")
+        return real(root, digest)
+    monkeypatch.setattr(bundle, "build_paper", build)
+    sent_during = {"done": False}
+
+    def prog(i: int, n: int, key: str) -> None:                    # 서재 전체를 싣는 사이 사용자가 p0을 보냈다
+        if key == "p2" and not sent_during["done"]:
+            sent_during["done"] = True
+            sync.push([roots[0]], store, extra=phone._sent(phone._rows(), [roots[0]]))   # noqa: SLF001
+    out = phone.push_library(roots, on_progress=prog, batch=2)
+    assert out["failed"] == ["p1"]
+    by = {e["key"]: e for e in index(store)["papers"]}
+    assert set(by) == {"p0", "p2", "p3"}
+    assert by["p0"]["sent"] is True                                # 쓰기 직전에 다시 읽어 보낸 표시를 지켰다
+
+
+def test_drive_delete_also_leaves_the_web_reader(env):
+    ws, store = env
+    root = paper(ws, "p1")
+    library_sync._set(enabled=True)                                # noqa: SLF001
+    library_sync._Worker().tick()                                  # noqa: SLF001 — 서재 + 웹 리더에 싣는다
+    assert index(store)["papers"]
+    library_sync.delete_remote(root)
+    assert index(store)["papers"] == []
+
+
+def test_stale_remembered_scope_falls_back_to_scope_list():
+    js = web.site_files(local=True)["app.js"][0].decode()
+    assert "SCOPE && !validScope(SCOPE)" in js

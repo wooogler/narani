@@ -162,11 +162,14 @@ def _edited(files: dict[str, dict], base_sigs: dict[str, str]) -> float:
 # ---------------------------------------------------------------- 엔진
 class Library:
     def __init__(self, store, workspace: Path, state_dir: Path, *, dev: str | None = None,  # noqa: ANN001
-                 busy: Callable[[Path], bool] | None = None) -> None:
+                 busy: Callable[[Path], bool] | None = None, hold: Callable[[Path], bool] | None = None) -> None:
         self.store = store
         self.ws = Path(workspace)
         self.state_dir = Path(state_dir)
         self.busy = busy or (lambda _md4: False)
+        # hold: 이 논문의 파일을 지금 바꾸면 안 된다(뷰어에 열려 있다 — 뷰어는 하이라이트 목록을 통째로 되저장한다).
+        # 올리기는 하고, 받기·병합만 닫힐 때까지 미룬다
+        self.hold = hold or (lambda _md4: False)
         g = self.load_global()
         if not g.get("dev"):
             g["dev"] = secrets.token_hex(4)
@@ -281,7 +284,7 @@ class Library:
 
     # ---- 맞추기 ----
     def sync_paper(self, md4: Path) -> str:
-        """논문 하나 — 반환: same·up·down·merged·deleted·busy (NotReady는 그대로 올린다)."""
+        """논문 하나 — 반환: same·up·down·merged·deleted·busy·held(열려 있어 받기를 미룸) (NotReady는 그대로 올린다)."""
         md4 = Path(md4)
         with LOCK:
             st = read_state(md4)
@@ -327,6 +330,9 @@ class Library:
             if S is not None and st.get("pending") and S in history:
                 _confirm(md4, st)                     # 다른 컴퓨터가 내 판 위에 쌓았다 — 내 판은 공통 판
             local_changed = S is None or L != st.get("sig") or bool(st.get("pending"))
+            if self.hold(md4):
+                write_state(md4, st)
+                return "held"
             if not local_changed:
                 self._pull(md4, st, files, man, R)
                 return "down"
@@ -480,7 +486,11 @@ class Library:
             st["conflict"] = {"dir": str(cdir.relative_to(md4)) if cdir.exists() else "", "at": time.time(),
                               "kept": "local" if local_wins else "remote"}
         ver = max(R[0], S[0] if S else 0) + 1
-        if pack.signature(files) != pack.signature({k: {"s": v["s"]} for k, v in remote.items()}):
+        remote_sig = pack.signature({k: {"s": v["s"]} for k, v in remote.items()})
+        if pack.signature(files) != remote_sig:
+            # 병합 결과는 아직 원격에 없다 — 올리기가 실패해도(오프라인) 다음 차례에 다시 올리게 '바뀐 것'으로 적어 둔다
+            st.update(sig=remote_sig, fp="")
+            write_state(md4, st)
             self._upload(md4, st, files, st["pid"], ver, man)
         else:
             write_state(md4, st)
@@ -510,8 +520,8 @@ class Library:
             name = f"{DATA}{pid}.{group}.{dg}.zip"
             if name not in self.names:
                 data, dg2 = pack.build(md4, rels, group)
-                if dg2 != dg:   # 묶는 사이 파일이 바뀌었다 — 표를 다시 만들고 그 이름으로
-                    files, st["files"] = pack.table(md4, st.get("files"))
+                if dg2 != dg:   # 묶는 사이 파일이 바뀌었다(또는 캐시가 낡았다) — 캐시 없이 표를 다시 만들고 그 이름으로
+                    files, st["files"] = pack.table(md4, None)
                     name = f"{DATA}{pid}.{group}.{dg2}.zip"
                     if pack.digest(files, group) != dg2:
                         raise NotReady("올리는 중에 파일이 바뀌었습니다")
@@ -670,7 +680,7 @@ class Library:
                  on_progress: Callable[[int, int, str], None] | None = None) -> dict:
         """목록을 받고 컬렉션 → 논문들 차례로. only = 이 pid들만(None이면 전부). 논문 하나가 실패해도 계속."""
         self.refresh()
-        out = {"same": 0, "up": 0, "down": 0, "merged": 0, "deleted": 0, "busy": 0, "errors": []}
+        out = {"same": 0, "up": 0, "down": 0, "merged": 0, "deleted": 0, "busy": 0, "held": 0, "errors": []}
         try:
             self.sync_collections()
         except Exception as e:  # noqa: BLE001

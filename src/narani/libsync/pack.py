@@ -24,6 +24,7 @@ EXCLUDE_DIRS = frozenset({"logs", "audio", "sync", "conflicts"})
 EXCLUDE_FILES = frozenset({"preview.json", "thumb.png", "sync.json"})
 # 어디서든 빼는 경로 조각
 EXCLUDE_PARTS = frozenset({".trash", "__pycache__"})
+RULES = 2   # 무엇을 떼고 어떻게 지문을 내는지(stored·sig_of)가 바뀌면 올린다 — 파일 sha 캐시를 버리게
 MEDIA_EXT = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp"})
 
 STATUS = "status.json"
@@ -155,7 +156,8 @@ def table(md4: Path, cache: dict | None = None) -> tuple[dict[str, dict], dict]:
     out: dict[str, dict] = {}
     for rel, (size, mtime) in walk(md4).items():
         hit = cache.get(rel)
-        if isinstance(hit, dict) and hit.get("n") == size and hit.get("t") == mtime and hit.get("b"):
+        if (isinstance(hit, dict) and hit.get("n") == size and hit.get("t") == mtime and hit.get("b")
+                and hit.get("v") == RULES):
             out[rel] = hit
             continue
         try:
@@ -163,7 +165,7 @@ def table(md4: Path, cache: dict | None = None) -> tuple[dict[str, dict], dict]:
         except OSError:
             continue
         data = stored(rel, raw)
-        out[rel] = {"b": sha(data), "s": sig_of(rel, data), "n": size, "t": mtime}
+        out[rel] = {"b": sha(data), "s": sig_of(rel, data), "n": size, "t": mtime, "v": RULES}
     return out, out
 
 

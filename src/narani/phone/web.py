@@ -1077,12 +1077,14 @@ _APP_JS = r"""
   function route(){
     if (SHARE_ID){ if (INDEX && INDEX.papers[0]) openPaper(fileId(INDEX.papers[0]), false); return; }
     var h = location.hash.replace(/^#!?/, '');
-    if (/^c:/.test(h)){ setScope(decodeURIComponent(h.slice(2))); showLib(false); return; }
-    if (h === 'lib'){ VIEW = 'scopes'; showLib(false); return; }
+    if (/^c:/.test(h) && validScope(decodeURIComponent(h.slice(2)))){ setScope(decodeURIComponent(h.slice(2))); showLib(false); return; }
+    if (h === 'lib' || /^c:/.test(h)){ VIEW = 'scopes'; showLib(false); return; }
     if (h && openPaper(h, false)) return;
+    if (SCOPE && !validScope(SCOPE)){ SCOPE = ''; lsSet('narani:scope', ''); }   // 그사이 지운 컬렉션
     VIEW = SCOPE ? 'list' : 'scopes';   // 마지막으로 본 범위로 (이 휴대폰에 기억)
     showLib(false);
   }
+  function validScope(s){ return s === S_ALL || s === S_NONE || s === S_SENT || !useScopes() || !!tree().by[s]; }
   function setScope(s){ SCOPE = s; VIEW = 'list'; lsSet('narani:scope', s); }
   doc.getElementById('back').onclick = function(){ showLib(true); };
   window.addEventListener('popstate', route);

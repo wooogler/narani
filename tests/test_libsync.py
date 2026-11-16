@@ -471,3 +471,59 @@ def test_runs_through_google_drive_adapter(tmp_path, monkeypatch):
     assert len([n for n in names if n.startswith("library/m/")]) == 1          # 옛 판은 치웠다
     assert len([n for n in names if ".text." in n]) == 1
     assert len(names) == len(set(names))                                      # 같은 이름이 두 벌 생기지 않았다
+
+
+def test_open_paper_is_not_overwritten_until_closed(two):
+    """뷰어는 하이라이트를 통째로 되저장한다 — 열려 있는 논문은 받기를 미루고(올리기는 한다) 닫으면 받는다."""
+    a, b = two
+    amd4 = make_paper(a.ws)
+    a.sync()
+    bmd4 = _import_all(b)[0]
+    bump(amd4 / "out" / "paper.en.md", "edited on A\n")
+    a.sync()
+    b.lib.hold = lambda md4: md4 == bmd4                          # B에서 열어 둠
+    out = b.sync()
+    assert out["held"] == 1 and "edited on A" not in (bmd4 / "out" / "paper.en.md").read_text()
+    b.lib.hold = lambda md4: False                                # 닫음
+    assert b.sync()["down"] == 1
+
+
+def test_stale_hash_cache_is_not_trusted(two):
+    """규칙이 바뀌기 전의 파일 sha 캐시(같은 크기·시각)가 남아 있어도 올리기가 막히지 않는다."""
+    a, b = two
+    amd4 = make_paper(a.ws)
+    a.sync()
+    st = engine.read_state(amd4)
+    for v in st["files"].values():                                # 옛 규칙의 캐시처럼 — 판 표시 없음, 틀린 sha
+        v.pop("v", None)
+        v["b"] = "0" * 32
+    engine.write_state(amd4, st)
+    bump(amd4 / "out" / "paper.en.md", "changed\n")
+    assert a.sync()["up"] == 1
+    assert (_import_all(b)[0] / "out" / "paper.en.md").read_text() == "changed\n"
+
+
+def test_merge_result_is_uploaded_later_if_upload_fails(two):
+    a, b = two
+    amd4 = make_paper(a.ws)
+    a.sync()
+    bmd4 = _import_all(b)[0]
+    annotations.save(WorkDir(amd4), [item("fromA")])
+    annotations.save(WorkDir(bmd4), [item("fromB")])
+    a.sync()
+    real = b.store.write
+    calls = {"n": 0}
+
+    def flaky(name, data, mime="application/json"):  # noqa: ANN001, ANN202 — 병합 뒤 올리기에서 망이 끊긴다
+        if name.startswith(engine.MAN):
+            calls["n"] += 1
+            raise OSError("offline")
+        return real(name, data, mime)
+    b.store.write = flaky                                         # type: ignore[method-assign]
+    with b.on() as lib:
+        out = lib.sync_all()
+    assert out["errors"] and calls["n"] == 1
+    b.store.write = real                                          # type: ignore[method-assign]
+    assert b.sync()["up"] == 1                                    # 다시 연결되면 병합 결과를 올린다
+    a.sync()
+    assert {it["id"] for it in annotations.load(WorkDir(amd4))} == {"fromA", "fromB"}

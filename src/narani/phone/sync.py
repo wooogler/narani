@@ -98,7 +98,9 @@ def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dic
     meta는 목록 머리에 실을 값(collections — 컬렉션 계층, §service.index_meta). 안 주면 예전 목록의 것을 그대로.
     new_sent: 목록에 **새로** 들어가는 논문을 '보낸 논문'으로 적을지 — 서재 동기화가 서재 전체를 실을 때는 False(휴대폰이
     미리 받아 두지 않는다). 이미 있던 줄은 extra가 sent를 주지 않으면 그대로 둔다. 옛 줄(sent 없음)은 보낸 것으로 읽는다.
-    반환: {uploaded, skipped, removed, bytes, papers, merged(합친 폰 기록 수), notes(다시 올린 메모 파일 수)}.
+    번들을 굽지 못한 논문은 건너뛰고(예전 줄이 있으면 그대로) failed에 적는다 — 한 편 때문에 전부 멈추지 않게.
+    목록은 쓰기 직전에 다시 읽어 그사이 다른 흐름(보내기·음성 올리기·다른 컴퓨터)이 바꾼 줄을 지킨다.
+    반환: {uploaded, skipped, removed, bytes, papers, merged(합친 폰 기록 수), notes(다시 올린 메모 파일 수), failed: [키]}.
     """
     roots = list(dict.fromkeys(Path(r) for r in roots))
     prev_index = read_index(store)
@@ -107,6 +109,7 @@ def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dic
     code = bmod._code_stamp()
     entries: list[dict] = []
     uploaded = skipped = sent = merged = notes_sent = 0
+    failed: list[str] = []
     for n, root in enumerate(roots):
         key = root.stem
         if on_progress:
@@ -125,7 +128,16 @@ def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dic
             entries.append({**prev, **more, **({"speech": sp} if sp else {})})
             skipped += 1
             continue
-        b = bmod.build_paper(root, digest)
+        try:
+            b = bmod.build_paper(root, digest)
+        except Exception:  # noqa: BLE001 — 깨진 논문 하나가 나머지를 막지 않게
+            import logging
+
+            logging.getLogger(__name__).warning("웹 리더 번들을 굽지 못함: %s", root, exc_info=True)
+            failed.append(key)
+            if prev:
+                entries.append({**prev, **{k: v for k, v in more.items() if k != "sent"}})
+            continue
         data = bmod.dumps(b)
         store.write(bmod.file_name(key), data)
         if prev and prev.get("audio"):  # 음성은 그대로 — 지문이 달라져 폰이 '옛 음성'으로 안다
@@ -137,6 +149,18 @@ def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dic
         uploaded += 1
         sent += len(data)
     keys = {e["key"] for e in entries}
+    fresh = {e.get("key"): e for e in read_index(store)["papers"] if isinstance(e, dict)}
+    for e in entries:   # 그사이 바뀐 보낸 표시·음성은 다시 읽은 목록의 것으로 (이번에 직접 정한 sent는 그대로)
+        f = fresh.get(e["key"])
+        if f is None:
+            continue
+        if "sent" not in (extra or {}).get(e["key"], {}):
+            if "sent" in f:
+                e["sent"] = f["sent"]
+            else:
+                e.pop("sent", None)
+        if f.get("audio") and f.get("audio") != e.get("audio"):
+            e["audio"] = f["audio"]
     removed = 0
     if prune:
         for k, e in old.items():
@@ -149,8 +173,8 @@ def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dic
                     store.delete(e["speech"]["file"])
                 _delete_audio(store, e)
                 removed += 1
-    else:  # 고르지 않은 예전 논문은 목록에 그대로 둔다
-        entries += [e for k, e in old.items() if k not in keys]
+    else:  # 고르지 않은 논문은 목록에 그대로 둔다 — 쓰기 직전에 다시 읽은 목록에서
+        entries += [e for k, e in fresh.items() if k not in keys]
     index = {"format": bmod.FORMAT, "updated": time.time(), "ui_lang": i18n.ui_lang(), "papers": entries,
              "agent": _agent_defaults()}
     for k in ("collections",):
@@ -162,7 +186,7 @@ def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dic
     if on_progress:
         on_progress(len(roots), len(roots), "")
     return {"uploaded": uploaded, "skipped": skipped, "removed": removed, "bytes": sent, "papers": len(entries),
-            "merged": merged, "notes": notes_sent}
+            "merged": merged, "notes": notes_sent, "failed": failed}
 
 
 

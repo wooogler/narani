@@ -6923,6 +6923,8 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
         "wd_by_token": {},  # 토큰 → WorkDir (이미지·PDF 자산 서빙, 논문별 캐시 격리)
     }
 
+    _viewing_hooked: set[str] = set()   # 창 닫힘을 이미 걸어 둔 클라이언트
+
     def _register_wd(w) -> None:  # noqa: ANN001 — WorkDir
         if w is not None:
             state["wd_by_token"][wd_token(w.root)] = w
@@ -7007,9 +7009,21 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
         if state["launch_wd"] is not None:
             ui.navigate.to(_review_url(state["launch_wd"].root))
             return
+        _viewing(None)
         build_home(state)
 
+    def _viewing(root: Path | None) -> None:
+        """서재 동기화에 알린다 — 이 창의 뷰어에 떠 있는 논문은 받기·병합을 미룬다(§libsync.service.hold)."""
+        from narani.libsync import service as library_sync
+
+        client = ui.context.client
+        library_sync.viewing(client.id, root)
+        if root is not None and client.id not in _viewing_hooked:
+            _viewing_hooked.add(client.id)
+            client.on_disconnect(lambda c=client: library_sync.viewing(c.id, None))
+
     def home_view() -> None:
+        _viewing(None)
         build_home(state)
 
     def review_view(wd: str = "") -> None:  # noqa: ANN001 — 쿼리 파라미터
@@ -7018,6 +7032,7 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
             ui.navigate.to("/home")
             return
         wdir = WorkDir(root)
+        _viewing(wdir.root)
         state["current_wd"] = wdir  # 이미지 서빙이 이 워크디렉토리를 가리키도록
         _register_wd(wdir)  # 토큰 등록 (이 논문 자산 URL 해석용)
         _mark_opened(wdir)  # 미열람 표시 해제 (한 번이라도 열면 '새 항목' 아님)

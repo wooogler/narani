@@ -467,12 +467,15 @@ def make_local(roots: list[Path], voice: str | None = None, include: list[int] |
     return {"made": made, "seconds": seconds, "bytes": nbytes}
 
 
-def send_audio(roots: list[Path], *, newer_only: bool = False) -> dict:
+def send_audio(roots: list[Path], *, newer_only: bool = False, mark_sent: bool = True) -> dict:
     """논문들을 웹 리더로 보내고(번들·메모를 맞춘 뒤) 이 컴퓨터에 만든 음성을 올린다 — 다시 합성하지 않는다.
+    mark_sent=False면 '보낸 논문'으로 적지 않는다(이미 웹 리더에 있는 서재 논문의 음성만 새로 — 휴대폰이 미리 받지 않게).
     반환: sync.put_audio의 {sent, bytes, missing, none}."""
     store = gdrive.open_store()
     roots = [Path(r) for r in roots]
-    sync.push(roots, store, prune=False, extra=_sent(_rows(), roots), meta=index_meta())
+    rows = _rows()
+    sync.push(roots, store, prune=False, extra=_sent(rows, roots) if mark_sent else _extra(rows), meta=index_meta(),
+              new_sent=mark_sent)
     out = sync.put_audio(store, roots, newer_only=newer_only)
     _remember(sync.read_index(store), store)
     return out
@@ -518,7 +521,7 @@ def make_audio(roots: list[Path], voice: str | None = None, include: list[int] |
     out.update(bytes=0, sent=0, send_error=None)
     if targets:
         try:
-            s = send_audio(targets)
+            s = send_audio(targets, mark_sent=send)
             out.update(bytes=s["bytes"], sent=s["sent"])
         except Exception as e:  # noqa: BLE001 — 음성은 이미 이 컴퓨터에 있다; 다음 보내기·켤 때 맞추기에 다시 올린다
             log.warning("만든 음성을 웹 리더에 올리지 못함: %s", e)
@@ -628,11 +631,16 @@ def refresh() -> dict:
     return out
 
 
-def push_library(roots: list[Path], *, phone_notes: bool = False, on_progress=None) -> dict:  # noqa: ANN001
+def push_library(roots: list[Path], *, phone_notes: bool = False, on_progress=None,  # noqa: ANN001
+                 hold=None, batch: int = 10) -> dict:  # noqa: ANN001
     """서재 동기화가 켜져 있을 때 — 서재 논문의 읽기 번들을 웹 리더에도 둔다(바뀐 것만 굽는다). 새로 실은 논문은 '보낸 논문'이
     아니다(sent=false — 휴대폰이 미리 받지 않고 열 때 받는다). phone_notes면 휴대폰 기록 파일이 있는 서재 논문도 함께 —
     휴대폰에서 단 메모를 이 컴퓨터의 annotations.json에 합친다(그 뒤 서재 동기화가 다른 컴퓨터로 나른다).
-    저장소는 서재 동기화와 같은 곳(Drive 앱 폴더 — 시험용 폴더면 그 폴더)."""
+
+    batch편씩 나눠 목록을 쓴다 — 처음 한 번 서재 전체를 실을 때 오래 걸려도 중간에 앱을 꺼도 한 일이 남고, 그사이 '보내기'가
+    덮이지 않는다. hold(작업 디렉토리) → True인 논문(뷰어에 열려 있음)은 건드리지 않고 held로 돌려준다(다음 차례에).
+    저장소는 서재 동기화와 같은 곳(Drive 앱 폴더 — 시험용 폴더면 그 폴더).
+    반환: {uploaded, skipped, merged, failed: [키], held: [작업 디렉토리]}."""
     from narani.libsync import service as library_sync
     from narani.phone import notes as nmod
     from narani.phone.store import names as store_names
@@ -644,8 +652,19 @@ def push_library(roots: list[Path], *, phone_notes: bool = False, on_progress=No
         present = set(store_names(store, "mobile/"))
         here = {r["name"]: Path(r["root"]) for r in rows}
         roots += [p for k, p in here.items() if nmod.mobile_name(k) in present and p not in roots]
-    out = sync.push(roots, store, prune=False, extra=_extra(rows), meta=index_meta(), new_sent=False,
-                    on_progress=on_progress)
+    held = [r for r in roots if hold and hold(r)]
+    roots = [r for r in roots if r not in held]
+    extra, meta = _extra(rows), index_meta()
+    out = {"uploaded": 0, "skipped": 0, "merged": 0, "failed": [], "held": held}
+    chunks = [roots[i:i + batch] for i in range(0, len(roots), batch)] or [[]]
+    for c, chunk in enumerate(chunks):
+        def prog(i: int, n: int, key: str, c: int = c) -> None:
+            if on_progress and key:
+                on_progress(c * batch + i, len(roots), key)
+        got = sync.push(chunk, store, prune=False, extra=extra, meta=meta, new_sent=False, on_progress=prog)
+        for k in ("uploaded", "skipped", "merged"):
+            out[k] += got[k]
+        out["failed"] += got["failed"]
     if connected():
         _remember(sync.read_index(store), store)
     return out

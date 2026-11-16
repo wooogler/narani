@@ -59,6 +59,23 @@ def set_busy(fn: Callable[[Path], bool]) -> None:
     _busy = fn
 
 
+_VIEWING: dict[str, str] = {}   # 창(클라이언트 id) → 지금 그 창의 뷰어에 띄운 논문
+
+
+def viewing(client_id: str, md4: Path | None) -> None:
+    """창이 지금 보여 주는 논문 — 뷰어가 열 때 적고, 홈으로 가거나 창이 닫히면 None."""
+    if md4 is None:
+        _VIEWING.pop(client_id, None)
+    else:
+        _VIEWING[client_id] = str(Path(md4))
+
+
+def hold(md4: Path) -> bool:
+    """어느 창의 뷰어에 지금 떠 있는 논문 — 받기·병합·휴대폰 기록 합치기를 그 뷰어가 닫힐 때까지 미룬다(뷰어가 하이라이트를
+    통째로 되저장해서 그사이 디스크에 들어온 것을 덮는다). 올리기는 한다. 탭 줄에만 있는 논문은 다시 열 때 디스크에서 읽으니 괜찮다."""
+    return str(Path(md4)) in _VIEWING.values()
+
+
 def _default_busy(md4: Path) -> bool:
     try:
         from narani.ui import jobs
@@ -99,7 +116,7 @@ def library() -> engine.Library:
     key = (str(workspace()), str(config.CONFIG_DIR), str(local_store_dir()), bool(available()), _token_tag())
     if _lib is None or _lib[0] != key:
         _lib = (key, engine.Library(_open_store(), workspace(), config.CONFIG_DIR,
-                                    busy=lambda md4: (_busy or _default_busy)(md4)))
+                                    busy=lambda md4: (_busy or _default_busy)(md4), hold=hold))
     return _lib[1]
 
 
@@ -257,7 +274,14 @@ def delete_remote(md4: Path) -> bool:
     try:
         lib = library()
         lib.refresh()
-        return lib.delete_remote(pid)
+        gone = lib.delete_remote(pid)
+        try:   # 서재 동기화가 웹 리더에 실은 것도 — 휴대폰에서도 사라지게(다른 컴퓨터는 '다른 컴퓨터에서 지움'으로 본다)
+            from narani.phone import sync as reader
+
+            reader.remove(lib.store, [Path(md4)])
+        except Exception:  # noqa: BLE001
+            log.info("웹 리더에서 빼지 못함: %s", md4, exc_info=True)
+        return gone
     except Exception as e:  # noqa: BLE001
         log.info("Drive 서재에서 지우기를 미룸 (%s): %s", pid, e)
         _set(pending_deletes=sorted({*(_global().get("pending_deletes") or []), pid}))
@@ -289,6 +313,7 @@ class _Worker(threading.Thread):
         self.prev: dict[str, str] = {}
         self.listed = 0.0
         self.reader_done = False   # 이번 실행에서 서재 전체를 웹 리더에 한 번 맞췄는가
+        self.reader_todo: set[Path] = set()   # 웹 리더에 다시 실을 논문 — 열려 있어 미룬 것은 다음 차례에
         self.notes_at = 0.0        # 휴대폰 기록을 마지막으로 합친 때
 
     def run(self) -> None:
@@ -345,7 +370,7 @@ class _Worker(threading.Thread):
                     if (st.get("ver"), st.get("dev")) != (h[0][0], h[0][1]):
                         cands.add(pid)
             todo = [(pid, local[pid]) for pid in local if pid in cands]
-            out = {"same": 0, "up": 0, "down": 0, "merged": 0, "deleted": 0, "busy": 0, "errors": []}
+            out = {"same": 0, "up": 0, "down": 0, "merged": 0, "deleted": 0, "busy": 0, "held": 0, "errors": []}
             touched: list[Path] = []
             for i, (_pid, md4) in enumerate(todo):
                 _bump(phase="sync", done=i, total=len(todo), label=md4.stem)
@@ -377,18 +402,22 @@ class _Worker(threading.Thread):
         LIST_EVERY마다 휴대폰 기록 합치기. 컬렉션만 바뀌어도 목록 머리를 다시 쓴다. 실패해도 서재 동기화는 끝났다."""
         full = not self.reader_done
         notes = full or time.time() - self.notes_at > LIST_EVERY
-        roots = list(local.values()) if full else touched
-        if not (roots or coll_changed or notes):
+        self.reader_todo |= set(local.values()) if full else set(touched)
+        self.reader_todo &= set(local.values())   # 그사이 지운 논문은 뺀다
+        if not (self.reader_todo or coll_changed or notes):
             return
         from narani.phone import service as phone
 
         def prog(i: int, n: int, label: str) -> None:
             _bump(phase="reader", done=i, total=n, label=label)
         try:
-            phone.push_library(roots, phone_notes=notes, on_progress=prog)
+            out = phone.push_library(sorted(self.reader_todo), phone_notes=notes, on_progress=prog, hold=hold)
+            self.reader_todo = set(out.get("held") or [])
             self.reader_done = True
             if notes:
                 self.notes_at = time.time()
+            if out.get("failed"):
+                log.info("웹 리더 번들을 만들지 못한 논문: %s", out["failed"][:3])
         except Exception as e:  # noqa: BLE001
             log.info("웹 리더 번들을 맞추지 못함: %s", e)
 
