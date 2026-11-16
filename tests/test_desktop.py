@@ -156,10 +156,10 @@ def test_configure_sets_window_icon_and_downloads():
         # ⌘+/⌘−는 웹뷰 프로세스에서 — spawn으로 넘어가니 pickle돼야 한다
         import pickle
 
-        from narani.ui import page_zoom
+        from narani.ui import menu_bar
 
         func = app.native.start_args["func"]
-        assert func is page_zoom.webview_started
+        assert func is menu_bar.webview_started  # 확대(page_zoom)와 메뉴 막대를 함께 설치
         assert pickle.loads(pickle.dumps(func)) is func
     finally:
         for cfg in (app.native.window_args, app.native.settings, app.native.start_args):

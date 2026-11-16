@@ -22,7 +22,7 @@ from narani import notes as notes_io
 from narani.ir import Flavor, GlossaryEntry
 from narani.ui import (
     agent_panel, annotations, desktop, figrefs, figure_crop, figure_ko, find_bar, formula_pop, jobs,
-    jump_back, listen, live_preview, md_keys, split_view, mdrender, pdf_zoom, reanchor,
+    jump_back, listen, live_preview, md_keys, menu_bar, split_view, mdrender, pdf_zoom, reanchor,
     scroll_memory, sentpair, spa, sticky_head, tabstore, term_examples, translate_job, update_banner, wordcount_view,
 )
 from narani.ui.controller import UIController
@@ -4411,6 +4411,26 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
         else:
             grid_view()
 
+    # 다시 그리기 전 텍스트 스크롤 위치(비율) — 다시 그린 뒤 그 자리로 (PDF 정렬까지)
+    _scroll_ratio_js = ("(function(){var e=document.querySelector('.sbs-grid')||document.querySelector('.vpane');"
+                        "if(!e)return null;var m=e.scrollHeight-e.clientHeight;return m>0?e.scrollTop/m:0;})()")
+
+    async def swap_lang() -> None:
+        """메뉴 '원문/번역 전환' — 번역만 보고 있으면 원문만, 그 밖(둘 다·원문만·PDF만)이면 번역만."""
+        if edit_state["on"]:
+            ui.notify(t("편집 중에는 원문/번역 전환을 쓸 수 없습니다."), type="info")
+            return
+        if not ctrl.ko_markdown():
+            ui.notify(t("이 논문은 아직 번역이 없습니다."), type="info")
+            return
+        to_en = viewer_state["ko"] and not viewer_state["en"]
+        viewer_state["_restore"] = await ui.run_javascript(_scroll_ratio_js)
+        viewer_state["en"], viewer_state["ko"] = to_en, not to_en
+        save_panels(viewer_state)
+        viewer_toolbar.refresh()
+        canvas.refresh()
+        toc_panel.refresh()  # 어느 언어가 윗줄인지 바뀐다
+
     async def _vtoggle(key: str) -> None:
         if key in ("en", "ko", "pdf"):  # 패널 토글만 가드 (sync·stip은 제외)
             has_ko = bool(ctrl.ko_markdown())
@@ -4423,9 +4443,7 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             set_edit_side("preview" if edit_side() == "pdf" else "pdf")
             return
         # 재렌더 전 텍스트 스크롤 위치(비율)를 캡처 → 재렌더 후 복원(+PDF 정렬). PDF 열기가 위치를 잃지 않게.
-        ratio = await ui.run_javascript(
-            "(function(){var e=document.querySelector('.sbs-grid')||document.querySelector('.vpane');"
-            "if(!e)return null;var m=e.scrollHeight-e.clientHeight;return m>0?e.scrollTop/m:0;})()")
+        ratio = await ui.run_javascript(_scroll_ratio_js)
         viewer_state[key] = not viewer_state[key]
         viewer_state["_restore"] = ratio
         if key in ("en", "ko", "pdf"):
@@ -6653,6 +6671,14 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                     viewer_toolbar()
                     canvas()
 
+    # macOS 메뉴 막대(§ui/menu_bar.py)가 이 화면에서 부를 것 — 화면을 지을 때마다 통째로 갈아 끼운다
+    menu_bar.register(
+        export=open_export,
+        reveal=lambda: desktop.reveal(ctrl.wd.root),
+        new_window=lambda: _spawn_window(ctrl.wd.root, state, title_ref["v"]),
+        swap_lang=swap_lang,
+    )
+
     # 자리를 비운 사이 끝난 작업 — 이 화면은 이미 결과 파일로 지어졌으니 알림만 한 번
     for job in jobs.unseen_finished(ctrl.wd.root):
         job.seen = True
@@ -7063,6 +7089,7 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
         sticky_head.install()  # 내려 읽을 때 지금 섹션 제목(경로) 띠 — 그리드마다 위에 붙는다
         split_view.install()  # 같은 논문을 위아래 두 뷰어로 (알약의 '같이 보기'·툴바 단추)
         listen.install()  # 듣기 — 본문 아래 재생 막대 (웹 리더와 같은 읽을 목록·말하기 엔진)
+        menu_bar.install_page(state)  # macOS 메뉴 막대의 페이지 쪽 — 디스패처와 이벤트 하나 (화면마다가 아니라 셸에 한 번)
         # w-full: 없으면 sub_pages 상자가 내용 폭으로 줄어(큰 화면에서 1275px) 변환·번역 탭 splitter가 좁아진다
         ui.sub_pages({"/": index_view, "/home": home_view, "/review": review_view}).classes("w-full")
         update_banner.install(state)  # 새 버전 알림 — 셸에 붙어 탭을 옮겨도 남는다
@@ -7072,6 +7099,7 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
     @ui.page(agent_panel.STANDALONE_PATH, title=agent_panel.WINDOW_TITLE)
     def agent_window(session: str = "", paper: str = "") -> None:  # 쿼리 파라미터
         agent_panel.standalone_page(state, session, paper, native=desktop.active())
+        menu_bar.install_page(state)  # 이 창의 메뉴 막대 — 해당 없는 항목은 안내, ⌘W는 창 닫기
 
     port = pick_port(port)
     state["port"] = port  # 새 창(형제 웹뷰 프로세스)이 가리킬 주소를 만들 때 쓴다

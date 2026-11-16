@@ -106,6 +106,23 @@ def _apply(view, z: float, badge: bool = False) -> None:  # noqa: ANN001
 _STATE: dict = {}
 
 
+def zoom(key: str, window=None) -> bool:  # noqa: ANN001 — NSWindow
+    """key('+'·'-'·'0')대로 그 창(없으면 key 창)의 배율을 바꾼다 — 키 모니터와 메뉴 막대(§ui/menu_bar.py)가
+    함께 부른다(메인 스레드에서). 바꿀 웹뷰가 없으면 False."""
+    from AppKit import NSApp
+
+    # 다른 창이 바꾼 배율도 따라간다(형제 창은 다른 프로세스라 파일로 맞춘다)
+    new = step(load(), key)
+    views = _webviews(window or NSApp.keyWindow() or NSApp.mainWindow())
+    if new is None or not views:
+        return False
+    _STATE["zoom"] = new
+    save(new)
+    for v in views:
+        _apply(v, new, badge=True)
+    return True
+
+
 def _install() -> None:
     from AppKit import NSApp, NSEvent, NSEventMaskKeyDown
 
@@ -124,18 +141,9 @@ def _install() -> None:
         if not flags & cmd or flags & others:
             return event
         key = key_of(event.charactersIgnoringModifiers() or "")
-        if key is None:
+        if key is None or not zoom(key, event.window()):
             return event
-        # 다른 창이 바꾼 배율도 따라간다(형제 창은 다른 프로세스라 파일로 맞춘다)
-        new = step(load(), key)
-        views = _webviews(event.window() or NSApp.keyWindow())
-        if new is None or not views:
-            return event
-        _STATE["zoom"] = new
-        save(new)
-        for v in views:
-            _apply(v, new, badge=True)
-        return None  # 먹는다 — 페이지까지 가지 않게
+        return None  # 먹는다 — 페이지·메뉴 막대까지 가지 않게(메뉴의 같은 항목이 한 번 더 돌지 않는다)
 
     _STATE["monitor"] = NSEvent.addLocalMonitorForEventsMatchingMask_handler_(NSEventMaskKeyDown, on_key)
 
