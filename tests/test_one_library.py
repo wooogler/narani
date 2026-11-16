@@ -102,6 +102,13 @@ def test_phone_keep_choice_is_read_and_desktop_later_choice_wins(env):  # noqa: 
     assert {e["key"]: e["sent"] for e in sync.read_index(store)["papers"]}["p1"] is False
 
 
+def test_phone_app_writes_the_keep_file_the_desktop_reads():
+    from narani.phone import web
+
+    js = web.site_files(local=True)["app.js"][0].decode()
+    assert f"'{sync.KEEP}'" in js and "sent_at" in js
+
+
 def test_sharing_does_not_keep_the_paper_on_the_phone(env, monkeypatch):  # noqa: F811 — env는 test_libsync_reader의 fixture
     ws, store = env
     root = paper(ws, "p1")
@@ -109,5 +116,10 @@ def test_sharing_does_not_keep_the_paper_on_the_phone(env, monkeypatch):  # noqa
     monkeypatch.setattr(phone, "connected", lambda: True)
     monkeypatch.setattr(sync, "share", lambda st, r, memos=None: "sid1")
     monkeypatch.setattr(sync, "share_id", lambda st, key: None)
+    monkeypatch.setattr(phone, "_library_on", lambda: True)
     phone.share([root])
-    assert index(store)["papers"][0]["sent"] is False
+    assert index(store)["papers"][0]["sent"] is False             # 서재 동기화 중 — 공유는 받아 두기와 따로
+    monkeypatch.setattr(phone, "_library_on", lambda: False)
+    root2 = paper(ws, "p2")
+    phone.share([root2])                                           # 동기화 꺼짐 — 예전처럼 받아 둔 논문(데스크톱에서 뺄 수 있게)
+    assert {e["key"]: e["sent"] for e in index(store)["papers"]}["p2"] is True

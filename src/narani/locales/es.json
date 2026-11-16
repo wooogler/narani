@@ -1538,7 +1538,6 @@
  "다른 컴퓨터에서도 지우기 — 다른 컴퓨터에는 '다른 컴퓨터에서 지움'으로 알립니다": "Eliminar también en otros ordenadores — se mostrará como 'Eliminado en otro ordenador'",
  "끄면 이 컴퓨터에서만 지웁니다 — 설정의 서재 동기화에서 다시 가져올 수 있습니다.": "Si se desactiva, solo se elimina en este ordenador — puedes volver a traerlo desde Sincronización de la biblioteca en Ajustes.",
  "지금은 Drive에 닿지 않아 나중에 다른 컴퓨터에서도 지웁니다.": "Ahora no se puede acceder a Drive — se eliminará en los otros ordenadores más tarde.",
- "휴대폰 음성 {n}편을 지웠습니다 — 논문은 휴대폰에 그대로": "Se eliminó el audio del móvil de {n} artículos — los artículos siguen en el móvil",
  "휴대폰에 받아 두는 중… ({n}편)": "Guardando en el móvil… ({n})",
  "휴대폰에 받아 뒀습니다 — {n}편": "Guardados en el móvil — {n}",
  "휴대폰에서 빼는 중… ({n}편)": "Quitando del móvil… ({n})",
@@ -1585,8 +1584,6 @@
  "되살리기 — 이 컴퓨터의 판을 서재에 다시 올리기": "Restaurar — volver a subir a la biblioteca la copia de este ordenador",
  "휴대폰 화면으로 열기 — 기본 브라우저에서": "Abrir la vista del móvil — en tu navegador predeterminado",
  "번역 본문을 읽은 음성을 이 컴퓨터에 만듭니다 — 뷰어의 듣기에서 바로 듣고, 휴대폰에서 열 수 있는 논문은 휴대폰에서도 듣습니다(화면을 꺼도, CarPlay에서도)": "Crea en este ordenador el audio del texto traducido — escúchalo enseguida con Escuchar en el visor y, en los artículos que se abren en el móvil, también allí (con la pantalla apagada o en CarPlay)",
- "휴대폰 음성 지우기": "Eliminar el audio del móvil",
- "휴대폰에서 듣는 음성만 지웁니다 — 논문은 휴대폰에 그대로": "Solo elimina el audio que se escucha en el móvil — el artículo sigue en el móvil",
  "링크가 있는 사람 누구나 읽기 전용으로 — '제목 — 링크'로 한꺼번에 복사합니다": "Solo lectura para cualquiera con el enlace — los copia todos a la vez como 'Título — enlace'",
  "숨긴 논문 · 내보내기 형식 · 이 목록 저장 · 휴대폰에 받아 두기": "Artículos ocultos · formato de exportación · guardar esta lista · guardar en el móvil",
  "다른 컴퓨터의 논문을 가져오는 중… {done}/{total} {label}": "Trayendo artículos de otros ordenadores… {done}/{total} {label}",
@@ -1600,5 +1597,8 @@
  "Drive에 다른 컴퓨터에서 올린 서재가 {n}편 있습니다. 켜면 그 논문들을 이 컴퓨터로 저절로 가져오고, 이 컴퓨터의 논문도 올립니다.": "Drive ya tiene una biblioteca de {n} artículos subida desde otro ordenador. Al activarla, esos artículos se traen automáticamente a este ordenador y también se suben los de este ordenador.",
  "처음에는 지금 서재 전체(원본 PDF·그림 포함)를 올립니다. API 키와 설정은 올리지 않습니다. 진행은 홈 왼쪽 아래 구름 아이콘에 보이고, 나중에 설정 → 저장 위치에서 끌 수 있습니다.": "La primera vez se sube toda tu biblioteca (incluidos los PDF originales y las imágenes). No se suben las claves API ni los ajustes. El progreso se ve en el icono de nube abajo a la izquierda de Inicio, y puedes desactivarla luego en Ajustes → Ubicaciones de guardado.",
  "음성 만들기 · 휴대폰": "Crear audio · Móvil",
- "서재 동기화": "Sincronización de la biblioteca"
+ "서재 동기화": "Sincronización de la biblioteca",
+ "만든 음성 {n}편을 지웠습니다 — 이 컴퓨터와 휴대폰에서, 논문은 그대로": "Se eliminó el audio creado de {n} artículos — en este ordenador y en el móvil; los artículos se conservan",
+ "음성 지우기": "Eliminar audio",
+ "만든 듣기 음성을 이 컴퓨터와 휴대폰에서 지웁니다(서재 동기화가 켜져 있으면 다른 컴퓨터에서도) — 논문은 그대로": "Elimina el audio de escucha creado de este ordenador y del móvil (y de otros ordenadores si la sincronización de la biblioteca está activada) — los artículos se conservan"
 }

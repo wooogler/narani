@@ -806,7 +806,8 @@ _APP_JS = r"""
     var on = !isSent(e);
     KEEP[e.key] = {on: on, at: Date.now()};
     lsSet('narani:keep', KEEP);
-    if (!on && have0(e)){   // 빼면 이 기기에 내려받은 사본도 지운다(저장 공간) — 다시 열면 그때 받는다
+    if (!on && have0(e) && !OFFLINE && navigator.onLine !== false){   // 빼면 이 기기에 내려받은 사본도 지운다(저장 공간) —
+      // 다시 열면 그때 받는다. 오프라인이면 그것이 하나뿐인 사본이라 남긴다
       setHave(e.file, null);
       if (window.caches) caches.open(DC).then(function(c){ c.delete('__data/' + e.file); }).catch(function(){});
     }

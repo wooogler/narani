@@ -1082,7 +1082,7 @@ def build_home(state: dict) -> None:
         n = await mobile_call(phone_service.remove_audio, [Path(r) for r in roots], t("음성을 지우는 중…"))
         if n is None:
             return
-        ui.notify(t("휴대폰 음성 {n}편을 지웠습니다 — 논문은 휴대폰에 그대로", n=n), type="positive")
+        ui.notify(t("만든 음성 {n}편을 지웠습니다 — 이 컴퓨터와 휴대폰에서, 논문은 그대로", n=n), type="positive")
         mobile_changed()
 
     async def keep_on_phone(roots: list[Path]) -> None:
@@ -2445,8 +2445,9 @@ def build_home(state: dict) -> None:
                     ui.label("🎧 " + audio_label(data["reader"][paths[0].stem]["audio"])).classes("md4-act-note")
                 if with_audio:
                     with ui.element("div").classes("md4-act-links"):
-                        ui.button(t("휴대폰 음성 지우기"), on_click=lambda: remove_mobile_audio(with_audio), color=None) \
-                            .props("flat dense no-caps").tooltip(t("휴대폰에서 듣는 음성만 지웁니다 — 논문은 휴대폰에 그대로"))
+                        ui.button(t("음성 지우기"), on_click=lambda: remove_mobile_audio(with_audio), color=None) \
+                            .props("flat dense no-caps") \
+                            .tooltip(t("만든 듣기 음성을 이 컴퓨터와 휴대폰에서 지웁니다(서재 동기화가 켜져 있으면 다른 컴퓨터에서도) — 논문은 그대로"))
 
             def phone_part() -> None:
                 """휴대폰 — 받아 두기(켜고 끄는 한 단추) · 공유 링크. 서재 동기화를 꺼도 화면은 같다(받아 두기가 올린다)."""

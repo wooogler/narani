@@ -211,8 +211,9 @@ def share(roots: list[Path], memos: list[str] | None = None, *, only_new: bool =
     roots = [Path(r) for r in roots]
     out: dict[str, str] = {}
     todo = [r for r in roots if not (only_new and sync.share_id(store, r.stem))]
-    if todo:   # 공유는 받아 두기와 따로 — 새로 실은 논문을 휴대폰에 받아 두게 하지 않는다
-        sync.push(todo, store, prune=False, extra=_extra(_rows()), meta=index_meta(), new_sent=False)
+    if todo:   # 서재 동기화가 켜져 있으면 공유는 받아 두기와 따로(새로 실은 논문을 휴대폰이 미리 받지 않게). 꺼져 있으면
+        # 예전처럼 받아 둔 논문이 된다 — 그래야 데스크톱의 '휴대폰에서 빼기'로 다시 뺄 수 있다
+        sync.push(todo, store, prune=False, extra=_extra(_rows()), meta=index_meta(), new_sent=not _library_on())
     for r in roots:
         sid = sync.share(store, r, memos) if r in todo else sync.share_id(store, r.stem)
         out[r.stem] = share_link(sid)
