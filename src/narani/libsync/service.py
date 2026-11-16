@@ -288,6 +288,8 @@ class _Worker(threading.Thread):
         self.force = False
         self.prev: dict[str, str] = {}
         self.listed = 0.0
+        self.reader_done = False   # 이번 실행에서 서재 전체를 웹 리더에 한 번 맞췄는가
+        self.notes_at = 0.0        # 휴대폰 기록을 마지막으로 합친 때
 
     def run(self) -> None:
         delay = 1.0   # 켜자마자 한 번
@@ -330,8 +332,9 @@ class _Worker(threading.Thread):
             self.listed = time.time()
             _retry_deletes(lib)
             coll_error = ""
+            coll = "same"
             try:
-                lib.sync_collections()
+                coll = lib.sync_collections()
             except Exception as e:  # noqa: BLE001 — 컬렉션 문서 하나 때문에 논문 동기화가 멈추지 않게
                 log.info("컬렉션 동기화 실패: %s", e)
                 coll_error = str(e) or type(e).__name__
@@ -343,10 +346,14 @@ class _Worker(threading.Thread):
                         cands.add(pid)
             todo = [(pid, local[pid]) for pid in local if pid in cands]
             out = {"same": 0, "up": 0, "down": 0, "merged": 0, "deleted": 0, "busy": 0, "errors": []}
+            touched: list[Path] = []
             for i, (_pid, md4) in enumerate(todo):
                 _bump(phase="sync", done=i, total=len(todo), label=md4.stem)
                 try:
-                    out[lib.sync_paper(md4)] += 1
+                    got = lib.sync_paper(md4)
+                    out[got] += 1
+                    if got in ("up", "down", "merged"):
+                        touched.append(md4)
                 except engine.NotReady as e:
                     log.info("아직 준비 안 됨 %s: %s", md4.name, e)
                 except Exception as e:  # noqa: BLE001
@@ -354,6 +361,7 @@ class _Worker(threading.Thread):
                     out["errors"].append((md4.stem, str(e) or type(e).__name__))
             if out["up"] or out["down"] or out["merged"]:
                 log.info("서재 동기화: 올림 %d · 받음 %d · 병합 %d", out["up"], out["down"], out["merged"])
+            self.reader(local, touched, coll != "same")
             if coll_error:
                 out["errors"].insert(0, ("collections", coll_error))
             _bump(last=out, last_ok=time.time(), done=len(todo),
@@ -362,6 +370,27 @@ class _Worker(threading.Thread):
                 raise RuntimeError(out["errors"][0][1])
         finally:
             _bump(running=False, phase="")
+
+
+    def reader(self, local: dict[str, Path], touched: list[Path], coll_changed: bool) -> None:
+        """웹 리더도 서재에 맞춘다(§phone.service.push_library) — 처음 한 번은 서재 전체, 그 뒤엔 이번에 바뀐 논문만,
+        LIST_EVERY마다 휴대폰 기록 합치기. 컬렉션만 바뀌어도 목록 머리를 다시 쓴다. 실패해도 서재 동기화는 끝났다."""
+        full = not self.reader_done
+        notes = full or time.time() - self.notes_at > LIST_EVERY
+        roots = list(local.values()) if full else touched
+        if not (roots or coll_changed or notes):
+            return
+        from narani.phone import service as phone
+
+        def prog(i: int, n: int, label: str) -> None:
+            _bump(phase="reader", done=i, total=n, label=label)
+        try:
+            phone.push_library(roots, phone_notes=notes, on_progress=prog)
+            self.reader_done = True
+            if notes:
+                self.notes_at = time.time()
+        except Exception as e:  # noqa: BLE001
+            log.info("웹 리더 번들을 맞추지 못함: %s", e)
 
 
 def start(force: bool = False) -> None:

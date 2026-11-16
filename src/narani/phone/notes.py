@@ -154,9 +154,11 @@ def _read_json(store: Store, name: str) -> object:
         return None
 
 
-def sync_paper(store: Store, root: Path, prev_hash: str = "") -> dict:
+def sync_paper(store: Store, root: Path, prev_hash: str = "", present: set[str] | None = None) -> dict:
     """논문 한 편: 폰 기록을 annotations.json에 합치고, 바뀌었으면 notes/를 다시 올린다.
 
+    present = 저장소에 있는 이름들(폴더 목록 한 번) — 주면 폰 기록 파일이 없는 논문은 읽지 않는다(Drive는 없는 이름을
+    읽으려 하면 목록을 통째로 다시 받는다 — 서재 전체를 맞출 때 수백 번).
     반환: {merged: 얹은 폰 기록 수, notes_hash: 올린 스냅숏의 지문('' = 표시 없음), wrote: 올렸는지}.
     """
     wd = WorkDir(root)
@@ -165,7 +167,7 @@ def sync_paper(store: Store, root: Path, prev_hash: str = "") -> dict:
     applied = float(st.get("applied") or 0)
     items = annotations.load(wd)
     merged = 0
-    phone = _read_json(store, mobile_name(key))
+    phone = None if present is not None and mobile_name(key) not in present else _read_json(store, mobile_name(key))
     if isinstance(phone, dict):
         items2, applied2, merged = apply_ops(items, phone.get("ops"), applied)
         applied3, memo_n = apply_memo_ops(wd, phone.get("ops"), applied)

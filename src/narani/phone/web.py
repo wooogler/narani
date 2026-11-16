@@ -173,6 +173,18 @@ a.figref { color: var(--accent); text-decoration: underline dotted; text-underli
 .lib-opts label.auto { display: flex; align-items: center; gap: 8px; }
 .lib-opts label.auto input { width: 18px; height: 18px; margin: 0; flex: none; }
 .lib-foot a { color: var(--muted); }
+/* 범위 고르기 — 데스크톱 사이드바처럼: 보낸 논문 / 모든 논문 / 컬렉션(접기) / 미분류 */
+#lib-list li.cap { list-style: none; color: var(--muted); font-size: .78em; letter-spacing: .02em; margin: 14px 2px 4px; }
+#lib-list li.scope { list-style: none; display: flex; align-items: center; border-bottom: 1px solid var(--line); }
+#lib-list li.scope a { flex: 1; display: flex; align-items: center; gap: 8px; min-height: 46px; padding: 0 4px;
+  color: var(--fg); text-decoration: none; min-width: 0; border: 0; background: none; box-shadow: none; }
+#lib-list li.scope .sc-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#lib-list li.scope .sc-n { color: var(--muted); font-size: .85em; font-variant-numeric: tabular-nums; }
+#lib-list li.scope .fold, #lib-list li.scope .fold-gap { flex: none; width: 28px; height: 40px; border: 0; background: none;
+  color: var(--muted); font-size: 1em; padding: 0; }
+#lib-list li.scope.back-sc { border-bottom: 0; }
+#lib-list li.scope.back-sc a { color: var(--accent); min-height: 38px; }
+.li-tags .tag.via { color: var(--accent); }
 
 /* 하이라이트 — 데스크톱 뷰어와 같은 색. 글자는 형광 위라 늘 어둡게 */
 mark.anno { color: #24211c; border-radius: 2px; padding: 0; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
@@ -749,45 +761,153 @@ _APP_JS = r"""
     try { return d.toLocaleString(md4Lang, {dateStyle: 'medium', timeStyle: 'short'}); } catch (e) { return d.toLocaleString(); }
   }
   function el(tag, cls, text){ var n = doc.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; }
-  function renderLib(note){
-    var have = haveMap(), n = 0;
-    libList.innerHTML = '';
-    doc.getElementById('lib-h').textContent = INDEX ? md4T('논문 {n}편', {n: INDEX.papers.length}) : APP;
-    (INDEX ? INDEX.papers : []).forEach(function(e){
-      var off = have[e.file] === e.hash; if (off) n++;
-      var li = el('li', OFFLINE && !have[e.file] ? 'na' : ''), a = el('a');
-      a.href = '#!' + fileId(e); a.setAttribute('data-open', fileId(e));
-      // 카드 — 제목 / 원제 / 저자·연도·학회 한 줄(넘치면 …) / 작은 꼬리표 줄(번역·음성 길이·받아 둠)
-      a.appendChild(el('span', 'li-title', e.title_ko || e.title));
-      if (e.title_ko) a.appendChild(el('span', 'li-en', e.title));
-      var when = [e.year, e.venue].filter(function(x){ return x; }).join(' · ');   // 저자만 줄이고 연도·학회는 늘 보이게
-      if (e.authors || when){
-        var by = el('span', 'li-by');
-        if (e.authors) by.appendChild(el('span', 'who', e.authors));
-        if (e.authors && when) by.appendChild(el('span', 'sep', '·'));
-        if (when) by.appendChild(el('span', 'when', when));
-        a.appendChild(by);
-      }
-      var tags = el('span', 'li-tags');
-      if (!e.has_ko) tags.appendChild(el('span', 'tag', md4T('원문만')));   // 번역이 기본 — 다른 것만 표시
-      if (audioOf(e)){
-        var au = el('span', 'tag au');
-        au.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 0 0-9 9v6a3 3 0 0 0 3 3h1a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H5v-1a7 7 0 0 1 14 0v1h-2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1a3 3 0 0 0 3-3v-6a9 9 0 0 0-9-9z"/></svg>';
-        au.appendChild(doc.createTextNode(fmtT(e.audio.duration)));
-        tags.appendChild(au);
-      }
-      if (!off && !OFFLINE && !autoSave()) tags.appendChild(el('span', 'tag', md4T('받아 두지 않음')));   // 받아 두기를 끈 때만
-      if (li.className === 'na') tags.appendChild(el('span', 'tag na-t', md4T('받아 두지 않음')));
-      if (tags.childNodes.length) a.appendChild(tags);
-      li.appendChild(a); libList.appendChild(li);
+  // ---- 범위 (컬렉션) ----
+  // 데스크톱이 목록에 컬렉션 계층(collections)과 논문마다 소속(projects)을 실으면 첫 화면은 범위 고르기 —
+  // 보낸 논문 / 전체 / 컬렉션(접기) / 미분류. 들어가면 그 논문들. 하위 컬렉션에서 온 논문은 '↳ 하위'(데스크톱 홈과 같은 규칙).
+  // 옛 목록(collections 없음)이나 컬렉션이 없으면 지금처럼 평평한 목록 하나. sent가 없는 옛 줄은 보낸 논문으로 읽는다.
+  var S_ALL = '__all__', S_NONE = '__none__', S_SENT = '__sent__';
+  var VIEW = 'list', SCOPE = lsGet('narani:scope', '') || '';
+  function colls(){ return INDEX && Array.isArray(INDEX.collections) ? INDEX.collections : []; }
+  function useScopes(){ return colls().length > 0; }
+  function isSent(e){ return e.sent !== false; }
+  function libPapers(){   // 같은 논문(pid)을 두 컴퓨터가 서로 다른 이름으로 실었으면 하나만 — 보낸 쪽을 앞세운다
+    if (!INDEX) return [];
+    var seen = {}, out = [];
+    INDEX.papers.slice().sort(function(a, b){ return (isSent(b) ? 1 : 0) - (isSent(a) ? 1 : 0); }).forEach(function(e){
+      if (e.pid && seen[e.pid]) return;
+      if (e.pid) seen[e.pid] = 1;
+      out.push(e);
     });
+    return INDEX.papers.filter(function(e){ return out.indexOf(e) >= 0; });
+  }
+  function tree(){   // {by: id → 컬렉션, kids: id → [자식 id], sub: id → {자기·하위 전체}, order: [[컬렉션, 깊이]]}
+    var by = {}, kids = {}, sub = {}, order = [];
+    colls().forEach(function(c){ by[c.id] = c; });
+    colls().forEach(function(c){ var p = by[c.parent] && c.parent !== c.id ? c.parent : ''; (kids[p] = kids[p] || []).push(c.id); });
+    (function walk(p, d, seen){
+      (kids[p] || []).forEach(function(id){ if (seen[id]) return; seen[id] = 1; order.push([by[id], d]); walk(id, d + 1, seen); });
+    })('', 0, {});
+    order.forEach(function(x){
+      var id = x[0].id, all = {}; all[id] = 1;
+      (function down(q){ (kids[q] || []).forEach(function(k){ if (!all[k]){ all[k] = 1; down(k); } }); })(id);
+      sub[id] = all;
+    });
+    return {by: by, kids: kids, sub: sub, order: order};
+  }
+  function memberOf(e, T){ return (e.projects || []).filter(function(p){ return T.by[p]; }); }
+  function inScope(e, s, T){
+    if (s === S_ALL || !s) return true;
+    if (s === S_SENT) return isSent(e);
+    var ps = memberOf(e, T);
+    if (s === S_NONE) return !ps.length;
+    var under = T.sub[s] || {};
+    return ps.some(function(p){ return under[p]; });
+  }
+  function viaSubs(e, s, T){   // 상위 컬렉션을 볼 때 하위 컬렉션을 통해서만 보이면 그 하위들
+    var ps = memberOf(e, T), under = T.sub[s];
+    if (!under || ps.indexOf(s) >= 0) return [];
+    return ps.filter(function(p){ return under[p] && p !== s; });
+  }
+  function scopeName(s, T){
+    if (s === S_SENT) return md4T('보낸 논문');
+    if (s === S_NONE) return md4T('미분류');
+    if (T.by[s]) return T.by[s].name;
+    return md4T('모든 논문');
+  }
+  function recentIds(){ var r = lsGet('narani:recent', []); return Array.isArray(r) ? r : []; }
+  function pushRecent(id){ var r = recentIds().filter(function(x){ return x !== id; }); r.unshift(id); lsSet('narani:recent', r.slice(0, 8)); }
+  function card(e, have, via, T){
+    var off = have[e.file] === e.hash;
+    var li = el('li', OFFLINE && !have[e.file] ? 'na' : ''), a = el('a');
+    a.href = '#!' + fileId(e); a.setAttribute('data-open', fileId(e));
+    // 카드 — 제목 / 원제 / 저자·연도·학회 한 줄(넘치면 …) / 작은 꼬리표 줄(하위 컬렉션·번역·음성 길이·받아 둠)
+    a.appendChild(el('span', 'li-title', e.title_ko || e.title));
+    if (e.title_ko) a.appendChild(el('span', 'li-en', e.title));
+    var when = [e.year, e.venue].filter(function(x){ return x; }).join(' · ');   // 저자만 줄이고 연도·학회는 늘 보이게
+    if (e.authors || when){
+      var by = el('span', 'li-by');
+      if (e.authors) by.appendChild(el('span', 'who', e.authors));
+      if (e.authors && when) by.appendChild(el('span', 'sep', '·'));
+      if (when) by.appendChild(el('span', 'when', when));
+      a.appendChild(by);
+    }
+    var tags = el('span', 'li-tags');
+    (via || []).forEach(function(p){ tags.appendChild(el('span', 'tag via', '↳ ' + T.by[p].name)); });
+    if (!e.has_ko) tags.appendChild(el('span', 'tag', md4T('원문만')));   // 번역이 기본 — 다른 것만 표시
+    if (audioOf(e)){
+      var au = el('span', 'tag au');
+      au.innerHTML = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path fill="currentColor" d="M12 3a9 9 0 0 0-9 9v6a3 3 0 0 0 3 3h1a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1H5v-1a7 7 0 0 1 14 0v1h-2a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h1a3 3 0 0 0 3-3v-6a9 9 0 0 0-9-9z"/></svg>';
+      au.appendChild(doc.createTextNode(fmtT(e.audio.duration)));
+      tags.appendChild(au);
+    }
+    // '받아 두지 않음'은 미리 받아 둘 논문(보낸 논문)에만 — 서재에서 온 논문은 열 때 받는 게 보통이다
+    if (isSent(e) && !off && !OFFLINE && !autoSave()) tags.appendChild(el('span', 'tag', md4T('받아 두지 않음')));
+    if (li.className === 'na') tags.appendChild(el('span', 'tag na-t', md4T('받아 두지 않음')));
+    if (tags.childNodes.length) a.appendChild(tags);
+    li.appendChild(a);
+    return li;
+  }
+  function scopeRow(s, label, n, depth, T, kids){
+    var li = el('li', 'scope'), a = el('a');
+    a.href = '#!c:' + encodeURIComponent(s); a.setAttribute('data-scope', s);
+    if (depth) li.style.paddingLeft = (depth * 18) + 'px';
+    if (kids){
+      var fold = lsGet('narani:folded', {}) || {};
+      var b = el('button', 'fold', fold[s] ? '▸' : '▾'); b.setAttribute('data-fold', s);
+      b.setAttribute('aria-label', fold[s] ? md4T('하위 컬렉션 펴기') : md4T('하위 컬렉션 접기'));
+      li.appendChild(b);
+    } else li.appendChild(el('span', 'fold-gap'));
+    a.appendChild(el('span', 'sc-name', label)); a.appendChild(el('span', 'sc-n', String(n)));
+    li.appendChild(a);
+    return li;
+  }
+  function renderScopes(){
+    var T = tree(), all = libPapers(), have = haveMap();
+    var count = function(s){ return all.filter(function(e){ return inScope(e, s, T); }).length; };
+    doc.getElementById('lib-h').textContent = APP;
+    var rec = recentIds().map(entryOf).filter(function(e){ return e && all.indexOf(e) >= 0; }).slice(0, 3);
+    if (rec.length){   // 이어 읽기 — 최근에 연 논문(읽던 자리로 열린다)
+      libList.appendChild(el('li', 'cap', md4T('이어 읽기')));
+      rec.forEach(function(e){ libList.appendChild(card(e, have, [], T)); });
+    }
+    libList.appendChild(el('li', 'cap', md4T('서재')));
+    var sent = count(S_SENT);
+    if (sent && sent < all.length) libList.appendChild(scopeRow(S_SENT, md4T('보낸 논문'), sent, 0, T));
+    libList.appendChild(scopeRow(S_ALL, md4T('모든 논문'), all.length, 0, T));
+    var fold = lsGet('narani:folded', {}) || {}, hidden = {};
+    T.order.forEach(function(x){
+      var c = x[0];
+      if (hidden[c.id]) return;
+      var kids = (T.kids[c.id] || []).length > 0;
+      if (kids && fold[c.id]) for (var k in T.sub[c.id]) if (k !== c.id) hidden[k] = 1;
+      libList.appendChild(scopeRow(c.id, c.name, count(c.id), x[1], T, kids));
+    });
+    libList.appendChild(scopeRow(S_NONE, md4T('미분류'), count(S_NONE), 0, T));
+  }
+  function renderList(){
+    var T = tree(), have = haveMap(), s = useScopes() ? (SCOPE || S_ALL) : S_ALL;
+    var rows = libPapers().filter(function(e){ return inScope(e, s, T); });
+    doc.getElementById('lib-h').textContent = !INDEX ? APP : useScopes()
+      ? scopeName(s, T) + ' · ' + md4T('{n}편', {n: rows.length}) : md4T('논문 {n}편', {n: rows.length});
+    if (useScopes()){   // 범위 고르기로 돌아가기
+      var up = el('li', 'scope back-sc'), a = el('a', '', '‹ ' + md4T('서재'));
+      a.href = '#!lib'; a.setAttribute('data-scope', ''); up.appendChild(a); libList.appendChild(up);
+    }
+    rows.forEach(function(e){ libList.appendChild(card(e, have, viaSubs(e, s, T), T)); });
     if (INDEX && !INDEX.papers.length) libList.appendChild(el('li', 'empty', md4T('올린 논문이 없어요. 데스크톱 앱에서 웹 리더로 보내 주세요.')));
+    else if (INDEX && !rows.length) libList.appendChild(el('li', 'empty', md4T('이 범위에는 논문이 없어요.')));
+  }
+  function renderLib(note){
+    var have = haveMap(), saveSet = INDEX ? libPapers().filter(isSent) : [], n = 0;
+    saveSet.forEach(function(e){ if (have[e.file] === e.hash) n++; });
+    libList.innerHTML = '';
+    if (useScopes() && VIEW === 'scopes') renderScopes(); else renderList();
     libBar.innerHTML = '';
     // 머리 한 줄 — 언제 올린 목록인지, 받는 중이면 진행, 덜 받았을 때만 몇 편 받았는지. 그리고 새로 고침(↻)
     var info = [];
     if (INDEX && INDEX.updated) info.push(md4T('{date} 업데이트', {date: fmtWhen(INDEX.updated)}));
     if (SAVING) info.push(md4T('받는 중 {n}/{m}', {n: SAVING.done, m: SAVING.total}));
-    else if (INDEX && INDEX.papers.length && n < INDEX.papers.length) info.push(md4T('받아 둠 {n}/{m}편', {n: n, m: INDEX.papers.length}));
+    else if (saveSet.length && n < saveSet.length) info.push(md4T('받아 둠 {n}/{m}편', {n: n, m: saveSet.length}));
     if (OFFLINE && !note) note = md4T('오프라인 — 받아 둔 논문만 열려요');
     if (note) info.push(note);
     libBar.appendChild(el('span', 'grow', info.join(' · ')));
@@ -809,9 +929,12 @@ _APP_JS = r"""
         renderLib();   // '음성도 받아 두기'가 바로 보이게
         if (cb.checked) saveOffline();
       };
-      lab.appendChild(cb); lab.appendChild(doc.createTextNode(md4T('모든 논문을 이 기기에 받아 두기 (오프라인에서도)')));
+      // 서재 동기화가 서재 전체를 실었으면 미리 받는 건 보낸 논문뿐 — 휴대폰 저장 공간이 서재 크기로 늘지 않게
+      var some = saveSet.length < libPapers().length;
+      lab.appendChild(cb); lab.appendChild(doc.createTextNode(some ? md4T('보낸 논문을 이 기기에 받아 두기 (오프라인에서도)')
+                                                                   : md4T('모든 논문을 이 기기에 받아 두기 (오프라인에서도)')));
       opts.appendChild(lab);
-      var withAudio = INDEX.papers.filter(function(e){ return audioOf(e); });
+      var withAudio = saveSet.filter(function(e){ return audioOf(e); });
       if (withAudio.length && cb.checked){   // 음성은 편당 십수 MB라 따로 고른다
         var mb = withAudio.reduce(function(n, e){ return n + (e.audio.bytes || 0); }, 0) / 1e6;
         var la = el('label', 'auto'), ca = el('input');
@@ -833,8 +956,8 @@ _APP_JS = r"""
   var SAVING = null, OFFLINE = false;
   function saveOffline(){
     if (!INDEX || !source || SAVING || OFFLINE) return;
-    var have = haveMap(), todo = INDEX.papers.filter(function(e){ return have[e.file] !== e.hash; }), failed = 0;
-    var all = INDEX.papers.slice();
+    var have = haveMap(), all = libPapers().filter(isSent), failed = 0;   // 미리 받는 건 보낸 논문만
+    var todo = all.filter(function(e){ return have[e.file] !== e.hash; });
     try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
     SAVING = {done: 0, total: todo.length};
     if (todo.length) renderLib();
@@ -907,7 +1030,8 @@ _APP_JS = r"""
     loadSeq++; unmount(); loading.style.display = 'none'; readerClosed();
     lib.classList.remove('off'); topTitle.textContent = APP;
     closeSheet(); window.scrollTo(0, 0);
-    if (push) history.pushState(null, '', '#!lib');
+    if (push) history.pushState(null, '', useScopes() && VIEW === 'list' && SCOPE ? '#!c:' + encodeURIComponent(SCOPE) : '#!lib');
+    if (INDEX) renderLib();
   }
   function mount(b, target){
     main.insertAdjacentHTML('beforeend', b.html);
@@ -934,6 +1058,7 @@ _APP_JS = r"""
     getPaper(e).then(function(b){
       if (seq !== loadSeq) return;
       loading.style.display = 'none'; mount(b, target);
+      pushRecent(id);
       notesOpen(e, b);
       navOpened();
       audioOpened(e);
@@ -952,12 +1077,31 @@ _APP_JS = r"""
   function route(){
     if (SHARE_ID){ if (INDEX && INDEX.papers[0]) openPaper(fileId(INDEX.papers[0]), false); return; }
     var h = location.hash.replace(/^#!?/, '');
-    if (h && h !== 'lib' && openPaper(h, false)) return;
+    if (/^c:/.test(h)){ setScope(decodeURIComponent(h.slice(2))); showLib(false); return; }
+    if (h === 'lib'){ VIEW = 'scopes'; showLib(false); return; }
+    if (h && openPaper(h, false)) return;
+    VIEW = SCOPE ? 'list' : 'scopes';   // 마지막으로 본 범위로 (이 휴대폰에 기억)
     showLib(false);
   }
+  function setScope(s){ SCOPE = s; VIEW = 'list'; lsSet('narani:scope', s); }
   doc.getElementById('back').onclick = function(){ showLib(true); };
   window.addEventListener('popstate', route);
   libList.addEventListener('click', function(e){
+    var f = e.target.closest ? e.target.closest('button[data-fold]') : null;
+    if (f){   // 하위 컬렉션 접기·펴기 (이 휴대폰에 기억)
+      e.preventDefault();
+      var fold = lsGet('narani:folded', {}) || {}, id = f.getAttribute('data-fold');
+      if (fold[id]) delete fold[id]; else fold[id] = 1;
+      lsSet('narani:folded', fold); renderLib(); return;
+    }
+    var sc = e.target.closest ? e.target.closest('a[data-scope]') : null;
+    if (sc){
+      e.preventDefault();
+      var s = sc.getAttribute('data-scope');
+      if (s){ setScope(s); history.pushState(null, '', '#!c:' + encodeURIComponent(s)); }
+      else { VIEW = 'scopes'; lsSet('narani:scope', ''); SCOPE = ''; history.pushState(null, '', '#!lib'); }
+      renderLib(); window.scrollTo(0, 0); return;
+    }
     var a = e.target.closest ? e.target.closest('a[data-open]') : null;
     if (!a) return;
     e.preventDefault(); e.stopPropagation();

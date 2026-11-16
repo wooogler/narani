@@ -142,7 +142,7 @@ async def ask(host, roots: list[Path], send: bool | None = None) -> dict | None:
                     "추가하세요(추가한 뒤 앱을 다시 켜야 보일 수 있습니다).", lang=langs[0]), type="warning")
         return
     per = [await run.io_bound(phone_service.sections, r) for r in roots]
-    there = phone_service.on_mobile()
+    there = phone_service.in_reader()   # 서재 동기화가 실은 논문도 웹 리더에 있다
     on_web = [r for r in roots if r.stem in there]
     off_web = [r for r in roots if r.stem not in there]
     secs = per[0] if len(roots) == 1 else []

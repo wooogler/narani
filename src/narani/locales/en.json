@@ -1582,5 +1582,17 @@
  "켜면 논문을 추가·번역·편집할 때마다 바뀐 논문만 뒤에서 Drive에 올립니다. 다른 컴퓨터의 Narani에서 같은 Google 계정으로 연결하면 같은 서재를 씁니다.": "When on, only changed papers are uploaded to Drive in the background whenever you add, translate or edit them. Connect Narani on another computer with the same Google account to use the same library.",
  "처음에는 지금 서재 전체(원본 PDF·그림 포함)를 올립니다. API 키와 설정은 올리지 않습니다. 나중에 설정 → 저장 위치에서 끌 수 있습니다.": "The first time, your whole current library (including original PDFs and figures) is uploaded. API keys and settings are never uploaded. You can turn it off later in Settings → Storage.",
  "Drive 서재 동기화": "Drive library sync",
- "다른 컴퓨터에서 고친 판 — 양쪽에서 함께 고쳐 덮지 않고 덧붙였어요": "Version edited on another computer — both sides changed it, so it was appended instead of overwritten"
+ "다른 컴퓨터에서 고친 판 — 양쪽에서 함께 고쳐 덮지 않고 덧붙였어요": "Version edited on another computer — both sides changed it, so it was appended instead of overwritten",
+ "보낸 논문": "Sent papers",
+ "이어 읽기": "Continue reading",
+ "서재": "Library",
+ "이 범위에는 논문이 없어요.": "No papers here.",
+ "보낸 논문을 이 기기에 받아 두기 (오프라인에서도)": "Keep sent papers on this device (works offline)",
+ "보낸 논문에서 {n}편을 뺐습니다 — 휴대폰에서는 컬렉션에서 계속 열 수 있습니다": "Removed {n} papers from Sent papers — they can still be opened from collections on the phone",
+ "웹 리더 · 보낸 논문": "Web reader · Sent",
+ "서재 동기화가 켜져 있어 서재 전체를 휴대폰 웹 리더에서 컬렉션별로 읽을 수 있습니다 — 여기에는 휴대폰이 미리 받아 두는 '보낸 논문'만 보입니다.": "Library sync is on, so the whole library can be read by collection in the phone web reader — only 'Sent papers', which the phone keeps offline, are listed here.",
+ "휴대폰 웹 리더의 '보낸 논문'에 올려 휴대폰이 미리 받아 둡니다(오프라인에서도) — 서재 동기화가 켜져 있어 다른 논문도 휴대폰에서 컬렉션별로 열어 읽을 수 있습니다": "Adds them to 'Sent papers' in the phone web reader so the phone keeps them offline — with library sync on, other papers can also be opened by collection on the phone",
+ "보낸 논문에서 빼기": "Remove from Sent",
+ "휴대폰의 '보낸 논문'에서 빼고 미리 받아 두지 않게 합니다 — 서재 동기화가 켜져 있어 휴대폰에서는 컬렉션에서 계속 열 수 있습니다": "Removes them from 'Sent papers' on the phone and stops keeping them offline — with library sync on, they can still be opened from collections on the phone",
+ "휴대폰에서 읽을 수 있게 준비하는 중… {done}/{total} {label}": "Preparing papers for the phone… {done}/{total} {label}"
 }

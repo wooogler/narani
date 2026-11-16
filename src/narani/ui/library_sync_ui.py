@@ -14,6 +14,9 @@ def status_line(i: dict) -> str:
 
     if i["running"] and i["phase"] == "import":
         return t("Drive에서 가져오는 중… {done}/{total} {label}", done=i["done"] + 1, total=i["total"], label=i["label"])
+    if i["running"] and i["phase"] == "reader" and i["total"]:
+        return t("휴대폰에서 읽을 수 있게 준비하는 중… {done}/{total} {label}", done=i["done"], total=i["total"],
+                 label=i["label"])
     if i["running"] and i["total"]:
         return t("Drive 서재와 맞추는 중… {done}/{total} {label}", done=i["done"], total=i["total"], label=i["label"])
     if i["running"]:

@@ -27,6 +27,7 @@ from narani import i18n
 from narani.phone import bundle as bmod
 from narani.phone import notes as nmod
 from narani.phone.store import Store
+from narani.phone.store import names as store_names
 
 INDEX = "index.json"
 
@@ -90,13 +91,19 @@ def _agent_defaults() -> dict:
 
 
 def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dict[str, dict] | None = None,
-         on_progress: Callable[[int, int, str], None] | None = None) -> dict:
-    """논문들 → 저장소. extra는 논문 키 → 목록 줄에 덧붙일 값(고정·컬렉션 …).
+         on_progress: Callable[[int, int, str], None] | None = None, meta: dict | None = None,
+         new_sent: bool = True) -> dict:
+    """논문들 → 저장소. extra는 논문 키 → 목록 줄에 덧붙일 값(고정·소속·서재 id …).
 
+    meta는 목록 머리에 실을 값(collections — 컬렉션 계층, §service.index_meta). 안 주면 예전 목록의 것을 그대로.
+    new_sent: 목록에 **새로** 들어가는 논문을 '보낸 논문'으로 적을지 — 서재 동기화가 서재 전체를 실을 때는 False(휴대폰이
+    미리 받아 두지 않는다). 이미 있던 줄은 extra가 sent를 주지 않으면 그대로 둔다. 옛 줄(sent 없음)은 보낸 것으로 읽는다.
     반환: {uploaded, skipped, removed, bytes, papers, merged(합친 폰 기록 수), notes(다시 올린 메모 파일 수)}.
     """
     roots = list(dict.fromkeys(Path(r) for r in roots))
-    old = {e.get("key"): e for e in read_index(store)["papers"] if isinstance(e, dict)}
+    prev_index = read_index(store)
+    old = {e.get("key"): e for e in prev_index["papers"] if isinstance(e, dict)}
+    present = set(store_names(store, "")) if hasattr(store, "list") else None
     code = bmod._code_stamp()
     entries: list[dict] = []
     uploaded = skipped = sent = merged = notes_sent = 0
@@ -107,10 +114,12 @@ def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dic
         digest = bmod.content_hash(root, code)
         prev = old.get(key)
         more = (extra or {}).get(key, {})
-        ns = nmod.sync_paper(store, root, (prev or {}).get("notes_hash", ""))
+        ns = nmod.sync_paper(store, root, (prev or {}).get("notes_hash", ""), present)
         merged += ns["merged"]
         notes_sent += ns["wrote"]
         more = {**more, "notes_hash": ns["notes_hash"]}
+        if prev is None and "sent" not in more:
+            more["sent"] = new_sent
         if prev and prev.get("hash") == digest and prev.get("format", bmod.FORMAT) == bmod.FORMAT:
             sp = _put_speech(store, root, digest, prev)
             entries.append({**prev, **more, **({"speech": sp} if sp else {})})
@@ -144,12 +153,33 @@ def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dic
         entries += [e for k, e in old.items() if k not in keys]
     index = {"format": bmod.FORMAT, "updated": time.time(), "ui_lang": i18n.ui_lang(), "papers": entries,
              "agent": _agent_defaults()}
+    for k in ("collections",):
+        if meta is not None and k in meta:
+            index[k] = meta[k]
+        elif k in prev_index:
+            index[k] = prev_index[k]
     store.write(INDEX, bmod.dumps(index))
     if on_progress:
         on_progress(len(roots), len(roots), "")
     return {"uploaded": uploaded, "skipped": skipped, "removed": removed, "bytes": sent, "papers": len(entries),
             "merged": merged, "notes": notes_sent}
 
+
+
+def unsend(store: Store, keys: Iterable[str]) -> int:
+    """'보낸 논문'에서만 뺀다 — 서재 동기화가 실은 논문은 번들·메모를 그대로 두고(휴대폰은 컬렉션에서 계속 읽는다)
+    sent만 끈다. 휴대폰은 더 미리 받아 두지 않는다. 반환: 바꾼 줄 수."""
+    index = read_index(store)
+    keys = set(keys)
+    n = 0
+    for e in index["papers"]:
+        if isinstance(e, dict) and e.get("key") in keys and e.get("sent") is not False:
+            e["sent"] = False
+            n += 1
+    if n:
+        index["updated"] = time.time()
+        store.write(INDEX, bmod.dumps(index))
+    return n
 
 
 def remove(store: Store, roots: Iterable[Path]) -> dict:

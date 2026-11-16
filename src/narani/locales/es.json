@@ -1582,5 +1582,17 @@
  "켜면 논문을 추가·번역·편집할 때마다 바뀐 논문만 뒤에서 Drive에 올립니다. 다른 컴퓨터의 Narani에서 같은 Google 계정으로 연결하면 같은 서재를 씁니다.": "Si está activado, cada vez que añadas, traduzcas o edites artículos solo se suben a Drive en segundo plano los modificados. Conecta Narani en otro ordenador con la misma cuenta de Google para usar la misma biblioteca.",
  "처음에는 지금 서재 전체(원본 PDF·그림 포함)를 올립니다. API 키와 설정은 올리지 않습니다. 나중에 설정 → 저장 위치에서 끌 수 있습니다.": "La primera vez se sube toda tu biblioteca actual (incluidos los PDF originales y las imágenes). Las claves de API y los ajustes nunca se suben. Puedes desactivarlo más tarde en Ajustes → Almacenamiento.",
  "Drive 서재 동기화": "Sincronización de la biblioteca de Drive",
- "다른 컴퓨터에서 고친 판 — 양쪽에서 함께 고쳐 덮지 않고 덧붙였어요": "Versión editada en otro ordenador: ambos lados la cambiaron, así que se añadió en lugar de sobrescribirla"
+ "다른 컴퓨터에서 고친 판 — 양쪽에서 함께 고쳐 덮지 않고 덧붙였어요": "Versión editada en otro ordenador: ambos lados la cambiaron, así que se añadió en lugar de sobrescribirla",
+ "보낸 논문": "Artículos enviados",
+ "이어 읽기": "Seguir leyendo",
+ "서재": "Biblioteca",
+ "이 범위에는 논문이 없어요.": "No hay artículos aquí.",
+ "보낸 논문을 이 기기에 받아 두기 (오프라인에서도)": "Guardar los artículos enviados en este dispositivo (también sin conexión)",
+ "보낸 논문에서 {n}편을 뺐습니다 — 휴대폰에서는 컬렉션에서 계속 열 수 있습니다": "Se quitaron {n} artículos de Artículos enviados; en el móvil se pueden seguir abriendo desde las colecciones",
+ "웹 리더 · 보낸 논문": "Lector web · Enviados",
+ "서재 동기화가 켜져 있어 서재 전체를 휴대폰 웹 리더에서 컬렉션별로 읽을 수 있습니다 — 여기에는 휴대폰이 미리 받아 두는 '보낸 논문'만 보입니다.": "La sincronización de la biblioteca está activada, así que toda la biblioteca se puede leer por colecciones en el lector web del móvil; aquí solo aparecen los «Artículos enviados», que el móvil guarda sin conexión.",
+ "휴대폰 웹 리더의 '보낸 논문'에 올려 휴대폰이 미리 받아 둡니다(오프라인에서도) — 서재 동기화가 켜져 있어 다른 논문도 휴대폰에서 컬렉션별로 열어 읽을 수 있습니다": "Los añade a «Artículos enviados» en el lector web del móvil para que el móvil los guarde sin conexión; con la sincronización activada, los demás artículos también se pueden abrir por colecciones en el móvil",
+ "보낸 논문에서 빼기": "Quitar de Enviados",
+ "휴대폰의 '보낸 논문'에서 빼고 미리 받아 두지 않게 합니다 — 서재 동기화가 켜져 있어 휴대폰에서는 컬렉션에서 계속 열 수 있습니다": "Los quita de «Artículos enviados» en el móvil y deja de guardarlos sin conexión; con la sincronización activada, se pueden seguir abriendo desde las colecciones del móvil",
+ "휴대폰에서 읽을 수 있게 준비하는 중… {done}/{total} {label}": "Preparando los artículos para el móvil… {done}/{total} {label}"
 }

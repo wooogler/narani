@@ -1099,7 +1099,8 @@ def build_home(state: dict) -> None:
         s = await mobile_call(phone_service.remove, roots, t("웹 리더에서 빼는 중… ({n}편)", n=len(roots)))
         if s is None:
             return
-        msg = t("웹 리더에서 {n}편을 뺐습니다", n=s["removed"])
+        msg = (t("보낸 논문에서 {n}편을 뺐습니다 — 휴대폰에서는 컬렉션에서 계속 열 수 있습니다", n=s["removed"])
+               if library_sync.enabled() else t("웹 리더에서 {n}편을 뺐습니다", n=s["removed"]))
         if s["merged"]:
             msg += t(" · 웹 리더에서 단 메모 {n}개를 합쳤습니다", n=s["merged"])
         ui.notify(msg, type="positive")
@@ -1458,7 +1459,7 @@ def build_home(state: dict) -> None:
         n = counts()
         prow(projects.ALL, t("모든 논문"), n[projects.ALL], "library_books")
         # 모바일은 컬렉션이 아니라 '어디서 읽는가'로 거르는 보기 — 모든 논문 바로 아래, 컬렉션 머리글 위
-        prow(MOBILE, t("웹 리더"), n[MOBILE], "smartphone")
+        prow(MOBILE, t("웹 리더 · 보낸 논문") if library_sync.enabled() else t("웹 리더"), n[MOBILE], "smartphone")
         if library_sync.available():  # 서재 동기화 — Drive에만 있는 논문 가져오기·켜고 끄기
             prow(DRIVE, t("Drive 서재"), n[DRIVE], "cloud_sync")
         # '컬렉션' 캡 — 컬렉션 행을 여기에 놓으면 맨 위로 올라간다
@@ -1529,6 +1530,9 @@ def build_home(state: dict) -> None:
                            site=pages.DOMAIN)).classes("truncate")
                 ui.button(t("Google Drive 연결"), icon="link", color=None, on_click=connect_drive) \
                     .props("flat dense no-caps size=sm").classes("text-primary")
+        if i["connected"] and library_sync.enabled():
+            ui.label(t("서재 동기화가 켜져 있어 서재 전체를 휴대폰 웹 리더에서 컬렉션별로 읽을 수 있습니다 — "
+                       "여기에는 휴대폰이 미리 받아 두는 '보낸 논문'만 보입니다.")).classes("md4-hpath")
 
     # ===== Drive 서재 (§libsync) — 다른 컴퓨터와 같은 서재 =====
     async def drive_sync_now() -> None:
@@ -2412,8 +2416,15 @@ def build_home(state: dict) -> None:
                 if len(paths) == 1 and with_audio:   # 지금 있는 음성 — 무엇으로·언제 (다시 만들지 고를 때 보라고)
                     a = data["mobile"][paths[0].stem]["audio"]
                     ui.label("🎧 " + audio_label(a)).classes("md4-act-note")
-                send_tip = t("Google Drive를 거쳐 웹 리더({site})에서 읽습니다 — 웹 리더에서 단 하이라이트·메모도 이때 합칩니다",
-                             site=pages.DOMAIN)
+                lib_on = library_sync.enabled()
+                send_tip = (t("휴대폰 웹 리더의 '보낸 논문'에 올려 휴대폰이 미리 받아 둡니다(오프라인에서도) — 서재 동기화가 "
+                              "켜져 있어 다른 논문도 휴대폰에서 컬렉션별로 열어 읽을 수 있습니다") if lib_on else
+                            t("Google Drive를 거쳐 웹 리더({site})에서 읽습니다 — 웹 리더에서 단 하이라이트·메모도 이때 합칩니다",
+                              site=pages.DOMAIN))
+                drop_label = t("보낸 논문에서 빼기") if lib_on else t("웹 리더에서 빼기")
+                drop_tip = (t("휴대폰의 '보낸 논문'에서 빼고 미리 받아 두지 않게 합니다 — 서재 동기화가 켜져 있어 휴대폰에서는 "
+                              "컬렉션에서 계속 열 수 있습니다") if lib_on else
+                            t("웹 리더 목록에서 뺍니다 — 웹 리더에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 공유 링크도 꺼지고, 논문 파일은 그대로"))
                 audio_tip = t("번역 본문을 읽은 음성을 만들어 웹 리더에서 듣습니다 — 화면을 꺼도, CarPlay에서도")
                 all_there = bool(paths) and len(on_mobile) == len(paths)
                 if first:   # 모바일 보기 — 음성이 주 동작
@@ -2434,13 +2445,11 @@ def build_home(state: dict) -> None:
                         if with_audio:
                             act(t("음성 지우기"), "headset_off", lambda: remove_mobile_audio(with_audio),
                                 t("웹 리더 음성만 지웁니다 — 논문은 웹 리더에 그대로"))
-                        act(t("웹 리더에서 빼기"), "phonelink_erase", lambda: remove_from_mobile(on_mobile),
-                            t("웹 리더 목록에서 뺍니다 — 웹 리더에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 공유 링크도 꺼지고, 논문 파일은 그대로"))
+                        act(drop_label, "phonelink_erase", lambda: remove_from_mobile(on_mobile), drop_tip)
                 if not first and on_mobile:
                     with ui.element("div").classes("md4-act-links"):
-                        ui.button(t("웹 리더에서 빼기"), on_click=lambda: remove_from_mobile(on_mobile), color=None) \
-                            .props("flat dense no-caps") \
-                            .tooltip(t("웹 리더 목록에서 뺍니다 — 웹 리더에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 공유 링크도 꺼지고, 논문 파일은 그대로"))
+                        ui.button(drop_label, on_click=lambda: remove_from_mobile(on_mobile), color=None) \
+                            .props("flat dense no-caps").tooltip(drop_tip)
                         if with_audio:
                             ui.button(t("음성 지우기"), on_click=lambda: remove_mobile_audio(with_audio), color=None) \
                                 .props("flat dense no-caps").tooltip(t("웹 리더 음성만 지웁니다 — 논문은 웹 리더에 그대로"))
