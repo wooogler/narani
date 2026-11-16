@@ -405,6 +405,10 @@ def _library_panel(ui, run, state, on_change, can_pick, recent_workdirs) -> None
                                on_click=export_all).props("dense outline no-caps")
     ui.label(t("그림은 images/<논문 이름>/ 아래에 들어갑니다. 같은 논문을 다시 내보내면 덮어씁니다.")) \
         .classes("text-xs text-gray-400")
+    ui.label(t("Drive 서재 동기화")).classes("md4-setsub")
+    from narani.ui import library_sync_ui
+
+    library_sync_ui.settings_block(ui, on_change)
     ui.label(t("작업 폴더")).classes("md4-setsub")
     ws_row()
     ui.label(t("작업 폴더에는 올린 원본 PDF와 작업 파일(.md4)이 들어갑니다 — 위 저장 위치와 별개입니다. "

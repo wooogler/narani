@@ -50,7 +50,8 @@ def _remember(index: dict | None = None, store=None, **kw: object) -> dict:  # n
     data = load_cache()
     if index is not None:
         old = data.get("papers") or {}
-        data["papers"] = {e["key"]: {k: e.get(k) for k in ("title", "title_ko", "hash", "size", "notes_hash", "audio")}
+        data["papers"] = {e["key"]: {k: e.get(k) for k in ("title", "title_ko", "hash", "size", "notes_hash", "audio",
+                                                           "sent", "pid")}
                           for e in index.get("papers", []) if isinstance(e, dict) and e.get("key")}
         for key, e in data["papers"].items():
             sid = sync.share_id(store, key) if store is not None else (old.get(key) or {}).get("share")
@@ -66,9 +67,15 @@ def _remember(index: dict | None = None, store=None, **kw: object) -> dict:  # n
     return data
 
 
-def on_mobile() -> dict[str, dict]:
-    """웹 리더에 있는 논문 — 논문 키(작업 디렉토리 이름) → 목록 줄. 연결을 끊었으면 비어 있다."""
+def in_reader() -> dict[str, dict]:
+    """웹 리더 목록에 있는 논문 전부 — 보낸 논문 + 서재 동기화가 실은 논문. 연결을 끊었으면 비어 있다."""
     return load_cache()["papers"] if connected() else {}
+
+
+def on_mobile() -> dict[str, dict]:
+    """웹 리더로 **보낸** 논문 — 논문 키(작업 디렉토리 이름) → 목록 줄. 서재 동기화가 실은 논문(sent=false)은 빼고,
+    sent가 없는 옛 줄은 보낸 것으로. 홈의 '웹 리더' 범위·카드 표시가 이것을 쓴다."""
+    return {k: e for k, e in in_reader().items() if e.get("sent") is not False}
 
 
 def info() -> dict:
@@ -105,26 +112,69 @@ def disconnect() -> bool:
 def _rows() -> list[dict]:
     from narani.workdir import recent_workdirs
 
-    return recent_workdirs(config.resolve_workspace(), limit=100_000, include_hidden=True)
+    from narani.libsync import service as library_sync
+
+    # 앱이 실제로 보는 작업 폴더(--upload-dir·설정에서 바꾼 것) — 앱이 켤 때·홈을 그릴 때 알려 준다
+    return recent_workdirs(library_sync.workspace(), limit=100_000, include_hidden=True)
 
 
 def _extra(rows: list[dict]) -> dict[str, dict]:
-    return {r["name"]: {"pinned": r["pinned"]} for r in rows}
+    """목록 줄에 덧붙일 것 — 고정, 소속 컬렉션(휴대폰이 컬렉션별로 묶는다), 서재 id(두 컴퓨터가 같은 논문을 실었을 때 하나로)."""
+    from narani import projects
+    from narani.libsync import engine
+
+    known = {p["id"] for p in projects.all_projects()}
+    out = {}
+    for r in rows:
+        e = {"pinned": r["pinned"], "projects": [p for p in dict.fromkeys(r.get("projects") or []) if p in known]}
+        pid = engine.read_state(r["root"]).get("pid")
+        if pid:
+            e["pid"] = pid
+        out[r["name"]] = e
+    return out
+
+
+def index_meta() -> dict:
+    """목록 머리에 실을 것 — 컬렉션 계층(id·이름·부모, 사이드바 순서). 폴더 경로·컬렉션 설정은 싣지 않는다."""
+    from narani import projects
+
+    projs = projects.all_projects()
+    return {"collections": [{"id": p["id"], "name": p["name"], "parent": projects.parent_of(p["id"], projs)}
+                            for p, _d in projects.tree(projs)]}
+
+
+def _sent(rows: list[dict], roots: list[Path]) -> dict[str, dict]:
+    keys = {Path(r).stem for r in roots}
+    return {k: ({**v, "sent": True} if k in keys else v) for k, v in _extra(rows).items()}
+
+
+def _library_on() -> bool:
+    try:
+        from narani.libsync import service as library_sync
+
+        return library_sync.enabled()
+    except Exception:  # noqa: BLE001
+        return False
 
 
 def send(roots: list[Path]) -> dict:
     """고른 논문들을 웹 리더로 — 더하거나 고치기만 한다(목록의 다른 논문은 그대로). 메모도 함께 오간다.
     이 컴퓨터에 만든 음성이 웹 리더 것보다 새것이면 그것도 올린다(다시 합성하지 않는다). out['audio'] = 올린 음성 수."""
     store = gdrive.open_store()
-    out = sync.push(roots, store, prune=False, extra=_extra(_rows()))
+    out = sync.push(roots, store, prune=False, extra=_sent(_rows(), roots), meta=index_meta())
     out["audio"] = sync.put_audio(store, roots, newer_only=True)["sent"]
     _remember(sync.read_index(store), store)
     return out
 
 
 def remove(roots: list[Path]) -> dict:
-    """고른 논문들을 웹 리더에서 뺀다 — 폰 메모는 먼저 데스크톱에 합친다."""
+    """고른 논문들을 웹 리더에서 뺀다 — 폰 메모는 먼저 데스크톱에 합친다. 서재 동기화가 켜져 있으면 '보낸 논문'에서만
+    빼고(휴대폰은 미리 받아 두지 않는다) 번들은 남긴다 — 서재 논문은 컬렉션에서 계속 읽힌다."""
     store = gdrive.open_store()
+    if _library_on():
+        n = sync.unsend(store, [Path(r).stem for r in roots])
+        _remember(sync.read_index(store), store)
+        return {"removed": n, "merged": 0}
     out = sync.remove(store, roots)
     _remember(sync.read_index(store), store)
     return out
@@ -162,7 +212,7 @@ def share(roots: list[Path], memos: list[str] | None = None, *, only_new: bool =
     out: dict[str, str] = {}
     todo = [r for r in roots if not (only_new and sync.share_id(store, r.stem))]
     if todo:
-        sync.push(todo, store, prune=False, extra=_extra(_rows()))
+        sync.push(todo, store, prune=False, extra=_extra(_rows()), meta=index_meta())
     for r in roots:
         sid = sync.share(store, r, memos) if r in todo else sync.share_id(store, r.stem)
         out[r.stem] = share_link(sid)
@@ -417,12 +467,15 @@ def make_local(roots: list[Path], voice: str | None = None, include: list[int] |
     return {"made": made, "seconds": seconds, "bytes": nbytes}
 
 
-def send_audio(roots: list[Path], *, newer_only: bool = False) -> dict:
+def send_audio(roots: list[Path], *, newer_only: bool = False, mark_sent: bool = True) -> dict:
     """논문들을 웹 리더로 보내고(번들·메모를 맞춘 뒤) 이 컴퓨터에 만든 음성을 올린다 — 다시 합성하지 않는다.
+    mark_sent=False면 '보낸 논문'으로 적지 않는다(이미 웹 리더에 있는 서재 논문의 음성만 새로 — 휴대폰이 미리 받지 않게).
     반환: sync.put_audio의 {sent, bytes, missing, none}."""
     store = gdrive.open_store()
     roots = [Path(r) for r in roots]
-    sync.push(roots, store, prune=False, extra=_extra(_rows()))
+    rows = _rows()
+    sync.push(roots, store, prune=False, extra=_sent(rows, roots) if mark_sent else _extra(rows), meta=index_meta(),
+              new_sent=mark_sent)
     out = sync.put_audio(store, roots, newer_only=newer_only)
     _remember(sync.read_index(store), store)
     return out
@@ -445,7 +498,7 @@ def audio_state(root: Path) -> dict:
         local = {"voice": str(tl.get("voice") or ""), "duration": float(tl.get("duration") or 0),
                  "built": float(rec.get("built") or m4a.stat().st_mtime), "hash": rec.get("hash"),
                  "stale": tl.get("src") != bmod.content_hash(root)}
-    e = on_mobile().get(root.stem)
+    e = in_reader().get(root.stem)
     a = (e or {}).get("audio") or None
     same = bool(a and local and (a.get("hash") == local["hash"]
                                  or (a.get("voice") == local["voice"] and float(a.get("built") or 0) == local["built"])))
@@ -463,12 +516,12 @@ def make_audio(roots: list[Path], voice: str | None = None, include: list[int] |
     send_error에 까닭을 담는다. 반환: {made, seconds, bytes(올린 양), sent, send_error}."""
     roots = [Path(r) for r in roots]
     out = make_local(roots, voice, include, on_progress, engine, model, style, captions, math)
-    there = on_mobile()
+    there = in_reader()   # 서재 동기화가 실은 논문도 — 그 논문의 웹 리더 음성이 옛것으로 남지 않게
     targets = roots if send else [r for r in roots if r.stem in there]
     out.update(bytes=0, sent=0, send_error=None)
     if targets:
         try:
-            s = send_audio(targets)
+            s = send_audio(targets, mark_sent=send)
             out.update(bytes=s["bytes"], sent=s["sent"])
         except Exception as e:  # noqa: BLE001 — 음성은 이미 이 컴퓨터에 있다; 다음 보내기·켤 때 맞추기에 다시 올린다
             log.warning("만든 음성을 웹 리더에 올리지 못함: %s", e)
@@ -562,7 +615,7 @@ def refresh() -> dict:
     keys = {e.get("key") for e in sync.read_index(store)["papers"] if isinstance(e, dict)}
     rows = _rows()
     roots = [r["root"] for r in rows if r["name"] in keys]
-    out = sync.push(roots, store, prune=False, extra=_extra(rows)) if roots else {
+    out = sync.push(roots, store, prune=False, extra=_extra(rows), meta=index_meta()) if roots else {
         "uploaded": 0, "skipped": 0, "removed": 0, "bytes": 0, "papers": len(keys), "merged": 0, "notes": 0}
     try:   # 이 컴퓨터에서 만들고 못 올린 음성(오프라인이었음 등)을 먼저 올린다 — 그래야 옛 음성을 다시 만들지 않는다
         out["sent_audio"] = sync.put_audio(store, roots, newer_only=True)["sent"] if roots else 0
@@ -578,6 +631,50 @@ def refresh() -> dict:
     return out
 
 
+def push_library(roots: list[Path], *, phone_notes: bool = False, on_progress=None,  # noqa: ANN001
+                 hold=None, batch: int = 10) -> dict:  # noqa: ANN001
+    """서재 동기화가 켜져 있을 때 — 서재 논문의 읽기 번들을 웹 리더에도 둔다(바뀐 것만 굽는다). 새로 실은 논문은 '보낸 논문'이
+    아니다(sent=false — 휴대폰이 미리 받지 않고 열 때 받는다). phone_notes면 휴대폰 기록 파일이 있는 서재 논문도 함께 —
+    휴대폰에서 단 메모를 이 컴퓨터의 annotations.json에 합친다(그 뒤 서재 동기화가 다른 컴퓨터로 나른다).
+
+    batch편씩 나눠 목록을 쓴다 — 처음 한 번 서재 전체를 실을 때 오래 걸려도 중간에 앱을 꺼도 한 일이 남고, 그사이 '보내기'가
+    덮이지 않는다. hold(작업 디렉토리) → True인 논문(뷰어에 열려 있음)은 건드리지 않고 held로 돌려준다(다음 차례에).
+    저장소는 서재 동기화와 같은 곳(Drive 앱 폴더 — 시험용 폴더면 그 폴더).
+    반환: {uploaded, skipped, merged, failed: [키], held: [작업 디렉토리]}."""
+    from narani.libsync import service as library_sync
+    from narani.phone import notes as nmod
+    from narani.phone.store import names as store_names
+
+    store = library_sync.library().store
+    roots = [Path(r) for r in roots]
+    rows = _rows()
+    if phone_notes:
+        present = set(store_names(store, "mobile/"))
+        here = {r["name"]: Path(r["root"]) for r in rows}
+        roots += [p for k, p in here.items() if nmod.mobile_name(k) in present and p not in roots]
+    held = [r for r in roots if hold and hold(r)]
+    roots = [r for r in roots if r not in held]
+    extra, meta = _extra(rows), index_meta()
+    out = {"uploaded": 0, "skipped": 0, "merged": 0, "failed": [], "held": held}
+    chunks = [roots[i:i + batch] for i in range(0, len(roots), batch)] or [[]]
+    for c, chunk in enumerate(chunks):
+        def prog(i: int, n: int, key: str, c: int = c) -> None:
+            if on_progress and key:
+                on_progress(c * batch + i, len(roots), key)
+        got = sync.push(chunk, store, prune=False, extra=extra, meta=meta, new_sent=False, on_progress=prog)
+        for k in ("uploaded", "skipped", "merged"):
+            out[k] += got[k]
+        out["failed"] += got["failed"]
+    try:   # 이 컴퓨터에 만든(또는 서재 동기화로 받은) 듣기 음성이 웹 리더 것보다 새것이면 올린다 — 다시 합성하지 않는다
+        out["audio"] = sync.put_audio(store, roots, newer_only=True)["sent"] if roots else 0
+    except Exception as e:  # noqa: BLE001
+        log.info("서재 논문의 음성을 웹 리더에 올리지 못함: %s", e)
+        out["audio"] = 0
+    if connected():
+        _remember(sync.read_index(store), store)
+    return out
+
+
 def translated_roots() -> list[Path]:
     return [r["root"] for r in _rows() if r["has_ko"] and not r["hidden"]]
 
@@ -585,6 +682,8 @@ def translated_roots() -> list[Path]:
 def refresh_quietly() -> dict | None:
     """앱을 켤 때 뒤에서 refresh — 연결 전·오프라인·연결 만료면 조용히 넘어간다."""
     if not (configured() and connected()):
+        return None
+    if _library_on():   # 서재 동기화의 뒤 일꾼이 서재와 맞춘 뒤 웹 리더도 맞춘다(같은 논문을 두 흐름이 동시에 만지지 않게)
         return None
     try:
         out = refresh()

@@ -17,6 +17,12 @@ class Store(Protocol):
     def delete(self, name: str) -> None: ...
 
 
+def names(store: object, prefix: str = "") -> list[str]:
+    """저장소에서 prefix로 시작하는 이름들 — 어댑터에 list가 없으면 빈 목록(서재 동기화만 쓴다)."""
+    lister = getattr(store, "list", None)
+    return sorted(lister(prefix)) if lister else []
+
+
 class LocalStore:
     """로컬 폴더를 앱 폴더로 — 쓰기는 임시 파일에 쓴 뒤 바꿔치기(읽는 쪽이 반쯤 쓴 파일을 보지 않게)."""
 
@@ -51,3 +57,16 @@ class LocalStore:
             self._path(name).unlink()
         except FileNotFoundError:
             pass
+
+    def list(self, prefix: str = "") -> list[str]:
+        """prefix로 시작하는 이름들 (쓰는 중인 .tmp는 빼고)."""
+        base = self.root.resolve()
+        if not base.is_dir():
+            return []
+        out = []
+        for p in base.rglob("*"):
+            if p.is_file() and not p.name.endswith(".tmp"):
+                name = p.relative_to(base).as_posix()
+                if name.startswith(prefix):
+                    out.append(name)
+        return out

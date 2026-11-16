@@ -334,6 +334,10 @@ class DriveStore:
         if self._ids is not None:
             self._ids.pop(name, None)
 
+    def list(self, prefix: str = "") -> list[str]:
+        """prefix로 시작하는 이름들 — 늘 새로 받는다(다른 컴퓨터가 쓴 것까지 보이게). 목록 표도 함께 새로 고친다."""
+        return [n for n in self._load_ids() if n.startswith(prefix)]
+
     def file_id(self, name: str) -> str | None:
         """이름 → Drive 파일 id (없으면 None). 목록은 한 번 받아 둔 것을 쓴다."""
         return self._id(name)

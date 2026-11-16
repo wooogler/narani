@@ -6859,6 +6859,9 @@ async def _process_queue(state: dict) -> None:
                 # '저장 위치'가 지정돼 있으면 결과 마크다운을 거기에 쌓는다 (리네임 후 최종 이름으로)
                 await run.io_bound(library.auto_export, wd)
                 item["status"], item["done_at"] = "done", time.monotonic()
+                from narani.libsync import service as library_sync
+
+                library_sync.nudge()  # 서재 Drive 동기화가 켜져 있으면 새 논문을 곧 올린다
             except Exception as ex:  # noqa: BLE001 — 항목 실패가 큐 전체를 막지 않게
                 item["status"], item["error"] = "failed", str(ex)
     finally:
@@ -6919,6 +6922,8 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
         "queue": [], "worker_running": False, "recent_new": {},
         "wd_by_token": {},  # 토큰 → WorkDir (이미지·PDF 자산 서빙, 논문별 캐시 격리)
     }
+
+    _viewing_hooked: set[str] = set()   # 창 닫힘을 이미 걸어 둔 클라이언트
 
     def _register_wd(w) -> None:  # noqa: ANN001 — WorkDir
         if w is not None:
@@ -7004,9 +7009,21 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
         if state["launch_wd"] is not None:
             ui.navigate.to(_review_url(state["launch_wd"].root))
             return
+        _viewing(None)
         build_home(state)
 
+    def _viewing(root: Path | None) -> None:
+        """서재 동기화에 알린다 — 이 창의 뷰어에 떠 있는 논문은 받기·병합을 미룬다(§libsync.service.hold)."""
+        from narani.libsync import service as library_sync
+
+        client = ui.context.client
+        library_sync.viewing(client.id, root)
+        if root is not None and client.id not in _viewing_hooked:
+            _viewing_hooked.add(client.id)
+            client.on_disconnect(lambda c=client: library_sync.viewing(c.id, None))
+
     def home_view() -> None:
+        _viewing(None)
         build_home(state)
 
     def review_view(wd: str = "") -> None:  # noqa: ANN001 — 쿼리 파라미터
@@ -7015,6 +7032,7 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
             ui.navigate.to("/home")
             return
         wdir = WorkDir(root)
+        _viewing(wdir.root)
         state["current_wd"] = wdir  # 이미지 서빙이 이 워크디렉토리를 가리키도록
         _register_wd(wdir)  # 토큰 등록 (이 논문 자산 URL 해석용)
         _mark_opened(wdir)  # 미열람 표시 해제 (한 번이라도 열면 '새 항목' 아님)
@@ -7071,6 +7089,20 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
         from narani.phone import service as phone_service
 
         threading.Thread(target=phone_service.refresh_quietly, daemon=True, name="mobile-refresh").start()
+
+    @fastapi_app.on_startup
+    def _library_sync() -> None:
+        # 서재 Drive 동기화 (§libsync.service) — 켜져 있으면 뒤 일꾼을 띄운다. 변환 큐·번역 중인 논문은 건드리지 않는다
+        from narani.libsync import service as library_sync
+        from narani.ui import jobs
+
+        def busy(md4: Path) -> bool:
+            here = str(Path(md4))
+            return bool(jobs.running(md4)) or any(
+                str(q.get("wd_root") or "") == here and q["status"] in _QUEUE_ACTIVE for q in state["queue"])
+
+        library_sync.set_busy(busy)
+        library_sync.start_if_enabled(state["upload_dir"])
 
     @fastapi_app.on_shutdown
     def _close_extra_windows() -> None:
