@@ -472,7 +472,7 @@ HTML = f"""
   <select class="mdl-src" title="⦃목소리⦄"></select>
   <select class="mdl-voice" title="⦃컴퓨터 목소리⦄"></select>
   <select class="mdl-rate" title="⦃속도⦄"></select>
-  <button data-a="more" class="mdl-more" title="⦃음성 만들기 · 웹 리더⦄">{_svg("more")}<i class="mdl-dot"></i></button>
+  <button data-a="more" class="mdl-more" title="⦃음성 만들기 · 휴대폰⦄">{_svg("more")}<i class="mdl-dot"></i></button>
   <button data-a="close" title="⦃듣기 닫기⦄">{_svg("close")}</button>
   <div class="mdl-prog"><i></i></div>
   <div class="mdl-menu" hidden>
@@ -482,7 +482,7 @@ HTML = f"""
     <hr>
     <button data-a="make" class="mdl-mi" type="button">⦃음성 만들기…⦄</button>
     <button data-a="stop" class="mdl-mi" type="button" hidden>⦃만들기 멈추기⦄</button>
-    <button data-a="send" class="mdl-mi" type="button">⦃웹 리더로 보내기⦄</button>
+    <button data-a="send" class="mdl-mi" type="button">⦃휴대폰에 받아 두기⦄</button>
   </div>
 </div>
 """
@@ -688,7 +688,7 @@ JS = r"""
       if (w.configured){
         var wt = !w.connected ? md4T('연결 안 됨') : (!w.on ? md4T('없음') :
           (w.audio === 'same' ? md4T('있음 · 이 음성') : (w.audio ? md4T('있음 · 다른 음성') : md4T('있음 · 음성 없음'))));
-        line($('.mdl-st-web'), md4T('웹 리더'), wt);
+        line($('.mdl-st-web'), md4T('휴대폰'), wt);
       } else line($('.mdl-st-web'), '');
       $('[data-a="send"]').hidden = !w.configured;
       more.classList.toggle('stale', !!(lo && lo.stale));

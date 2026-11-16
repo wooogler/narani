@@ -20,6 +20,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from narani import config
+from narani.i18n import t
 from narani.libsync import engine, pack
 
 log = logging.getLogger(__name__)
@@ -179,14 +180,20 @@ def remote_count() -> int:
 
 
 # ---- 홈에 보일 것 ----
+def _not_here(g: dict) -> list[str]:
+    """이 컴퓨터에 없는 Drive 서재 논문 pid — 묘비, 이 컴퓨터에서만 지운 것(declined), 지우기를 미룬 것은 빼고."""
+    here = {pid for pid, p in (g.get("bound") or {}).items() if Path(p).is_dir()}
+    skip = set(g.get("declined") or []) | set(g.get("pending_deletes") or [])
+    return [pid for pid, s in (g.get("remote") or {}).items()
+            if pid not in here and pid not in skip and not s.get("deleted")]
+
+
 def info() -> dict:
     g = _global()
     remote = g.get("remote") or {}
-    bound = g.get("bound") or {}
-    here = {pid for pid, p in bound.items() if Path(p).is_dir()}
     return {"available": available(), "enabled": enabled(), "ask": should_ask(), "local": local_store_dir() is not None,
             "papers": sum(1 for pid, s in remote.items() if not s.get("deleted")),
-            "drive_only": sum(1 for pid, s in remote.items() if not s.get("deleted") and pid not in here),
+            "drive_only": len(_not_here(g)), "declined": len(declined()),
             "bytes": sum(int(s.get("bytes") or 0) for s in remote.values() if not s.get("deleted")),
             "listed": float(g.get("listed") or 0), **{k: STATUS[k] for k in
                                                       ("running", "phase", "done", "total", "label", "error",
@@ -194,13 +201,37 @@ def info() -> dict:
 
 
 def drive_only() -> list[dict]:
-    """이 컴퓨터에 없는 Drive 서재 논문 — [{pid, title, authors, year, venue, name, bytes, has_ko, projects, at}], 최근 것 먼저."""
+    """이 컴퓨터에 없는 Drive 서재 논문 — [{pid, title, authors, year, venue, name, bytes, has_ko, projects, at}], 최근 것 먼저.
+    켜 두면 뒤 일꾼이 저절로 가져온다."""
     g = _global()
-    here = {pid for pid, p in (g.get("bound") or {}).items() if Path(p).is_dir()}
-    rows = [{"pid": pid, **s} for pid, s in (g.get("remote") or {}).items()
-            if pid not in here and not s.get("deleted")]
+    remote = g.get("remote") or {}
+    rows = [{"pid": pid, **remote[pid]} for pid in _not_here(g)]
     rows.sort(key=lambda r: -float(r.get("at") or 0))
     return rows
+
+
+def declined() -> list[dict]:
+    """이 컴퓨터에서만 지운 서재 논문(Drive에는 남음) — 저절로 다시 가져오지 않는다. [{pid, title, …}]."""
+    g = _global()
+    remote = g.get("remote") or {}
+    here = {pid for pid, p in (g.get("bound") or {}).items() if Path(p).is_dir()}
+    return [{"pid": pid, **remote[pid]} for pid in (g.get("declined") or [])
+            if pid in remote and not remote[pid].get("deleted") and pid not in here]
+
+
+def forget_here(md4: Path) -> None:
+    """이 컴퓨터에서만 지운다 — Drive 서재에는 남기고, 뒤 일꾼이 다시 가져오지 않게 적어 둔다."""
+    pid = pid_of(md4)
+    if pid:
+        _set(declined=sorted({*(_global().get("declined") or []), pid}))
+        _bump()
+
+
+def take_back(pids: list[str]) -> None:
+    """이 컴퓨터에서만 지웠던 논문을 다시 가져오게 — 뒤 일꾼이 다음 차례에 받는다."""
+    _set(declined=[p for p in (_global().get("declined") or []) if p not in set(pids)])
+    _bump()
+    nudge(force=True)
 
 
 def paper_marks() -> dict[str, dict]:
@@ -315,6 +346,7 @@ class _Worker(threading.Thread):
         self.reader_done = False   # 이번 실행에서 서재 전체를 웹 리더에 한 번 맞췄는가
         self.reader_todo: set[Path] = set()   # 웹 리더에 다시 실을 논문 — 열려 있어 미룬 것은 다음 차례에
         self.notes_at = 0.0        # 휴대폰 기록을 마지막으로 합친 때
+        self.import_fail: dict[str, tuple[int, float, str]] = {}   # 가져오지 못한 논문 — pid → (횟수, 다시 해 볼 때, 까닭)
 
     def run(self) -> None:
         delay = 1.0   # 켜자마자 한 번
@@ -348,7 +380,7 @@ class _Worker(threading.Thread):
                 cands.add(pid)
             self.prev[pid] = fp
         g = _global()
-        if not (force or cands or g.get("pending_deletes") or lib.collections_dirty()
+        if not (force or cands or g.get("pending_deletes") or lib.collections_dirty() or self.importable(g)
                 or time.time() - self.listed > LIST_EVERY):
             return
         _bump(running=True, phase="sync", done=0, total=0, label="", error="")
@@ -384,18 +416,54 @@ class _Worker(threading.Thread):
                 except Exception as e:  # noqa: BLE001
                     log.info("논문 동기화 실패 %s: %s", md4.name, e)
                     out["errors"].append((md4.stem, str(e) or type(e).__name__))
-            if out["up"] or out["down"] or out["merged"]:
-                log.info("서재 동기화: 올림 %d · 받음 %d · 병합 %d", out["up"], out["down"], out["merged"])
+            got = self.auto_import()
+            out["imported"] = len(got)
+            for md4 in got:
+                local[engine.read_state(md4).get("pid") or md4.stem] = md4
+                touched.append(md4)
+            if out["up"] or out["down"] or out["merged"] or got:
+                log.info("서재 동기화: 올림 %d · 받음 %d · 병합 %d · 가져옴 %d", out["up"], out["down"], out["merged"],
+                         len(got))
             self.reader(local, touched, coll != "same")
             if coll_error:
                 out["errors"].insert(0, ("collections", coll_error))
-            _bump(last=out, last_ok=time.time(), done=len(todo),
-                  error="; ".join(f"{a}: {b}" for a, b in out["errors"][:3]))
+            problems = [f"{a}: {b}" for a, b in out["errors"][:3]]
+            stuck = [why for _n, _until, why in self.import_fail.values()]
+            if stuck:   # 가져오기 실패는 그 논문만 늦춘다 — 일꾼 간격은 늘리지 않고 상태(구름 아이콘)에만 알린다
+                problems.append(t("가져오지 못한 논문 {n}편 — {e}", n=len(stuck), e=stuck[0]))
+            _bump(last=out, last_ok=time.time(), done=len(todo), error="; ".join(problems))
             if out["errors"]:   # 할당량·서버 오류 — 30초마다 다시 두드리지 않고 간격을 늘린다
                 raise RuntimeError(out["errors"][0][1])
         finally:
             _bump(running=False, phase="")
 
+
+    def importable(self, g: dict) -> list[str]:
+        """저절로 가져올 논문 — 이 컴퓨터에 없는 서재 논문 중 실패해 기다리는 중이 아닌 것."""
+        now = time.time()
+        return [pid for pid in _not_here(g) if pid not in self.import_fail or self.import_fail[pid][1] <= now]
+
+    def auto_import(self) -> list[Path]:
+        """다른 컴퓨터에서 온 새 논문을 이 컴퓨터로 — 하나씩, 실패하면 그 논문만 간격을 늘려 다시(새 형식·깨진 묶음이
+        30초마다 되풀이되지 않게). 반환: 가져온 작업 디렉토리."""
+        todo = self.importable(_global())
+        if not todo:
+            return []
+        lib = library()
+        rows = {r["pid"]: r for r in drive_only()}
+        done: list[Path] = []
+        for i, pid in enumerate(todo):
+            if self.halt or not enabled():
+                break
+            _bump(phase="import", done=i, total=len(todo), label=(rows.get(pid) or {}).get("title") or pid)
+            try:
+                done.append(lib.import_paper(pid))
+                self.import_fail.pop(pid, None)
+            except Exception as e:  # noqa: BLE001 — 한 편이 실패해도 나머지는 가져온다
+                n = self.import_fail.get(pid, (0, 0.0, ""))[0] + 1
+                self.import_fail[pid] = (n, time.time() + min(TICK * 2 ** n, 6 * 3600), str(e) or type(e).__name__)
+                log.info("저절로 가져오지 못함 %s: %s", pid, e)
+        return done
 
     def reader(self, local: dict[str, Path], touched: list[Path], coll_changed: bool) -> None:
         """웹 리더도 서재에 맞춘다(§phone.service.push_library) — 처음 한 번은 서재 전체, 그 뒤엔 이번에 바뀐 논문만,

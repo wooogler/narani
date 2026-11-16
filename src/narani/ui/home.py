@@ -47,7 +47,7 @@ from narani.ui import (
 )
 from narani.libsync import service as library_sync
 from narani.ui import audio_dialog, library_sync_ui, meta_card
-from narani.ui.audio_dialog import audio_label  # noqa: F401 — 홈 카드·웹 리더 동작 줄
+from narani.ui.audio_dialog import audio_label  # noqa: F401 — 홈 카드·휴대폰 동작 줄
 # 서지 칸 글자·소속 규칙은 뷰어 서지 패널와 같이 쓰려고 meta_card로 옮겼다 — 테스트·옛 호출자는 여기서 가져간다
 from narani.ui.meta_card import field_text, parse_field  # noqa: F401
 from narani.ui.meta_card import same_base as _same_base  # noqa: F401
@@ -57,30 +57,32 @@ from narani.workdir import WorkDir, hash_bytes
 # 카드를 사이드바로 끌 때 dataTransfer에 싣는 형식 — 파일 끌기('Files')와 섞이지 않게 따로 둔다
 PAPER_MIME = "text/x-md4-paper"
 COLL_MIME = "text/x-md4-collection"  # 사이드바 컬렉션 행을 끌 때 — 다른 컬렉션 아래로 옮긴다
-# 사이드바 '모바일' — 컬렉션이 아니라 모바일 리더에 보낸 논문(§phone.service)을 모아 보는 범위.
-# 기억하지 않는다(projects.set_active가 모르는 값은 '모든 논문'으로 돌린다) — 다음 실행엔 모든 논문부터.
-MOBILE = "__mobile__"
-# 사이드바 'Drive 서재' — 이 컴퓨터에 없는 Drive 서재 논문(가져오기)과 다른 컴퓨터에서 지운 논문(§libsync)
-DRIVE = "__drive__"
 
 
-def _saved_scope() -> str:
-    """홈을 다시 그릴 때 볼 범위 — 컬렉션은 projects가 기억하고, '웹 리더'는 컬렉션이 아니라 거기 안 적히므로
-    [ui].home_scope에 따로 둔다(논문을 보다 홈으로 와도, 앱을 다시 켜도 웹 리더 목록 그대로)."""
-    if config.load_config().get("ui", {}).get("home_scope") == "mobile":
-        return MOBILE
-    return projects.active()
+# 모든 논문이 내 서재다 — 사이드바는 모든 논문 · 컬렉션 · 미분류만. 휴대폰(웹 리더)은 그 서재를 보는 창이라 범위가 아니라
+# 목록 위 '휴대폰' 필터(휴대폰에 받아 둔 논문만)로 거른다. 필터는 [ui].home_scope="mobile"로 기억한다(예전 '웹 리더' 범위를
+# 보던 사람은 필터가 켜진 채로) — 논문을 보다 홈으로 와도, 앱을 다시 켜도 그대로.
+def _phone_filter() -> bool:
+    return config.load_config().get("ui", {}).get("home_scope") == "mobile"
 
 
-def _remember_mobile_scope(on: bool) -> None:
-    if on != (config.load_config().get("ui", {}).get("home_scope") == "mobile"):
+def _remember_phone_filter(on: bool) -> None:
+    if on != _phone_filter():
         config.set_section_value("ui", "home_scope", "mobile" if on else None)
 
 HOME_CSS = """
-/* Drive 서재에만 있는 논문 — 흐린 카드 (가져오기 단추는 또렷하게) */
-.md4-dcard { opacity: .72; cursor: default; }
-.md4-dcard:hover { opacity: 1; }
 .md4-dgone { min-height: 0 !important; padding: 0 4px !important; font-size: 11px; }
+/* 목록 위 알림 줄 — 결정이 필요한 것(다른 컴퓨터에서 지운 논문)이 있을 때만 */
+.md4-hnote { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; padding: 6px 10px;
+  border-radius: 8px; background: #fff7ed; border: 1px solid #fed7aa; color: #9a3412; font-size: 12.5px; }
+.md4-hnote .q-btn { min-height: 0; padding: 0 6px; font-size: 12px; }
+/* 버전 줄 옆 서재 동기화 구름 */
+.md4-syncb { min-height: 0 !important; min-width: 0 !important; padding: 0 2px !important; }
+@keyframes md4-spin { to { transform: rotate(360deg); } }
+.md4-syncb.run .q-icon { animation: md4-spin 1.4s linear infinite; }
+/* 목록 도구 줄의 '휴대폰' 필터 */
+.md4-phonef { min-height: 32px; padding: 0 8px !important; border-radius: 8px; }
+.md4-phonef.on { background: #e8f1fd; }
 /* 홈 = 뷰어와 같은 2단. 높이·여백은 _CHROME_CSS의 .md4-body 규칙이 맡는다(창 전체는 스크롤되지 않는다). */
 .md4-hside { flex: 0 0 var(--md4-side-w); width: var(--md4-side-w); height: 100%; background: #f4f3f1;
   border-right: 1px solid #e6e4e0; flex-wrap: nowrap; position: relative; }
@@ -575,7 +577,9 @@ def build_home(state: dict) -> None:
 
     backend_ready = bool(available_backends())
     # 고른 범위(scope)는 목록 필터 + 새로 올릴 논문의 소속 — 앱을 다시 켜도 같은 묶음을 보게 기억한다.
-    view = {"q": "", "sort": "recent", "show_hidden": False, "scope": _saved_scope()}
+    # phone: '휴대폰에 받아 둔 것'만 (필터 — 범위와 겹쳐 쓴다), gone: 알림 줄의 '보기'(다른 컴퓨터에서 지운 논문만)
+    view = {"q": "", "sort": "recent", "show_hidden": False, "scope": projects.active(), "phone": _phone_filter(),
+            "gone": False}
     selected: set[str] = set()  # 체크박스로 고른 워크디렉토리 root (문자열) — 일괄 동작용
     # 한 번 클릭으로 고른 논문(미리보기) — 홈 인스턴스에만 둔다. seq는 미리보기를 그릴 때마다 올라
     # 늦게 도착한 초록·이미지를 버리는 데 쓴다. bulk: 마지막 동작이 체크박스였는지(미리보기 자리를 일괄
@@ -586,8 +590,10 @@ def build_home(state: dict) -> None:
     card_refs: dict = {}  # root → {title, tip, bib} 라벨 — 서지를 고치면 그 카드 글자만 바꾼다
     loads: dict = {}  # (root, 종류, 언어) → asyncio.Task — 같은 것을 두 번 읽지 않게(EN/KO 토글이 즉시)
     preview = _preview_module()
+    # mobile: 휴대폰에 받아 둔 논문 키 → 목록 줄, reader: 휴대폰에서 열 수 있는 논문 전부(받아 두지 않은 서재 논문 포함 —
+    # 공유 링크·음성), sync: 작업 디렉토리 → 서재 동기화 표시(다른 컴퓨터에서 지움 등). 모두 마지막으로 본 Drive 목록.
     data: dict = {"rows": [], "by_root": {}, "projs": [], "names": {}, "tree": [], "up": {}, "sub": {},
-                  "mobile": {}, "sync": {}, "drive": []}  # sync: 작업 디렉토리 → Drive 서재 표시, drive: Drive에만 있는 논문  # mobile: 모바일에 있는 논문 키 → 목록 줄 (마지막으로 본 Drive 목록)
+                  "mobile": {}, "reader": {}, "sync": {}}
 
     # ===== 한 번 훑기 — 사이드바 편수와 목록이 같은 결과를 쓴다 =====
     def load_projects() -> None:
@@ -597,7 +603,7 @@ def build_home(state: dict) -> None:
         valid = data["names"]
         for r in data["rows"]:  # 없어진 프로젝트는 어디서나 미분류로 (projects.normalize_many와 같은 규칙)
             r["pids"] = [p for p in dict.fromkeys(_stored_pids(r)) if p in valid]
-        if view["scope"] not in (projects.ALL, projects.NONE, MOBILE, DRIVE) and view["scope"] not in valid:
+        if view["scope"] not in (projects.ALL, projects.NONE) and view["scope"] not in valid:
             view["scope"] = projects.ALL  # 보던 프로젝트가 지워졌으면 전체로
 
     def scan() -> None:
@@ -607,9 +613,9 @@ def build_home(state: dict) -> None:
         data["rows"] = rows
         data["by_root"] = {str(r["root"]): r for r in rows}
         data["mobile"] = phone_service.on_mobile()
+        data["reader"] = phone_service.in_reader()
         library_sync.set_workspace(ws())
         data["sync"] = library_sync.paper_marks() if library_sync.enabled() else {}
-        data["drive"] = library_sync.drive_only() if library_sync.enabled() else []
         load_projects()
         selected.intersection_update(data["by_root"])  # 사라진 논문은 선택에서도
 
@@ -630,10 +636,6 @@ def build_home(state: dict) -> None:
             return True
         if scope == projects.NONE:
             return not r["pids"]
-        if scope == MOBILE:
-            return r["name"] in data["mobile"]
-        if scope == DRIVE:   # 다른 컴퓨터에서 지운 논문 (Drive에만 있는 논문은 recent_list가 따로)
-            return bool((data["sync"].get(str(r["root"])) or {}).get("deleted"))
         sub = data["sub"].get(scope) or {scope}
         return any(p in sub for p in r["pids"])
 
@@ -645,15 +647,11 @@ def build_home(state: dict) -> None:
     def counts() -> dict[str, int]:
         """사이드바 편수 — 숨긴 논문은 빼고(목록에 보이는 것과 같게). 컬렉션은 하위 컬렉션까지 합친
         **고유** 편수(상위·하위 둘 다에 든 논문은 한 번만)."""
-        n = {projects.ALL: 0, projects.NONE: 0, MOBILE: 0, DRIVE: len(data["drive"])}
+        n = {projects.ALL: 0, projects.NONE: 0}
         for r in live_rows():
             if r["hidden"]:
                 continue
             n[projects.ALL] += 1
-            if r["name"] in data["mobile"]:
-                n[MOBILE] += 1
-            if (data["sync"].get(str(r["root"])) or {}).get("deleted"):
-                n[DRIVE] += 1
             if not r["pids"]:
                 n[projects.NONE] += 1
             hit: set[str] = set()
@@ -703,9 +701,25 @@ def build_home(state: dict) -> None:
     def pick_scope(value: str) -> None:
         """범위 고르기 — 목록 필터·새 논문의 소속·드롭 안내가 한 번에 따라온다."""
         view["scope"] = value
-        projects.set_active(value)  # 다음 실행에도 같은 묶음을 보게 (웹 리더는 '전체'로 적힌다 — 새 논문은 미분류)
-        _remember_mobile_scope(value == MOBILE)
+        projects.set_active(value)  # 다음 실행에도 같은 묶음을 보게
         refresh_views()
+
+    def gone_rows() -> list[dict]:
+        """다른 컴퓨터에서 지웠는데 이 컴퓨터에 남은 논문 — 알림 줄에서 되살리거나 여기서도 지운다."""
+        return [r for r in live_rows() if (data["sync"].get(str(r["root"])) or {}).get("deleted")]
+
+    def set_phone_filter(on: bool) -> None:
+        view["phone"] = on
+        _remember_phone_filter(on)
+        phone_chip.refresh()
+        head.refresh()
+        recent_list.refresh()
+        preview_pane.refresh()
+
+    def set_gone_view(on: bool) -> None:
+        view["gone"] = on
+        head.refresh()
+        recent_list.refresh()
 
     def new_project(for_root: str | None = None, parent: str | None = None) -> None:
         """새 프로젝트 — 만드는 길은 이 대화상자 하나뿐이다(사이드바 '새 프로젝트'와 카드 태그 메뉴의
@@ -983,20 +997,22 @@ def build_home(state: dict) -> None:
                 ui.label(t("전에 다른 컬렉션에 넣어 뒀다면 그 폴더에 남은 사본도 함께 정리합니다.")) \
                     .classes("text-xs text-gray-400 ml-8 leading-tight")
 
-            # 서재 동기화 — Drive 서재에서도 지울지(다른 컴퓨터에서도 사라짐). 기본은 이 컴퓨터에서만:
-            # 그러면 Drive에는 남아 'Drive 서재'에서 다시 가져올 수 있다
+            # 서재 동기화 — 모든 논문이 내 서재라 기본은 서재에서 지우기(다른 컴퓨터는 조용히 지우지 않고 알림 줄에서
+            # 고른다). 끄면 이 컴퓨터에서만 — 뒤 일꾼이 다시 가져오지 않게 적어 두고, 설정에서 다시 가져올 수 있다.
             mark = data["sync"].get(str(r["root"])) or {}
-            drop_drive = ui.checkbox(t("Drive 서재에서도 지우기 — 다른 컴퓨터에는 '다른 컴퓨터에서 지움'으로 표시됩니다"),
-                                     value=False).props("dense").classes("text-sm") if mark.get("synced") else None
+            drop_drive = ui.checkbox(t("다른 컴퓨터에서도 지우기 — 다른 컴퓨터에는 '다른 컴퓨터에서 지움'으로 알립니다"),
+                                     value=True).props("dense").classes("text-sm") if mark.get("synced") else None
             if drop_drive is not None:
-                ui.label(t("끄면 이 컴퓨터에서만 지우고 Drive 서재에는 남깁니다 — 'Drive 서재'에서 다시 가져올 수 있습니다.")) \
+                ui.label(t("끄면 이 컴퓨터에서만 지웁니다 — 설정의 서재 동기화에서 다시 가져올 수 있습니다.")) \
                     .classes("text-xs text-gray-400 ml-8 leading-tight")
 
             async def do_delete() -> None:
                 if drop_drive is not None and drop_drive.value:
                     gone = await run.io_bound(library_sync.delete_remote, r["root"])
                     if not gone:
-                        ui.notify(t("지금은 Drive에 닿지 않아 나중에 Drive 서재에서도 지웁니다."), type="info")
+                        ui.notify(t("지금은 Drive에 닿지 않아 나중에 다른 컴퓨터에서도 지웁니다."), type="info")
+                else:   # 이 컴퓨터에서만 — 서재에 남은 것을 뒤 일꾼이 다시 가져오지 않게
+                    await run.io_bound(library_sync.forget_here, r["root"])
                 ok = delete_workdir(r["root"], ws(), with_library=bool(drop_lib and drop_lib.value))
                 dlg.close()
                 if ok:
@@ -1026,14 +1042,15 @@ def build_home(state: dict) -> None:
 
         await export_dialog.open_dialog([Path(p) for p in selected])  # 열 때의 선택을 붙잡는다
 
-    # ===== 모바일 (§phone) — Google Drive를 거쳐 모바일 리더(웹앱)에서 읽는다 =====
+    # ===== 휴대폰 (§phone) — Google Drive를 거쳐 휴대폰 웹 리더에서 읽는다 =====
     def mobile_changed() -> None:
         data["mobile"] = phone_service.on_mobile()
+        data["reader"] = phone_service.in_reader()
         refresh_views()
 
     async def connect_drive() -> bool:
-        """웹 리더용 Google Drive 연결 (§ui.audio_dialog) — 되면 목록을 다시 그리고, 서재 동기화를 아직 안 물었으면 묻는다
-        (새 컴퓨터: 연결 → '서재 N편 있습니다' → 켜기 → Drive 서재에서 모두 가져오기)."""
+        """Google Drive 연결 (§ui.audio_dialog) — 되면 목록을 다시 그리고, 서재 동기화를 아직 안 물었으면 묻는다
+        (새 컴퓨터: 연결 → '서재 N편 있습니다' → 켜기 → 뒤 일꾼이 저절로 가져온다)."""
         ok = await audio_dialog.connect_drive()
         if ok:
             mobile_changed()
@@ -1043,19 +1060,17 @@ def build_home(state: dict) -> None:
         return ok
 
     def after_ask() -> None:
-        """서재 동기화를 켰으면 'Drive 서재'로 — 첫 올리기 진행과 가져올 논문이 거기 보인다."""
-        if library_sync.enabled():
-            pick_scope(DRIVE)
-        else:
-            refresh_views(rescan=True)
+        """서재 동기화를 켰으면 첫 올리기·가져오기 진행이 목록 위 진행 줄과 구름 아이콘에 보인다."""
+        refresh_views(rescan=True)
+        sync_badge.refresh()
 
     async def mobile_call(fn, roots: list[Path], busy: str, progress: dict | None = None):  # noqa: ANN001, ANN202
         """연결을 확인하고(없으면 연결부터) fn(roots)를 돌린다 (§ui.audio_dialog.drive_call)."""
         return await audio_dialog.drive_call(fn, roots, busy, progress, on_connect=mobile_changed)
 
     async def make_mobile_audio(roots: list[Path]) -> None:
-        """듣기 음성 — 공용 창(§ui.audio_dialog)으로 고르고 이 컴퓨터에 만든다. 웹 리더에 있는 논문은 만든 뒤 그쪽에도
-        올리고, 없는 논문은 창의 '웹 리더로도 보내기'를 켰을 때만 보낸다(그때만 Drive 연결을 묻는다)."""
+        """듣기 음성 — 공용 창(§ui.audio_dialog)으로 고르고 이 컴퓨터에 만든다. 휴대폰에서 열 수 있는 논문은 만든 뒤 그쪽에도
+        올리고, 없는 논문은 창의 '휴대폰에도 받아 두기'를 켰을 때만 보낸다(그때만 Drive 연결을 묻는다)."""
         titles = {k: (r or {}).get("title", "") for k, r in data["by_root"].items()}
         started = await audio_dialog.make(host, [Path(r) for r in roots], titles, on_connect=mobile_changed)
         if started:
@@ -1067,54 +1082,74 @@ def build_home(state: dict) -> None:
         n = await mobile_call(phone_service.remove_audio, [Path(r) for r in roots], t("음성을 지우는 중…"))
         if n is None:
             return
-        ui.notify(t("웹 리더 음성 {n}편을 지웠습니다 — 논문은 웹 리더에 그대로", n=n), type="positive")
+        ui.notify(t("만든 음성 {n}편을 지웠습니다 — 이 컴퓨터와 휴대폰에서, 논문은 그대로", n=n), type="positive")
         mobile_changed()
 
-    async def send_to_mobile(roots: list[Path]) -> None:
-        """논문들을 웹 리더로 — Drive의 Narani 폴더에 올린다. 하이라이트·메모도 이때 오간다."""
+    async def keep_on_phone(roots: list[Path]) -> None:
+        """휴대폰에 받아 두기 — 휴대폰이 미리 내려받아 오프라인에서도 읽는다. 동작은 서재 동기화와 무관하게 같다: Drive의
+        Narani 폴더에 올리고(이미 있으면 바뀐 것만) 받아 둔 표시를 켠다. 하이라이트·메모도 이때 오간다."""
         if not roots:
-            ui.notify(t("보낼 논문이 없습니다."), type="warning")
             return
-        s = await mobile_call(phone_service.send, roots, t("웹 리더로 보내는 중… ({n}편)", n=len(roots)))
+        s = await mobile_call(phone_service.send, roots, t("휴대폰에 받아 두는 중… ({n}편)", n=len(roots)))
         if s is None:
             return
-        msg = t("웹 리더로 보냄 — 새로 {up}편 · 그대로 {same}편", up=s["uploaded"], same=s["skipped"])
+        msg = t("휴대폰에 받아 뒀습니다 — {n}편", n=len(roots))
         if s["merged"]:
-            msg += t(" · 웹 리더에서 단 메모 {n}개를 합쳤습니다", n=s["merged"])
+            msg += t(" · 휴대폰에서 단 메모 {n}개를 합쳤습니다", n=s["merged"])
         ui.notify(msg, type="positive")
         mobile_changed()
 
-    async def mobile_dropped(args) -> None:  # noqa: ANN001 — {paper, coll}
-        """논문 카드를 사이드바 '웹 리더'에 놓음 — 그 논문을 웹 리더로 보낸다(이미 있으면 새로 맞춘다)."""
-        root = str((args or {}).get("paper") or "") if isinstance(args, dict) else str(args or "")
-        if root and root in data["by_root"]:
-            await send_to_mobile([Path(root)])
-
-    async def remove_from_mobile(roots: list[Path]) -> None:
-        """웹 리더에서 빼기 — 웹 리더에서 단 메모는 먼저 이 컴퓨터에 합친다. 논문 파일은 그대로."""
+    async def drop_from_phone(roots: list[Path]) -> None:
+        """휴대폰에서 빼기 — 휴대폰에서 단 메모는 먼저 이 컴퓨터에 합친다. 서재 동기화가 켜져 있으면 받아 둔 표시만 끄고
+        (휴대폰은 컬렉션에서 계속 열 수 있다), 꺼져 있으면 휴대폰에서 아예 뺀다(공유 링크도 꺼진다). 논문 파일은 그대로."""
         roots = [r for r in roots if Path(r).stem in data["mobile"]]
         if not roots:
-            ui.notify(t("웹 리더에 있는 논문이 아닙니다."), type="warning")
             return
-        s = await mobile_call(phone_service.remove, roots, t("웹 리더에서 빼는 중… ({n}편)", n=len(roots)))
+        s = await mobile_call(phone_service.remove, roots, t("휴대폰에서 빼는 중… ({n}편)", n=len(roots)))
         if s is None:
             return
-        msg = (t("보낸 논문에서 {n}편을 뺐습니다 — 휴대폰에서는 컬렉션에서 계속 열 수 있습니다", n=s["removed"])
-               if library_sync.enabled() else t("웹 리더에서 {n}편을 뺐습니다", n=s["removed"]))
+        msg = (t("휴대폰에 받아 둔 논문에서 {n}편을 뺐습니다 — 휴대폰에서는 컬렉션에서 계속 열 수 있습니다", n=s["removed"])
+               if library_sync.enabled() else t("휴대폰에서 {n}편을 뺐습니다", n=s["removed"]))
         if s["merged"]:
-            msg += t(" · 웹 리더에서 단 메모 {n}개를 합쳤습니다", n=s["merged"])
+            msg += t(" · 휴대폰에서 단 메모 {n}개를 합쳤습니다", n=s["merged"])
         ui.notify(msg, type="positive")
         mobile_changed()
 
-    # ---- 웹 리더 바로가기 · 공유 링크 ----
+    async def toggle_phone(roots: list[Path]) -> None:
+        """'휴대폰에 받아 두기' 한 단추 — 모두 받아 뒀으면 빼고, 아니면 아직 안 받아 둔 것을 받아 둔다."""
+        roots = [Path(r) for r in roots]
+        if roots and all(r.stem in data["mobile"] for r in roots):
+            await drop_from_phone(roots)
+        else:
+            await keep_on_phone([r for r in roots if r.stem not in data["mobile"]])
+
+    def phone_toggle_button(roots: list[Path], *, flat: bool = True):  # noqa: ANN202 — ui.button
+        """받아 두기 켜고 끄는 단추 — 단일 논문 미리보기·여러 편 일괄 동작이 같은 것을 쓴다."""
+        kept = sum(1 for r in roots if Path(r).stem in data["mobile"])
+        on = bool(roots) and kept == len(roots)
+        label = (t("휴대폰에 받아 둠") if on else
+                 t("휴대폰에 받아 두기") if len(roots) == 1 or not kept else
+                 t("휴대폰에 받아 두기 ({n}편 더)", n=len(roots) - kept))
+        tip = (t("휴대폰이 미리 내려받아 오프라인에서도 읽습니다 — 누르면 뺍니다")
+               + (t(" (휴대폰에서는 컬렉션에서 계속 열 수 있습니다)") if library_sync.enabled() else
+                  t(" (휴대폰에서 빠지고 공유 링크도 꺼집니다)"))) if on else \
+            t("휴대폰({site})이 미리 내려받아 오프라인에서도 읽습니다 — 하이라이트·메모는 이 컴퓨터와 오갑니다",
+              site=pages.DOMAIN)
+        b = ui.button(label, icon="offline_pin" if on else "download_for_offline", color=None,
+                      on_click=lambda: toggle_phone(roots))
+        b.props("flat dense no-caps" + (" size=sm" if flat else "")).classes("md4-act" if not flat else "") \
+            .classes("text-primary" if on else "text-grey-8")
+        return b.tooltip(tip)
+
+    # ---- 휴대폰 웹 리더 바로가기 · 공유 링크 ----
     def open_web_reader(key: str | None = None) -> None:
-        """기본 브라우저로 웹 리더를 — key를 주면 그 논문을 바로 연다."""
+        """기본 브라우저로 휴대폰 웹 리더를 — key를 주면 그 논문을 바로 연다."""
         import webbrowser
 
         webbrowser.open(phone_service.reader_link(key) if key else pages.SITE)
 
     def share_of(p: Path) -> str:
-        return (data["mobile"].get(p.stem) or {}).get("share") or ""
+        return (data["reader"].get(p.stem) or {}).get("share") or ""
 
     async def copy_links(roots: list[Path], links: dict[str, str]) -> None:
         """'제목 — 링크'를 한 줄에 한 편씩 클립보드로."""
@@ -1143,11 +1178,10 @@ def build_home(state: dict) -> None:
         mobile_changed()
 
     async def share_dialog(roots: list[Path]) -> None:
-        """공유 링크 — 웹 리더에 있는 논문을 링크가 있는 사람 누구나 읽기 전용으로. 한 편이면 담을 메모 탭을
-        고르고, 여러 편이면 메모를 담을지만 고른다. 이미 링크가 있는 논문은 (여러 편일 때) 다시 올리지 않는다."""
-        roots = [Path(p) for p in roots if Path(p).stem in data["mobile"]]
+        """공유 링크 — 링크가 있는 사람 누구나 읽기 전용으로(휴대폰에 받아 두지 않은 논문도 — 공유할 때 올린다). 한 편이면
+        담을 메모 탭을 고르고, 여러 편이면 메모를 담을지만 고른다. 이미 링크가 있는 논문은 (여러 편일 때) 다시 올리지 않는다."""
+        roots = [Path(p) for p in roots]
         if not roots:
-            ui.notify(t("웹 리더에 있는 논문만 공유할 수 있습니다 — 먼저 웹 리더로 보내세요."), type="warning")
             return
         single = len(roots) == 1
         have = [p for p in roots if share_of(p)]
@@ -1174,7 +1208,7 @@ def build_home(state: dict) -> None:
         with host, ui.dialog() as dlg, ui.card().classes("gap-2").style("max-width:460px"):
             ui.label(t("공유 링크") if single else t("공유 링크 — {n}편", n=len(roots))).classes("font-bold")
             ui.label(t("링크를 받은 사람만 볼 수 있습니다 — 검색되거나 공개 목록에 오르지 않습니다. 번역·원문·하이라이트·메모가 "
-                       "담기고, 받는 사람은 로그인 없이 웹 리더에서 읽기 전용으로 엽니다.")).classes("text-xs text-gray-600")
+                       "담기고, 받는 사람은 로그인 없이 브라우저에서 읽기 전용으로 엽니다.")).classes("text-xs text-gray-600")
             ui.label(t("원문의 저작권은 저자·출판사에 있습니다. 필요한 사람에게만 보내 주세요.")).classes("text-xs text-gray-500")
             if single and have:
                 ui.label(phone_service.share_link(share_of(roots[0]))).classes("text-xs break-all select-all")
@@ -1204,17 +1238,17 @@ def build_home(state: dict) -> None:
         dlg.open()
 
     async def sync_mobile_now() -> None:
-        """웹 리더에 있는 논문 맞추기 — 바뀐 논문 다시 올리기, 메모 주고받기 (앱을 켤 때도 저절로 한다)."""
-        s = await mobile_call(lambda _: phone_service.refresh(), [], t("웹 리더와 동기화하는 중…"))
+        """휴대폰과 맞추기 — 바뀐 논문 다시 올리기, 메모 주고받기 (앱을 켤 때도 저절로 한다)."""
+        s = await mobile_call(lambda _: phone_service.refresh(), [], t("휴대폰과 맞추는 중…"))
         if s is None:
             return
-        ui.notify(t("웹 리더와 동기화했습니다 — 다시 올림 {up}편 · 메모 {m}개 합침", up=s["uploaded"], m=s["merged"]),
+        ui.notify(t("휴대폰과 맞췄습니다 — 다시 올림 {up}편 · 메모 {m}개 합침", up=s["uploaded"], m=s["merged"]),
                   type="positive")
         mobile_changed()
 
     async def disconnect_drive() -> None:
         await run.io_bound(phone_service.disconnect)
-        ui.notify(t("웹 리더의 Google Drive 연결을 끊었습니다 (Drive의 파일은 그대로)."))
+        ui.notify(t("Google Drive 연결을 끊었습니다 (Drive의 파일은 그대로)."))
         mobile_changed()
 
     async def save_to_library(roots: list[Path]) -> None:
@@ -1446,11 +1480,6 @@ def build_home(state: dict) -> None:
             row.on("drop", lambda e, p=value: row_dropped(e.args, p), js_handler=_ROW_DROP_JS)
             if depth:  # 들여 쓴 행은 이름이 잘릴 수 있어 'SCALE / 리뷰' 경로를 툴팁으로
                 row.tooltip(path_of(value))
-        elif value == MOBILE:  # 카드를 놓으면 모바일로 보낸다 (컬렉션 행 끌기는 받지 않는다)
-            row.props("data-drop")
-            row.on("dragover", js_handler=_ROW_DRAGOVER_JS)
-            row.on("dragleave", js_handler=_ROW_DRAGLEAVE_JS)
-            row.on("drop", lambda e: mobile_dropped(e.args), js_handler=_ROW_DROP_JS)
         if not on:
             row.on("click", lambda _, v=value: pick_scope(v))
 
@@ -1458,10 +1487,6 @@ def build_home(state: dict) -> None:
     def sidebar_rows() -> None:
         n = counts()
         prow(projects.ALL, t("모든 논문"), n[projects.ALL], "library_books")
-        # 모바일은 컬렉션이 아니라 '어디서 읽는가'로 거르는 보기 — 모든 논문 바로 아래, 컬렉션 머리글 위
-        prow(MOBILE, t("웹 리더 · 보낸 논문") if library_sync.enabled() else t("웹 리더"), n[MOBILE], "smartphone")
-        if library_sync.available():  # 서재 동기화 — Drive에만 있는 논문 가져오기·켜고 끄기
-            prow(DRIVE, t("Drive 서재"), n[DRIVE], "cloud_sync")
         # '컬렉션' 캡 — 컬렉션 행을 여기에 놓으면 맨 위로 올라간다
         cap = ui.label(t("컬렉션")).classes("md4-panel-title md4-hcap")
         cap.on("dragover", js_handler=(
@@ -1491,6 +1516,31 @@ def build_home(state: dict) -> None:
             .tooltip(t("이름만 정하면 만들어집니다 — 폴더는 나중에 정해도 됩니다. 하위 컬렉션은 컬렉션 ⋯에서"))
 
     @ui.refreshable
+    def sync_badge() -> None:
+        """버전 줄 옆 구름 — 서재 동기화 상태(맞춤·올리는 중·문제·꺼짐). 누르면 설정의 서재 동기화로."""
+        i = library_sync.info()
+        if not i["enabled"]:
+            icon, cls = "cloud_off", "text-grey-5"
+            tip = t("서재 동기화 꺼짐 — 켜면 다른 컴퓨터에서도 같은 서재를 씁니다. 눌러서 설정")
+        elif i["running"]:
+            icon, cls, tip = "sync", "text-primary run", library_sync_ui.status_line(i)
+        elif i["error"]:
+            icon, cls, tip = "sync_problem", "text-orange-8", t("서재 동기화 문제: {e}", e=i["error"][:200])
+        else:
+            icon, cls, tip = "cloud_done", "text-grey-6", library_sync_ui.status_line(i)
+        ui.button(icon=icon, color=None, on_click=lambda: open_settings("library")) \
+            .props("flat dense round size=sm").classes("md4-syncb " + cls).tooltip(tip)
+
+    @ui.refreshable
+    def phone_chip() -> None:
+        """목록 도구 줄의 '휴대폰' 필터 — 휴대폰에 받아 둔 논문만 (지금 범위 안에서)."""
+        on = view["phone"]
+        ui.button(t("휴대폰"), icon="smartphone", color=None, on_click=lambda: set_phone_filter(not on)) \
+            .props("flat dense no-caps no-wrap").classes("md4-phonef shrink-0 " + ("on text-primary" if on else "text-grey-7")) \
+            .tooltip(t("모든 논문 보기 — 휴대폰 필터 끄기") if on else
+                     t("휴대폰에 받아 둔 논문만 보기 — 휴대폰이 미리 내려받아 오프라인에서도 읽는 논문"))
+
+    @ui.refreshable
     def ws_label() -> None:
         cur = str(ws())
         ui.label("\u200e" + cur).classes("md4-hws").tooltip(t("작업 폴더 — {cur}\n(⚙ 설정 → 저장 위치에서 바꿉니다)", cur=cur))
@@ -1498,126 +1548,132 @@ def build_home(state: dict) -> None:
     # ===== 오른쪽 — 머리 =====
     def scope_label() -> str:
         s = view["scope"]
-        if s == MOBILE:
-            return t("웹 리더")
-        if s == DRIVE:
-            return t("Drive 서재")
         return t("모든 논문") if s == projects.ALL else (t("미분류") if s == projects.NONE else name_of(s))
 
     def mobile_head() -> None:
-        """'웹 리더'를 고르면 머리에 — 연결 계정·편수·용량·마지막 동기화, 지금 맞추기·연결."""
+        """'휴대폰' 필터를 켜면 머리에 — 연결 계정·편수·용량·마지막 맞춤, 지금 맞추기·브라우저로 열기·연결."""
         i = phone_service.info()
         with ui.row().classes("items-center gap-2 w-full md4-hpath"):
-            ui.icon("cloud_done" if i["connected"] else "cloud_off", size="15px").classes("text-grey-5")
+            ui.icon("smartphone", size="15px").classes("text-grey-5")
             if i["connected"]:
-                bits = [t("Google Drive: {who}", who=i["account"] or "?"),
-                        t("{n}편 · {mb:.1f}MB", n=i["count"], mb=i["bytes"] / 1e6)]
+                bits = [t("Google Drive: {who}", who=i["account"] or "?")]
                 if i.get("audio"):
                     bits.append(t("음성 {n}편", n=i["audio"]))
                 if i["synced"]:
-                    bits.append(t("{when} 동기화", when=_relative_time(i["synced"])))
+                    bits.append(t("{when} 맞춤", when=_relative_time(i["synced"])))
                 ui.label(" · ".join(bits)).classes("truncate")
-                ui.button(t("지금 동기화"), icon="sync", color=None, on_click=sync_mobile_now) \
-                    .props("flat dense no-caps size=sm").classes("text-grey-7") \
-                    .tooltip(t("바뀐 논문을 다시 올리고 하이라이트·메모를 주고받습니다 — 앱을 켤 때도 저절로 합니다"))
-                ui.button(t("웹 리더 열기"), icon="open_in_new", color=None, on_click=lambda: open_web_reader()) \
+                if not library_sync.enabled():   # 켜 두면 서재 동기화가 휴대폰도 맞춘다
+                    ui.button(t("지금 맞추기"), icon="sync", color=None, on_click=sync_mobile_now) \
+                        .props("flat dense no-caps size=sm").classes("text-grey-7") \
+                        .tooltip(t("바뀐 논문을 다시 올리고 하이라이트·메모를 주고받습니다 — 앱을 켤 때도 저절로 합니다"))
+                ui.button(t("브라우저로 열기"), icon="open_in_new", color=None, on_click=lambda: open_web_reader()) \
                     .props("flat dense no-caps size=sm").classes("text-primary") \
-                    .tooltip(t("기본 브라우저에서 웹 리더({site})를 엽니다 — 데스크톱 브라우저에서도 읽을 수 있습니다", site=pages.DOMAIN))
+                    .tooltip(t("휴대폰 화면({site})을 기본 브라우저에서 엽니다 — 컴퓨터에서도 읽을 수 있습니다",
+                               site=pages.DOMAIN))
                 ui.button(t("연결 끊기"), icon="link_off", color=None, on_click=disconnect_drive) \
                     .props("flat dense no-caps size=sm").classes("text-grey-7")
             else:
-                ui.label(t("Google Drive에 연결하지 않았습니다 — 연결하면 웹 리더({site})에서 읽을 수 있습니다.",
+                ui.label(t("Google Drive에 연결하지 않았습니다 — 연결하면 휴대폰({site})에서 읽을 수 있습니다.",
                            site=pages.DOMAIN)).classes("truncate")
                 ui.button(t("Google Drive 연결"), icon="link", color=None, on_click=connect_drive) \
                     .props("flat dense no-caps size=sm").classes("text-primary")
         if i["connected"] and library_sync.enabled():
-            ui.label(t("서재 동기화가 켜져 있어 서재 전체를 휴대폰 웹 리더에서 컬렉션별로 읽을 수 있습니다 — "
-                       "여기에는 휴대폰이 미리 받아 두는 '보낸 논문'만 보입니다.")).classes("md4-hpath")
+            ui.label(t("서재 동기화가 켜져 있어 휴대폰에서 서재 전체를 컬렉션별로 열 수 있습니다 — 여기에는 휴대폰이 미리 "
+                       "내려받는 '받아 둔 논문'만 보입니다.")).classes("md4-hpath")
 
-    # ===== Drive 서재 (§libsync) — 다른 컴퓨터와 같은 서재 =====
-    async def drive_sync_now() -> None:
-        n = ui.notification(t("Drive 서재와 맞추는 중…"), spinner=True, timeout=None)
-        try:
-            out = await run.io_bound(library_sync.sync_now)
-            msg = t("Drive 서재: 올림 {up} · 받음 {down} · 병합 {merged}", up=out["up"], down=out["down"],
-                    merged=out["merged"])
-            ui.notify(msg, type="warning" if out["errors"] else "positive")
-        except Exception as e:  # noqa: BLE001
-            ui.notify(t("Drive 서재와 맞추지 못했습니다: {e}", e=e), type="negative")
-        finally:
-            n.dismiss()
-        refresh_views(rescan=True)
-
-    async def drive_import(pids: list[str], open_after: bool = False) -> None:
-        """Drive 서재 논문들을 이 컴퓨터로 — 진행은 머리 줄에(일꾼과 같은 상태)."""
-        if not pids:
-            return
-        n = ui.notification(t("Drive에서 가져오는 중… ({n}편)", n=len(pids)), spinner=True, timeout=None)
-        try:
-            out = await run.io_bound(library_sync.import_papers, pids)
-        finally:
-            n.dismiss()
-        now = time.monotonic()
-        for md4 in out["done"]:
-            state["recent_new"][str(md4)] = now
-        refresh_views(rescan=True)
-        if out["failed"]:
-            ui.notify(t("{n}편을 가져오지 못했습니다: {e}", n=len(out["failed"]), e=out["failed"][0][1]),
-                      type="negative", timeout=8000)
-        elif out["done"]:
-            ui.notify(t("Drive에서 {n}편을 가져왔습니다.", n=len(out["done"])), type="positive")
-            if open_after and len(out["done"]) == 1:
-                open_wd(out["done"][0])
-
+    # ===== 서재 동기화 (§libsync) — 다른 컴퓨터와 같은 서재 =====
     async def drive_revive(r: dict) -> None:
         try:
             await run.io_bound(library_sync.revive, r["root"])
         except Exception as e:  # noqa: BLE001
-            ui.notify(t("Drive 서재에 다시 올리지 못했습니다: {e}", e=e), type="negative")
+            ui.notify(t("서재에 되살리지 못했습니다: {e}", e=e), type="negative")
             return
         refresh_views(rescan=True)
-        ui.notify(t("이 컴퓨터의 판으로 Drive 서재에 되살렸습니다."), type="positive")
+        ui.notify(t("이 컴퓨터의 판으로 서재에 되살렸습니다."), type="positive")
 
-    def drive_toggle(on: bool) -> None:
-        library_sync.set_enabled(on)
+    async def revive_all(rows: list[dict]) -> None:
+        n = 0
+        for r in rows:
+            try:
+                await run.io_bound(library_sync.revive, r["root"])
+                n += 1
+            except Exception as e:  # noqa: BLE001
+                ui.notify(t("서재에 되살리지 못했습니다: {e}", e=e), type="negative")
+                break
+        view["gone"] = False
         refresh_views(rescan=True)
+        if n:
+            ui.notify(t("{n}편을 이 컴퓨터의 판으로 서재에 되살렸습니다.", n=n), type="positive")
 
-    def drive_head() -> None:
-        """'Drive 서재'를 고르면 머리에 — 켜짐·편수·진행·문제, 지금 동기화·모두 가져오기·켜기/끄기."""
+    def delete_gone(rows: list[dict]) -> None:
+        """다른 컴퓨터에서 지운 논문을 이 컴퓨터에서도 — 파일까지 지운다(되돌릴 수 없다). 저장 위치 사본도 함께."""
+        with host, ui.dialog() as dlg, ui.card().classes("gap-2").style("max-width:460px"):
+            ui.label(t("다른 컴퓨터에서 지운 논문 {n}편을 이 컴퓨터에서도 지울까요?", n=len(rows))).classes("font-bold")
+            for r in rows[:6]:
+                ui.label("· " + r["title"]).classes("text-xs text-gray-500 truncate w-full")
+            if len(rows) > 6:
+                ui.label(t("외 {v}편", v=len(rows) - 6)).classes("text-xs text-gray-500")
+            ui.label(t("작업 디렉토리(원본 PDF·마크다운·이미지)와 저장 위치의 사본까지 지웁니다. 되돌릴 수 없습니다.")) \
+                .classes("text-xs text-gray-500")
+
+            def go() -> None:
+                dlg.close()
+                bad = 0
+                for r in rows:
+                    if delete_workdir(r["root"], ws(), with_library=True):
+                        selected.discard(str(r["root"]))
+                    else:
+                        bad += 1
+                view["gone"] = False
+                refresh_views(rescan=True)
+                ui.notify(t("{n}편을 지웠습니다", n=len(rows) - bad) + (t(" · {failed}편 실패", failed=bad) if bad else ""),
+                          type="positive" if not bad else "warning")
+            with ui.row().classes("justify-end w-full gap-2"):
+                ui.button(t("취소"), on_click=dlg.close).props("flat no-caps")
+                ui.button(t("파일 삭제"), icon="delete_forever", on_click=go).props("unelevated no-caps color=negative")
+        dlg.open()
+
+    def gone_note() -> None:
+        """알림 줄 — 다른 컴퓨터에서 지웠는데 이 컴퓨터에 남은 논문이 있을 때만. 조용히 지우지 않고 여기서 고르게 한다."""
+        rows = gone_rows()
+        if not rows:
+            view["gone"] = False
+            return
+        with ui.element("div").classes("md4-hnote"):
+            ui.icon("cloud_off", size="16px")
+            ui.label(t("다른 컴퓨터에서 지운 논문 {n}편이 이 컴퓨터에 남아 있습니다", n=len(rows)))
+            ui.space()
+            if view["gone"]:
+                ui.button(t("모두 보기"), on_click=lambda: set_gone_view(False), color=None).props("flat no-caps")
+            else:
+                ui.button(t("보기"), on_click=lambda: set_gone_view(True), color=None).props("flat no-caps")
+            ui.button(t("모두 되살리기"), on_click=lambda: revive_all(rows), color=None).props("flat no-caps") \
+                .tooltip(t("이 컴퓨터의 판을 서재에 다시 올립니다 — 다른 컴퓨터에도 다시 나타납니다"))
+            ui.button(t("여기서도 지우기…"), on_click=lambda: delete_gone(rows), color=None).props("flat no-caps")
+
+    def sync_progress() -> None:
+        """서재 동기화가 오래 걸리는 일(처음 올리기·다른 컴퓨터 논문 가져오기)을 하는 동안 — 진행 한 줄과 막대."""
+        st = library_sync.STATUS
+        if not (st["running"] and st["total"] and (st["phase"] == "import" or st["total"] >= 5)):
+            return
         i = library_sync.info()
-        with ui.row().classes("items-center gap-2 w-full md4-hpath no-wrap"):
-            ui.icon("cloud_sync" if i["enabled"] else "cloud_off", size="15px").classes("text-grey-5")
-            if not i["enabled"]:
-                ui.label(t("서재 동기화가 꺼져 있습니다 — 켜면 논문을 추가·고칠 때마다 Drive에 올리고, 같은 Google 계정의 "
-                           "다른 컴퓨터에서 가져올 수 있습니다.")).classes("truncate")
-                ui.button(t("켜기"), icon="cloud_sync", color=None, on_click=lambda: drive_toggle(True)) \
-                    .props("flat dense no-caps size=sm").classes("text-primary")
-                return
+        with ui.row().classes("items-center gap-2 w-full md4-hpath no-wrap q-mt-xs"):
+            ui.icon("cloud_sync", size="15px").classes("text-primary")
             ui.label(library_sync_ui.status_line(i)).classes("truncate")
-            ui.button(t("지금 동기화"), icon="sync", color=None, on_click=drive_sync_now) \
-                .props("flat dense no-caps size=sm" + (" disable" if i["running"] else "")).classes("text-grey-7") \
-                .tooltip(t("바뀐 논문을 올리고 다른 컴퓨터에서 바꾼 것을 받습니다 — 켜 두면 뒤에서 저절로 합니다"))
-            if data["drive"]:
-                ui.button(t("모두 가져오기 ({n})", n=len(data["drive"])), icon="download", color=None,
-                          on_click=lambda: drive_import([d["pid"] for d in data["drive"]])) \
-                    .props("flat dense no-caps size=sm" + (" disable" if i["running"] else "")).classes("text-primary")
-            ui.button(t("끄기"), icon="cloud_off", color=None, on_click=lambda: drive_toggle(False)) \
-                .props("flat dense no-caps size=sm").classes("text-grey-7") \
-                .tooltip(t("자동 동기화를 멈춥니다 — Drive와 이 컴퓨터의 논문은 그대로 둡니다"))
-        if i["running"] and i["total"]:
-            _bar(min(1.0, i["done"] / max(1, i["total"])))
-        if i["error"]:
-            ui.label(t("⚠ 마지막 동기화 문제: {e}", e=i["error"][:200])).classes("md4-hwarn q-mt-xs")
+        _bar(min(1.0, i["done"] / max(1, i["total"])))
 
     @ui.refreshable
     def head() -> None:
         s = view["scope"]
-        n = sum(1 for r in live_rows() if not r["hidden"] and in_scope(r, s))
-        if s == DRIVE:   # Drive에만 있는 논문도 센다
-            n += len(data["drive"])
+        n = len(visible_rows()) if (view["phone"] or view["gone"]) else \
+            sum(1 for r in live_rows() if not r["hidden"] and in_scope(r, s))
         with ui.row().classes("items-baseline gap-2 no-wrap w-full"):
             ui.label(scope_label()).classes("md4-htitle truncate min-w-0")
             ui.label(t("{n}편", n=n)).classes("md4-hcount shrink-0")
+            if view["phone"]:
+                ui.label(t("· 휴대폰에 받아 둔 것")).classes("md4-hcount shrink-0")
+            elif view["gone"]:
+                ui.label(t("· 다른 컴퓨터에서 지운 것")).classes("md4-hcount shrink-0")
             roots = selectable_roots()
             if roots:
                 every = all(rt in selected for rt in roots)
@@ -1627,11 +1683,7 @@ def build_home(state: dict) -> None:
                     .tooltip((t("지금 목록에 보이는 {n}편을 한꺼번에 풀기", n=len(roots)) if every
                               else t("지금 목록에 보이는 {n}편을 한꺼번에 체크", n=len(roots)))
                              + t(" — 일괄 동작(번역·zip·컬렉션)은 오른쪽 칸에"))
-        if s == MOBILE:
-            mobile_head()
-        elif s == DRIVE:
-            drive_head()
-        elif s not in (projects.ALL, projects.NONE):
+        if s not in (projects.ALL, projects.NONE):
             root = projects.folder_of(s)  # 하위 컬렉션은 상위 폴더를 물려받는다
             heir = projects.inherited_from(s)
             if data["up"].get(s):  # 하위 컬렉션이면 어디 밑인지 먼저
@@ -1646,6 +1698,10 @@ def build_home(state: dict) -> None:
                 ui.button(icon="edit", color=None, on_click=lambda: edit_project(s)) \
                     .props("flat dense round size=xs").classes("text-grey-6") \
                     .tooltip(t("이 컬렉션 설정 — 이름·폴더·이 컬렉션만 다르게"))
+        if view["phone"]:
+            mobile_head()
+        gone_note()
+        sync_progress()
         if not any(config.key_status().values()):
             ui.label(t("⚠ AI 키가 없어 참고문헌 정리·번역 기능이 꺼져 있습니다 — 눌러서 키 넣기")) \
                 .classes("md4-hwarn ai q-mt-xs").on("click", lambda: open_settings("ai"))
@@ -1682,8 +1738,9 @@ def build_home(state: dict) -> None:
             ui.menu_item(t("이 목록의 논문을 폴더로 저장"),
                          on_click=lambda: save_to_library([r["root"] for r in visible_rows()])).props("dense")
             ui.separator()
-            ui.menu_item(t("이 목록의 번역한 논문을 모두 웹 리더로 보내기"),
-                         on_click=lambda: send_to_mobile([r["root"] for r in visible_rows() if r["has_ko"]])) \
+            ui.menu_item(t("이 목록의 번역한 논문을 모두 휴대폰에 받아 두기"),
+                         on_click=lambda: keep_on_phone([r["root"] for r in visible_rows()
+                                                         if r["has_ko"] and r["name"] not in data["mobile"]])) \
                 .props("dense")
 
     def toggle_hidden_view() -> None:
@@ -1826,6 +1883,10 @@ def build_home(state: dict) -> None:
     def visible_rows() -> list[dict]:
         """지금 범위·검색·숨김 보기로 걸러 정렬한 목록 (고정한 논문이 맨 앞)."""
         items = [r for r in live_rows() if in_scope(r, view["scope"])]
+        if view["phone"]:
+            items = [r for r in items if r["name"] in data["mobile"]]
+        if view["gone"]:
+            items = [r for r in items if (data["sync"].get(str(r["root"])) or {}).get("deleted")]
         if not view["show_hidden"]:
             items = [r for r in items if not r["hidden"]]
         q = (view["q"] or "").strip().lower()
@@ -1888,7 +1949,7 @@ def build_home(state: dict) -> None:
     @ui.refreshable
     def recent_list() -> None:
         items = visible_rows()
-        if not items and not (view["scope"] == DRIVE and data["drive"]):
+        if not items:
             # 비어 있는 이유를 갈라 준다 — 프로젝트를 골라 비었을 때 '작업 폴더를 바꾸라'고
             # 안내하면 엉뚱한 곳을 만지게 된다(방금 만든 프로젝트는 당연히 비어 있다).
             s, q = view["scope"], (view["q"] or "").strip()
@@ -1896,17 +1957,15 @@ def build_home(state: dict) -> None:
                 ui.label(t("검색 결과가 없습니다.")).classes("text-sm text-gray-400 q-mt-md")
                 return
             with ui.column().classes("md4-empty w-full gap-1"):
+                if view["phone"]:   # 휴대폰 필터 — 올리기 안내 대신 받아 두는 길만
+                    ui.icon("smartphone", size="44px").classes("text-grey-5")
+                    ui.label(t("여기에는 휴대폰에 받아 둔 논문이 없습니다 — 논문을 고르고 '휴대폰에 받아 두기'를 누르세요.")) \
+                        .classes("text-sm text-gray-500")
+                    return
                 ui.icon("cloud_upload", size="44px").classes("text-primary")
                 ui.label(t("PDF를 창 위로 끌어다 놓거나 '올리기'로 선택하세요")).classes("text-base")
                 if s == projects.NONE:
                     ui.label(t("미분류 논문이 없습니다 — 모든 논문이 컬렉션에 들어가 있습니다.")) \
-                        .classes("text-xs text-gray-400")
-                elif s == MOBILE:
-                    ui.label(t("웹 리더에 보낸 논문이 없습니다 — 논문을 체크하고 '웹 리더로 보내기'를 누르세요.")) \
-                        .classes("text-xs text-gray-400")
-                elif s == DRIVE:
-                    ui.label(t("이 컴퓨터에 없는 Drive 서재 논문이 없습니다 — 모든 논문이 이 컴퓨터에 있습니다.")
-                             if library_sync.enabled() else t("서재 동기화를 켜면 다른 컴퓨터에서 올린 논문이 여기에 보입니다.")) \
                         .classes("text-xs text-gray-400")
                 elif s:
                     ui.label(t("'{v}' 컬렉션에 아직 논문이 없습니다 — 여기서 올리거나, 다른 목록의 카드를 왼쪽 이 컬렉션 행으로 끌어 놓으세요.", v=name_of(s))).classes("text-xs text-gray-400")
@@ -1930,27 +1989,6 @@ def build_home(state: dict) -> None:
                 if icon:
                     ui.icon(icon, size="12px").classes("text-primary")
                 ui.label(text)
-
-        def drive_card(d: dict) -> None:
-            """Drive에만 있는 논문 — 흐린 카드. 두 번 누르거나 '가져오기'로 이 컴퓨터에 받는다(두 번이면 받고 연다)."""
-            el = ui.element("div").classes("md4-pcard md4-dcard")
-            el.on("dblclick", lambda _, p=d["pid"]: drive_import([p], open_after=True))
-            with el:
-                ui.icon("cloud", size="18px").classes("text-grey-5 shrink-0")
-                with ui.column().classes("md4-pmain gap-0"):
-                    ui.label(d.get("title") or d.get("name") or d["pid"]).classes("md4-ptitle truncate w-full")
-                    bib = _bib_line(d)
-                    if bib:
-                        ui.label(bib).classes("md4-pbib truncate w-full")
-                    with ui.row().classes("items-center gap-x-2 w-full q-mt-xs"):
-                        ui.badge(t("번역 완료") if d.get("has_ko") else t("영어 변환"),
-                                 color="green" if d.get("has_ko") else "blue").props("outline")
-                        ui.label(t("Drive · {mb:.1f}MB", mb=float(d.get("bytes") or 0) / 1e6)).classes("md4-pmeta")
-                        if d.get("at"):
-                            ui.label(_relative_time(float(d["at"]))).classes("md4-pmeta")
-                ui.button(t("가져오기"), icon="download", on_click=lambda _, p=d["pid"]: drive_import([p])) \
-                    .props("flat dense no-caps size=sm color=primary").classes("shrink-0") \
-                    .on("dblclick", js_handler=_STOP_JS)
 
         def card(r: dict) -> None:
             root = str(r["root"])
@@ -2002,24 +2040,21 @@ def build_home(state: dict) -> None:
                         ui.label(_relative_time(r["mtime"])).classes("md4-pmeta")
                         if r["name"] in data["mobile"]:
                             ui.icon("smartphone", size="14px").classes("text-grey-6") \
-                                .tooltip(t("웹 리더에 있음 — 바뀌면 앱을 켤 때 다시 올립니다"))
-                            a = (data["mobile"][r["name"]] or {}).get("audio")
-                            if a:
-                                ui.icon("headphones", size="14px").classes("text-grey-6") \
-                                    .tooltip(t("웹 리더 음성 — {what}", what=audio_label(a)))
+                                .tooltip(t("휴대폰에 받아 둠 — 휴대폰이 미리 내려받아 오프라인에서도 읽습니다"))
+                        a = (data["reader"].get(r["name"]) or {}).get("audio")
+                        if a:
+                            ui.icon("headphones", size="14px").classes("text-grey-6") \
+                                .tooltip(t("휴대폰에서도 듣는 음성 — {what}", what=audio_label(a)))
                         mark = data["sync"].get(root) or {}
                         if mark.get("deleted"):
                             with ui.button(t("다른 컴퓨터에서 지움"), icon="cloud_off", color=None) \
                                     .props("flat dense no-caps size=sm").classes("text-orange-8 md4-dgone") \
                                     .on("click", js_handler=_STOP_JS).on("dblclick", js_handler=_STOP_JS):
                                 with ui.menu():
-                                    ui.menu_item(t("되살리기 — 이 컴퓨터 판을 Drive 서재에 다시 올리기"),
+                                    ui.menu_item(t("되살리기 — 이 컴퓨터의 판을 서재에 다시 올리기"),
                                                  on_click=lambda _, item=r: drive_revive(item)).props("dense")
                                     ui.menu_item(t("이 컴퓨터에서도 지우기…"),
                                                  on_click=lambda _, item=r: confirm_delete(item)).props("dense")
-                        elif mark.get("synced"):
-                            ui.icon("cloud_done", size="14px").classes("text-grey-5") \
-                                .tooltip(t("Drive 서재에 있음 — 바뀌면 뒤에서 저절로 올립니다"))
                         # 소속 프로젝트 = 이 논문의 저장 폴더까지 정하는 값이라 카드에서 바로 바꾼다.
                         tags_box = ui.element("div").classes("md4-ptags")
                         paint_tags(tags_box, r)
@@ -2053,20 +2088,6 @@ def build_home(state: dict) -> None:
                         ui.button(icon="delete", on_click=lambda _, item=r: confirm_delete(item)) \
                             .props("flat dense round size=sm color=grey-6").tooltip(t("목록에서 숨기기 / 파일 삭제"))
 
-        if view["scope"] == DRIVE:
-            drive_rows = data["drive"]
-            q = (view["q"] or "").strip().lower()
-            if q:
-                drive_rows = [d for d in drive_rows if q in _haystack(d)]
-            if drive_rows:
-                cap(t("이 컴퓨터에 없는 논문 {n}편", n=len(drive_rows)), icon="cloud_download")
-                for d in drive_rows:
-                    drive_card(d)
-            if items:   # 다른 컴퓨터에서 지운 논문 — 보통 카드(되살리기·이 컴퓨터에서도 지우기는 카드의 표시에서)
-                cap(t("다른 컴퓨터에서 지운 논문 {n}편", n=len(items)), icon="delete_sweep")
-                for r in items:
-                    card(r)
-            return
         pinned = [r for r in items if r["pinned"]]
         rest = [r for r in items if not r["pinned"]]
         # '모든 논문'으로 볼 때만 고정 구역 아래를 묶음별 구역으로 갈라 준다. 한 프로젝트를 골라
@@ -2337,14 +2358,18 @@ def build_home(state: dict) -> None:
         foot = ui.column().classes("md4-pv-foot gap-1 w-full")
         with foot, ui.row().classes("md4-pv-redo items-center gap-1 w-full no-wrap"):
             card.redo_buttons()
-        if Path(root).stem in data["mobile"]:   # 웹 리더에 있는 논문 — 브라우저로 열기 · 공유 링크
-            shared = bool(share_of(Path(root)))
-            with foot, ui.row().classes("items-center gap-1 w-full no-wrap"):
-                ui.button(t("웹 리더에서 열기"), icon="language", on_click=lambda: open_web_reader(Path(root).stem)) \
-                    .props("flat dense no-caps size=sm color=grey-8").tooltip(t("웹 리더에서 열기 — 기본 브라우저로"))
-                ui.button(t("공유 링크"), icon="link" if shared else "share", on_click=lambda: share_dialog([Path(root)])) \
-                    .props("flat dense no-caps size=sm " + ("color=primary" if shared else "color=grey-8")) \
-                    .tooltip(t("공유 링크 — 링크를 켜 둔 논문") if shared else t("공유 링크 만들기"))
+        # 휴대폰 — 받아 두기(켜고 끄는 한 단추) · 공유 링크 · (휴대폰에서 열 수 있으면) 브라우저로 열기
+        shared = bool(share_of(Path(root)))
+        with foot, ui.row().classes("items-center gap-1 w-full no-wrap"):
+            phone_toggle_button([Path(root)])
+            ui.button(t("공유 링크"), icon="link" if shared else "share", color=None,
+                      on_click=lambda: share_dialog([Path(root)])) \
+                .props("flat dense no-caps size=sm").classes("text-primary" if shared else "text-grey-8") \
+                .tooltip(t("공유 링크 — 링크를 켜 둔 논문") if shared else t("공유 링크 만들기"))
+            if Path(root).stem in data["reader"]:
+                ui.button(icon="open_in_new", color=None, on_click=lambda: open_web_reader(Path(root).stem)) \
+                    .props("flat dense round size=sm").classes("text-grey-7") \
+                    .tooltip(t("휴대폰 화면으로 열기 — 기본 브라우저에서"))
         with foot, ui.row().classes("items-center gap-1 w-full no-wrap"):
             ui.button(t("열기"), icon="menu_book", on_click=lambda: open_wd(r["root"])) \
                 .props("unelevated dense no-caps color=primary").classes("q-px-sm") \
@@ -2386,14 +2411,13 @@ def build_home(state: dict) -> None:
                     ui.label("· " + x["title"]).classes("md4-pv-sel truncate w-full").tooltip(x["title"])
                 if len(rows) > 8:
                     ui.label(t("외 {v}편", v=len(rows) - 8)).classes("md4-pv-sel")
-            # 무엇을 보이고 무엇을 앞세울지는 '어디서(범위)·무엇을(고른 논문의 상태)'에 따라 —
-            # 모바일 보기에선 모바일 동작이 먼저, 번역이 다 된 논문엔 번역을 앞세우지 않는다.
+            # 무엇을 앞세울지는 고른 논문의 상태에 따라 — 번역이 다 된 논문엔 번역을 앞세우지 않는다.
             scope = view["scope"]
             paths = [Path(p) for p in selected]
-            on_mobile = [p for p in paths if p.stem in data["mobile"]]
-            with_audio = [p for p in on_mobile if (data["mobile"].get(p.stem) or {}).get("audio")]
+            in_reader = [p for p in paths if p.stem in data["reader"]]
+            with_audio = [p for p in in_reader if (data["reader"].get(p.stem) or {}).get("audio")]
             untranslated = [x for x in rows if not x["has_ko"]]
-            in_collection = scope not in (projects.ALL, projects.NONE, MOBILE, DRIVE)
+            in_collection = scope not in (projects.ALL, projects.NONE)
 
             def act(label: str, icon: str, fn, tip: str | None = None, main: bool = False):  # noqa: ANN001, ANN202
                 if main:
@@ -2403,56 +2427,35 @@ def build_home(state: dict) -> None:
                     b = ui.button(label, icon=icon, on_click=fn, color=None).props("flat dense no-caps").classes("md4-act")
                 return b.tooltip(tip) if tip else b
 
-            def translate_part(main: bool) -> None:
+            def process_part(main: bool) -> None:
+                """처리 — 번역과 듣기 음성(둘 다 이 컴퓨터에서 만든다)."""
                 if untranslated:
                     act(t("번역 ({n}편)", n=len(untranslated)), "translate", translate_selection,
                         t("번역이 없거나 낡은 논문을 번역합니다 — 띄우기 전에 편수·대략 비용을 확인합니다"), main=main)
-                else:
-                    act(t("다시 번역…"), "translate", translate_selection,
-                        t("낡은 번역이 있으면 다시 번역합니다 — 띄우기 전에 편수·대략 비용을 확인합니다"))
-
-            def mobile_part(first: bool) -> None:
-                ui.label(t("웹 리더")).classes("md4-act-h")
-                if len(paths) == 1 and with_audio:   # 지금 있는 음성 — 무엇으로·언제 (다시 만들지 고를 때 보라고)
-                    a = data["mobile"][paths[0].stem]["audio"]
-                    ui.label("🎧 " + audio_label(a)).classes("md4-act-note")
-                lib_on = library_sync.enabled()
-                send_tip = (t("휴대폰 웹 리더의 '보낸 논문'에 올려 휴대폰이 미리 받아 둡니다(오프라인에서도) — 서재 동기화가 "
-                              "켜져 있어 다른 논문도 휴대폰에서 컬렉션별로 열어 읽을 수 있습니다") if lib_on else
-                            t("Google Drive를 거쳐 웹 리더({site})에서 읽습니다 — 웹 리더에서 단 하이라이트·메모도 이때 합칩니다",
-                              site=pages.DOMAIN))
-                drop_label = t("보낸 논문에서 빼기") if lib_on else t("웹 리더에서 빼기")
-                drop_tip = (t("휴대폰의 '보낸 논문'에서 빼고 미리 받아 두지 않게 합니다 — 서재 동기화가 켜져 있어 휴대폰에서는 "
-                              "컬렉션에서 계속 열 수 있습니다") if lib_on else
-                            t("웹 리더 목록에서 뺍니다 — 웹 리더에서 단 메모는 먼저 이 컴퓨터에 합칩니다. 공유 링크도 꺼지고, 논문 파일은 그대로"))
-                audio_tip = t("번역 본문을 읽은 음성을 만들어 웹 리더에서 듣습니다 — 화면을 꺼도, CarPlay에서도")
-                all_there = bool(paths) and len(on_mobile) == len(paths)
-                if first:   # 모바일 보기 — 음성이 주 동작
+                with ui.element("div").classes("md4-act-grid"):
+                    if not untranslated:
+                        act(t("다시 번역…"), "translate", translate_selection,
+                            t("낡은 번역이 있으면 다시 번역합니다 — 띄우기 전에 편수·대략 비용을 확인합니다"))
                     remake = bool(with_audio) and len(with_audio) == len(paths)
                     act(t("음성 다시 만들기") if remake else t("음성 만들기"), "headphones",
-                        lambda: make_mobile_audio(paths), audio_tip, main=True)
-                with ui.element("div").classes("md4-act-grid"):
-                    if not first and paths:   # 음성은 이 컴퓨터에 만든다 — 웹 리더에 있는 논문은 그쪽에도 올린다
-                        act(t("음성 만들기"), "headphones", lambda: make_mobile_audio(paths),
-                            t("번역 본문을 읽은 음성을 이 컴퓨터에 만듭니다 — 뷰어의 듣기에서 바로 듣고, 웹 리더에 있는 논문은 "
-                              "웹 리더에서도 듣습니다"))
-                    act(t("동기화") if all_there else t("보내기"), "sync" if all_there else "smartphone",
-                        lambda: send_to_mobile(paths), send_tip)
-                    if on_mobile:
-                        act(t("공유 링크"), "link", lambda: share_dialog(on_mobile),
-                            t("웹 리더에 있는 논문의 공유 링크를 만들어 '제목 — 링크'로 한꺼번에 복사합니다"))
-                    if first:
-                        if with_audio:
-                            act(t("음성 지우기"), "headset_off", lambda: remove_mobile_audio(with_audio),
-                                t("웹 리더 음성만 지웁니다 — 논문은 웹 리더에 그대로"))
-                        act(drop_label, "phonelink_erase", lambda: remove_from_mobile(on_mobile), drop_tip)
-                if not first and on_mobile:
+                        lambda: make_mobile_audio(paths),
+                        t("번역 본문을 읽은 음성을 이 컴퓨터에 만듭니다 — 뷰어의 듣기에서 바로 듣고, 휴대폰에서 열 수 있는 "
+                          "논문은 휴대폰에서도 듣습니다(화면을 꺼도, CarPlay에서도)"))
+                if len(paths) == 1 and with_audio:   # 지금 있는 음성 — 무엇으로·언제 (다시 만들지 고를 때 보라고)
+                    ui.label("🎧 " + audio_label(data["reader"][paths[0].stem]["audio"])).classes("md4-act-note")
+                if with_audio:
                     with ui.element("div").classes("md4-act-links"):
-                        ui.button(drop_label, on_click=lambda: remove_from_mobile(on_mobile), color=None) \
-                            .props("flat dense no-caps").tooltip(drop_tip)
-                        if with_audio:
-                            ui.button(t("음성 지우기"), on_click=lambda: remove_mobile_audio(with_audio), color=None) \
-                                .props("flat dense no-caps").tooltip(t("웹 리더 음성만 지웁니다 — 논문은 웹 리더에 그대로"))
+                        ui.button(t("음성 지우기"), on_click=lambda: remove_mobile_audio(with_audio), color=None) \
+                            .props("flat dense no-caps") \
+                            .tooltip(t("만든 듣기 음성을 이 컴퓨터와 휴대폰에서 지웁니다(서재 동기화가 켜져 있으면 다른 컴퓨터에서도) — 논문은 그대로"))
+
+            def phone_part() -> None:
+                """휴대폰 — 받아 두기(켜고 끄는 한 단추) · 공유 링크. 서재 동기화를 꺼도 화면은 같다(받아 두기가 올린다)."""
+                ui.label(t("휴대폰")).classes("md4-act-h")
+                with ui.element("div").classes("md4-act-grid"):
+                    phone_toggle_button(paths, flat=False)
+                    act(t("공유 링크"), "link", lambda: share_dialog(paths),
+                        t("링크가 있는 사람 누구나 읽기 전용으로 — '제목 — 링크'로 한꺼번에 복사합니다"))
 
             def export_part() -> None:
                 ui.label(t("내보내기")).classes("md4-act-h")
@@ -2487,18 +2490,10 @@ def build_home(state: dict) -> None:
                         .classes("md4-pv-bib")
 
             with ui.column().classes("md4-pv-bulk gap-0 w-full q-mt-sm"):
-                if scope == MOBILE:
-                    mobile_part(first=True)
-                    if untranslated:
-                        ui.label(t("번역")).classes("md4-act-h")
-                        translate_part(main=False)
-                    export_part()
-                    collection_part()
-                else:
-                    translate_part(main=bool(untranslated))
-                    export_part()
-                    mobile_part(first=False)
-                    collection_part()
+                process_part(main=bool(untranslated))
+                export_part()
+                phone_part()
+                collection_part()
 
     def draw_summary() -> None:
         """아무것도 고르지 않았을 때 — 이 범위 요약 + 미리보기 안내."""
@@ -2508,7 +2503,7 @@ def build_home(state: dict) -> None:
         with ui.column().classes("md4-pv-body md4-scroll gap-2 w-full"):
             ui.label(scope_label()).classes("md4-pv-title")
             ui.label(t("{n}편 · 번역 {n_ko}편", n=len(rows), n_ko=n_ko)).classes("md4-pv-stat")
-            if s not in (projects.ALL, projects.NONE, MOBILE, DRIVE):
+            if s not in (projects.ALL, projects.NONE):
                 root = projects.folder_of(s)  # 하위 컬렉션은 상위 폴더를 물려받는다
                 with ui.row().classes("items-start gap-1 no-wrap w-full"):
                     ui.icon("folder" if root else "folder_off", size="15px").classes("text-grey-5 q-mt-xs")
@@ -2565,18 +2560,24 @@ def build_home(state: dict) -> None:
         if audio_done:
             mobile_changed()
         ls = library_sync.STATUS
-        if ls["ver"] != poll_state["ls_ver"]:   # 서재 동기화가 일했다 — 머리·사이드바, 받은 것이 있으면 목록도
+        if ls["ver"] != poll_state["ls_ver"]:   # 서재 동기화가 일했다 — 구름·진행 줄, 받은 것이 있으면 목록도
             poll_state["ls_ver"] = ls["ver"]
+            sync_badge.refresh()
             if not ls["running"] and ls["last_ok"] != poll_state["ls_ok"]:
                 poll_state["ls_ok"] = ls["last_ok"]
                 last = ls.get("last") or {}
                 coll = [(p["id"], p.get("name"), p.get("parent")) for p in projects.all_projects()]
-                if (last.get("down") or last.get("merged") or last.get("up") or view["scope"] == DRIVE
-                        or library_sync.info()["drive_only"] != len(data["drive"])
+                gone = {str(r) for r, m in library_sync.paper_marks().items() if m.get("deleted")} \
+                    if library_sync.enabled() else set()
+                if (last.get("down") or last.get("merged") or last.get("up") or last.get("imported")
+                        or gone != {k for k, m in data["sync"].items() if m.get("deleted")}
                         or coll != [(p["id"], p.get("name"), p.get("parent")) for p in data["projs"]]):
                     refresh_views(rescan=True)
-            elif view["scope"] == DRIVE:
-                head.refresh()
+                else:
+                    head.refresh()
+            elif ls["running"] or poll_state["ls_run"]:
+                head.refresh()   # 진행 줄
+            poll_state["ls_run"] = ls["running"]
         q = state["queue"]
         now = time.monotonic()
         finished = False
@@ -2596,7 +2597,8 @@ def build_home(state: dict) -> None:
             queue_panel.refresh()
         poll_state["shown"] = busy
 
-    poll_state = {"shown": True, "ls_ver": library_sync.STATUS["ver"], "ls_ok": library_sync.STATUS["last_ok"]}
+    poll_state = {"shown": True, "ls_ver": library_sync.STATUS["ver"], "ls_ok": library_sync.STATUS["last_ok"],
+                  "ls_run": False}
 
     # ===== 틀 =====
     scan()
@@ -2623,7 +2625,9 @@ def build_home(state: dict) -> None:
                 ui.button(t("설정"), icon="settings", color=None, on_click=lambda: open_settings()) \
                     .props("flat dense no-caps").classes("w-full") \
                     .tooltip(t("AI 키 · 저장 위치 · 변환·번역 기본값 · 고급"))
-                update_banner.version_line(state)  # v0.1.0 · 커밋 · 최신 여부
+                with ui.row().classes("items-center gap-1 no-wrap w-full"):
+                    update_banner.version_line(state)  # v0.1.0 · 커밋 · 최신 여부
+                    sync_badge()   # 서재 동기화 상태 — 누르면 설정으로
                 ws_label()
 
         # ---- 오른쪽: 범위 제목 · 도구 줄 · 큐 · 목록 ----
@@ -2643,6 +2647,7 @@ def build_home(state: dict) -> None:
                 ui.input(placeholder=t("제목·저자·venue 검색…")).on_value_change(on_search) \
                     .props("dense outlined clearable").classes("flex-grow")
                 ui.select({k: t(v) for k, v in _SORTS.items()}, value="recent", on_change=on_sort).props("dense outlined").classes("w-32")
+                phone_chip()
                 with ui.element("div").classes("md4-upwrap"):
                     ui.button(t("올리기"), icon="upload_file").props("unelevated dense no-caps color=primary") \
                         .classes("md4-upbtn q-px-sm")
@@ -2652,7 +2657,7 @@ def build_home(state: dict) -> None:
                         .props('accept=".pdf,.md,.markdown"').classes("md4-upload") \
                         .tooltip(t("PDF·마크다운 고르기 — 창 위로 끌어다 놓아도 됩니다"))
                 with ui.button(icon="more_horiz", color=None).props("flat dense round").classes("text-grey-7") \
-                        .tooltip(t("숨긴 논문 · 내보내기 형식 · 이 목록 저장 · 웹 리더로 보내기")):
+                        .tooltip(t("숨긴 논문 · 내보내기 형식 · 이 목록 저장 · 휴대폰에 받아 두기")):
                     more_menu()
                 pv["btn"] = ui.button(icon="view_sidebar", color=None, on_click=toggle_preview) \
                     .props("flat dense round").classes("text-primary") \

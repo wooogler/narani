@@ -701,10 +701,13 @@ class Library:
         return out
 
     def drive_only(self) -> dict[str, dict]:
-        """Drive 서재에만 있는 논문(묘비 제외) — pid → 요약."""
+        """Drive 서재에만 있는 논문(묘비 제외) — pid → 요약. 이 컴퓨터에서만 지운 논문(declined)과 지우기를 미룬
+        논문(pending_deletes)은 뺀다 — 뒤 일꾼이 저절로 가져오므로 그것들이 되살아나지 않게."""
         g = self.load_global()
         here = {pid for pid, p in (g.get("bound") or {}).items() if Path(p).is_dir()}
-        return {pid: s for pid, s in (g.get("remote") or {}).items() if pid not in here and not s.get("deleted")}
+        skip = set(g.get("declined") or []) | set(g.get("pending_deletes") or [])
+        return {pid: s for pid, s in (g.get("remote") or {}).items()
+                if pid not in here and pid not in skip and not s.get("deleted")}
 
     # ---- 컬렉션 ----
     def _local_collections(self) -> dict:

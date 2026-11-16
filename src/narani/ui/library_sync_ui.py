@@ -9,24 +9,25 @@ from narani.libsync import service as library_sync
 
 
 def status_line(i: dict) -> str:
-    """'Drive 서재 12편 · 340MB · 이 컴퓨터에 없는 논문 3편 · 2분 전 동기화' — 일하는 중이면 진행."""
+    """'서재 동기화 — 12편 · 340MB · 2분 전 맞춤' — 일하는 중이면 진행. 홈의 구름 툴팁·진행 줄과 설정이 같이 쓴다."""
     from narani.ui.app import _relative_time
 
     if i["running"] and i["phase"] == "import":
-        return t("Drive에서 가져오는 중… {done}/{total} {label}", done=i["done"] + 1, total=i["total"], label=i["label"])
+        return t("다른 컴퓨터의 논문을 가져오는 중… {done}/{total} {label}", done=i["done"] + 1, total=i["total"],
+                 label=i["label"])
     if i["running"] and i["phase"] == "reader" and i["total"]:
         return t("휴대폰에서 읽을 수 있게 준비하는 중… {done}/{total} {label}", done=i["done"], total=i["total"],
                  label=i["label"])
     if i["running"] and i["total"]:
-        return t("Drive 서재와 맞추는 중… {done}/{total} {label}", done=i["done"], total=i["total"], label=i["label"])
+        return t("서재를 맞추는 중… {done}/{total} {label}", done=i["done"], total=i["total"], label=i["label"])
     if i["running"]:
-        return t("Drive 서재 목록을 받는 중…")
-    bits = [t("Drive 서재 {n}편 · {mb:.0f}MB", n=i["papers"], mb=i["bytes"] / 1e6)]
+        return t("서재 목록을 받는 중…")
+    bits = [t("서재 동기화 — {n}편 · {mb:.0f}MB", n=i["papers"], mb=i["bytes"] / 1e6)]
     if i["drive_only"]:
-        bits.append(t("이 컴퓨터에 없는 논문 {n}편", n=i["drive_only"]))
+        bits.append(t("가져올 논문 {n}편", n=i["drive_only"]))
     when = i["last_ok"] or i["listed"]
     if when:
-        bits.append(t("{when} 동기화", when=_relative_time(when)))
+        bits.append(t("{when} 맞춤", when=_relative_time(when)))
     return " · ".join(bits)
 
 
@@ -76,6 +77,20 @@ def settings_block(ui, on_change: Callable[[], None] | None = None) -> None:  # 
                 if on_change:
                     on_change()
             ui.button(t("지금 동기화"), icon="sync", on_click=now).props("dense outline no-caps")
+            gone = library_sync.declined()
+            if gone:   # 이 컴퓨터에서만 지운 논문 — 저절로 다시 가져오지 않는다
+                ui.label(t("이 컴퓨터에서만 지운 논문 {n}편 — Drive 서재에는 남아 있고, 저절로 다시 가져오지 않습니다.",
+                           n=len(gone))).classes("text-xs text-gray-500 q-mt-xs")
+                for d in gone[:5]:
+                    ui.label("· " + (d.get("title") or d.get("name") or d["pid"])).classes("text-xs text-gray-500 truncate")
+                if len(gone) > 5:
+                    ui.label(t("외 {v}편", v=len(gone) - 5)).classes("text-xs text-gray-500")
+
+                def take_back() -> None:
+                    library_sync.take_back([d["pid"] for d in gone])
+                    ui.notify(t("다시 가져옵니다 — 끝나면 홈 목록에 나타납니다."), type="info")
+                    block.refresh()
+                ui.button(t("모두 다시 가져오기"), icon="download", on_click=take_back).props("dense flat no-caps")
         ui.label(t("올리는 것: 원본 PDF, 마크다운·그림, 번역(용어집·번역 캐시), 인용·서지, 하이라이트·메모, 만든 듣기 음성, "
                    "컬렉션 목록. 올리지 않는 것: API 키·설정, 음성 섹션 조각, 미리보기 캐시, 컬렉션 폴더 위치, 고정 표시.")) \
             .classes("text-xs text-gray-400")
@@ -104,13 +119,13 @@ async def ask(on_change: Callable[[], object]) -> None:
     with ui.dialog().props("persistent") as dlg, ui.card().classes("gap-2").style("max-width:480px"):
         ui.label(t("서재를 Google Drive에 동기화할까요?")).classes("font-bold")
         if n:
-            ui.label(t("Drive에 다른 컴퓨터에서 올린 서재가 {n}편 있습니다. 켜면 홈의 'Drive 서재'에서 가져올 수 있고, "
+            ui.label(t("Drive에 다른 컴퓨터에서 올린 서재가 {n}편 있습니다. 켜면 그 논문들을 이 컴퓨터로 저절로 가져오고, "
                        "이 컴퓨터의 논문도 올립니다.", n=n)).classes("text-sm")
         else:
             ui.label(t("켜면 논문을 추가·번역·편집할 때마다 바뀐 논문만 뒤에서 Drive에 올립니다. 다른 컴퓨터의 Narani에서 "
                        "같은 Google 계정으로 연결하면 같은 서재를 씁니다.")).classes("text-sm")
-        ui.label(t("처음에는 지금 서재 전체(원본 PDF·그림 포함)를 올립니다. API 키와 설정은 올리지 않습니다. "
-                   "나중에 설정 → 저장 위치에서 끌 수 있습니다.")).classes("text-xs text-gray-500")
+        ui.label(t("처음에는 지금 서재 전체(원본 PDF·그림 포함)를 올립니다. API 키와 설정은 올리지 않습니다. 진행은 홈 "
+                   "왼쪽 아래 구름 아이콘에 보이고, 나중에 설정 → 저장 위치에서 끌 수 있습니다.")).classes("text-xs text-gray-500")
 
         def pick(on: bool) -> None:
             library_sync.set_enabled(on)
