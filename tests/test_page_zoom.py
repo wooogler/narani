@@ -33,3 +33,8 @@ def test_save_and_load_roundtrip(tmp_path, monkeypatch):
     assert page_zoom.load() == page_zoom.STEPS[-1]  # 이상한 값은 범위 안으로
     (tmp_path / "page_zoom.json").write_text("not json")
     assert page_zoom.load() == 1.0
+
+
+def test_badge_js_formats() -> None:
+    js = page_zoom.badge_js(1.25)
+    assert js.rstrip().endswith("})(125);") and "left:50%" in js and "__PCT__" not in js

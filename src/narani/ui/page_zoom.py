@@ -36,7 +36,12 @@ _BADGE_JS = """(function(p){
   b.textContent = p + '%'; b.style.opacity = '1';
   clearTimeout(window.__md4ZoomT);
   window.__md4ZoomT = setTimeout(function(){ b.style.opacity = '0'; }, 900);
-})(%d);"""
+})(__PCT__);"""
+
+
+def badge_js(z: float) -> str:
+    """배율 표시 JS — CSS에 '%'가 들어 있어 %-서식 대신 자리표시를 바꾼다."""
+    return _BADGE_JS.replace("__PCT__", str(round(z * 100)))
 
 
 def load() -> float:
@@ -100,7 +105,7 @@ def _apply(view, z: float, badge: bool = False) -> None:  # noqa: ANN001
         return  # macOS 10.15 이하
     view.setPageZoom_(z)
     if badge:
-        view.evaluateJavaScript_completionHandler_(_BADGE_JS % round(z * 100), None)
+        view.evaluateJavaScript_completionHandler_(badge_js(z), None)
 
 
 _STATE: dict = {}
@@ -113,7 +118,10 @@ def zoom(key: str, window=None) -> bool:  # noqa: ANN001 — NSWindow
 
     # 다른 창이 바꾼 배율도 따라간다(형제 창은 다른 프로세스라 파일로 맞춘다)
     new = step(load(), key)
-    views = _webviews(window or NSApp.keyWindow() or NSApp.mainWindow())
+    views = []
+    for w in (window, NSApp.keyWindow(), NSApp.mainWindow(), *(NSApp.windows() or [])):  # 패널이 key일 수도 있다
+        if w is not None and (views := _webviews(w)):
+            break
     if new is None or not views:
         return False
     _STATE["zoom"] = new

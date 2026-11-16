@@ -26,8 +26,10 @@ def test_commands_are_unique() -> None:
 
 
 def test_shortcuts_do_not_collide() -> None:
-    combos = [(it.key, frozenset(it.mods.split("+"))) for it in menu_bar.items() if it.key]
-    assert len(combos) == len(set(combos))
+    labels = [menu_bar.shortcut_label(it) for it in menu_bar.items() if it.key]
+    assert len(labels) == len(set(labels))
+    # Shift 글자 단축키는 대문자 키로만 — 'h'+shift 마스크는 ⌘H(가리기)와 엉킨다(실제 창에서 확인)
+    assert not [it.cmd for it in menu_bar.items() if it.key.isalpha() and "shift" in it.mods]
 
 
 def test_expected_shortcuts() -> None:

@@ -17,8 +17,10 @@
    핸들러가 쌓여 한 번 눌러 여러 번 돈다.
 
 키 처리는 한 곳에서만: ⌘+/−/0은 §ui/page_zoom.py의 NSEvent 모니터가 메뉴보다 먼저 먹으므로 메뉴의 확대
-항목은 단축키를 **보여 주기만** 하고, 눌렀을 때는 같은 `page_zoom.zoom`을 부른다. ⌘F처럼 페이지가 이미
-듣는 키는 WKWebView가 페이지에 먼저 주고, 페이지가 막으면(preventDefault) 메뉴까지 오지 않는다.
+항목은 단축키를 **보여 주기만** 하고, 눌렀을 때는 같은 `page_zoom.zoom`을 부른다. 메뉴에 단축키가 있는
+키는 **메뉴가 먼저** 먹고 페이지 keydown까지 가지 않는다(실제 창에서 확인) — 그래서 ⌘F는 찾기 바의 keydown 대신
+메뉴 → `__md4Find.open()`으로 한 번만 돈다. 메뉴에 없는 키(⌘G·⌥←·편집기의 ⌘B 등)는 예전처럼 페이지가 받는다.
+⌘Z·⇧⌘Z는 WKWebView의 undo:/redo:로 가고 CodeMirror는 그것을 beforeinput(historyUndo)으로 받는다.
 
 메뉴 글자는 앱을 켤 때의 화면 언어다(t()). 설정에서 언어를 바꾸면 메뉴는 다시 켜야 바뀐다.
 macOS가 아니거나 브라우저 모드면 아무것도 하지 않는다.
@@ -45,7 +47,8 @@ class Item:
 
     kind: page = 페이지 디스패처(`md4Menu`)로 · zoom = page_zoom을 직접 · sel = AppKit 기본 동작
     (cmd가 셀렉터, 대상은 응답 체인) · services = 서비스 하위 메뉴 · sep = 구분선.
-    key는 keyEquivalent(소문자 한 글자), mods는 'cmd'·'shift'·'alt'·'ctrl'를 +로 이은 것.
+    key는 keyEquivalent 한 글자 — Shift가 붙는 글자 단축키는 Cocoa 관례대로 **대문자**로 쓴다('H' = ⇧⌘H;
+    'h'에 shift 마스크를 주면 실제 키 입력이 ⌘H 항목과 엉킨다). mods는 'cmd'·'alt'·'ctrl'(·'shift')를 +로 이은 것.
     """
 
     cmd: str
@@ -92,7 +95,7 @@ def menus() -> list[tuple[str, list[Item]]]:
         ]),
         (EDIT, [
             Item("undo:", N_("실행 취소"), "z", kind="sel"),
-            Item("redo:", N_("다시 실행"), "z", "cmd+shift", kind="sel"),
+            Item("redo:", N_("다시 실행"), "Z", kind="sel"),
             SEP,
             Item("cut:", N_("오려두기"), "x", kind="sel"),
             Item("copy:", N_("복사하기"), "c", kind="sel"),
@@ -113,7 +116,7 @@ def menus() -> list[tuple[str, list[Item]]]:
             Item("toggleFullScreen:", N_("전체 화면"), "f", "cmd+ctrl", kind="sel"),
         ]),
         (GO, [
-            Item("home", N_("홈"), "h", "cmd+shift"),
+            Item("home", N_("홈"), "H"),  # ⇧⌘H — 대문자 키가 Shift다('h'+shift 마스크면 ⌘H 가리기와 엉킨다)
             Item("jump_back", N_("읽던 자리로")),
             SEP,
             *tabs,
@@ -156,6 +159,8 @@ def shortcut_label(it: Item) -> str:
     if not it.key:
         return ""
     on = set(it.mods.split("+"))
+    if it.key.isalpha() and it.key.isupper():
+        on.add("shift")  # 대문자 키 = Shift
     return "".join(g for m, g in _MOD_GLYPH if m in on) + it.key.upper()
 
 
@@ -507,10 +512,15 @@ def _install_menu() -> None:
     AppHelper.callLater(1.5, again)
 
 
-def _key_window():  # noqa: ANN202
+def _key_window():  # noqa: ANN202 — 웹뷰가 든 창: key > main > 아무거나 (패널·시트가 key일 수 있다)
     from AppKit import NSApp
 
-    return NSApp.keyWindow() or NSApp.mainWindow() or next(iter(NSApp.windows() or []), None)
+    from narani.ui import page_zoom
+
+    for w in (NSApp.keyWindow(), NSApp.mainWindow(), *(NSApp.windows() or [])):
+        if w is not None and page_zoom._webviews(w):  # noqa: SLF001
+            return w
+    return None
 
 
 def run(cmd: str, attempt: int = 0) -> None:
