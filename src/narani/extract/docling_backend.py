@@ -814,6 +814,11 @@ def _strip_merged_running_heads(document, phrases: set[str]) -> int:  # noqa: AN
     stripped = 0
     for it in getattr(document, "texts", []):
         text = getattr(it, "text", "") or ""
+        # 제목·섹션 제목·캡션은 건드리지 않는다 — ACM 홀수 쪽 러닝 헤더는 흔히 논문 제목(의 앞부분)이라,
+        # 첫 쪽 제목에서 그 문구를 떼면 "with Large Language Models"만 남는다(Fok et al. CHI '24에서 실측).
+        label = str(getattr(it, "label", "")).replace("DocItemLabel.", "").lower()
+        if label in _RUNHEAD_KEEP_LABELS:
+            continue
         if not any(p.split()[0] in text for p in phrases):
             continue
         new, n = pattern.subn("", text)

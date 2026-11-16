@@ -928,6 +928,21 @@ def test_running_footer_in_deep_acm_margin_is_dropped_and_unmerged():
     assert [it.text for it in doc.texts] == [merged.text, tail.text] + [b.text for b in body]
 
 
+def test_running_head_equal_to_title_does_not_cut_the_title():
+    """ACM 홀수 쪽 러닝 헤더가 논문 제목의 앞부분이면 — 러닝 헤더는 지우되 첫 쪽 제목은 그대로 둔다."""
+    from narani.extract.docling_backend import _drop_running_heads
+
+    short = "Supporting Business Document Workflows via Collection-Centric Information Foraging"
+    heads = [_Item(short, p, 50.0, 400.0, 780.0) for p in (3, 5, 7)]
+    title = _Item(short + " with Large Language Models", 1, 50.0, 560.0, 700.0, label="title")
+    para = _Item("We study how " + short + " helps.", 4, 110.0, 540.0, 300.0)
+    doc = _Doc(heads + [title, para])
+    doc.pages = {p: _Page() for p in range(1, 8)}
+    _drop_running_heads(doc)
+    assert title.text == short + " with Large Language Models"
+    assert title in doc.texts and not any(h in doc.texts for h in heads)
+
+
 def test_outer_band_line_on_two_pages_is_kept():
     """바깥 띠(10~20%)의 줄이 두 쪽에만 나오면 본문일 수 있다 — 지우지 않는다."""
     from narani.extract.docling_backend import _drop_running_heads
