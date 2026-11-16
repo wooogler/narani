@@ -49,7 +49,7 @@ async def connect_drive() -> bool:
     """웹 리더용 Google Drive 연결 — 브라우저에서 로그인·허용을 마치면 True."""
     from nicegui import run, ui
 
-    n = ui.notification(t("브라우저에서 Google 로그인을 마치세요 — 웹 리더가 쓸 Narani 폴더를 Drive에 만듭니다."),
+    n = ui.notification(t("브라우저에서 Google 로그인을 마치세요 — 휴대폰과 서재 동기화가 쓸 Narani 폴더를 Drive에 만듭니다."),
                         spinner=True, timeout=None)
     try:
         who = await run.io_bound(phone_service.connect)
@@ -67,7 +67,7 @@ async def ensure_drive(on_connect=None) -> bool:  # noqa: ANN001
     from nicegui import ui
 
     if not phone_service.configured():
-        ui.notify(t("웹 리더용 Google 클라이언트 설정이 없습니다 — README의 '웹 리더에서 읽기'를 보세요."),
+        ui.notify(t("Google Drive 연결에 쓸 Google 클라이언트 설정이 없습니다 — README의 Google Drive 설정 안내를 보세요."),
                   type="warning")
         return False
     if phone_service.connected():
@@ -99,7 +99,7 @@ async def drive_call(fn, roots: list[Path], busy: str, progress: dict | None = N
             if on_connect:
                 on_connect()
         except Exception as e:  # noqa: BLE001
-            ui.notify(t("웹 리더와 주고받지 못했습니다: {e}", e=e), type="negative")
+            ui.notify(t("Google Drive와 주고받지 못했습니다: {e}", e=e), type="negative")
             return None
         finally:
             if tick:
@@ -205,8 +205,8 @@ async def ask(host, roots: list[Path], send: bool | None = None) -> dict | None:
 
     with host, ui.dialog() as dlg, ui.card().classes("gap-2").style("width:540px;max-height:92vh;overflow-y:auto"):
         ui.label(t("듣기 음성 만들기")).classes("font-bold")
-        ui.label(t("번역 본문을 읽은 음성을 이 컴퓨터에 만듭니다 — 뷰어의 듣기에서 바로 듣고, 웹 리더에 있는 논문은 "
-                   "Drive에도 올립니다(시간당 약 15MB). 그림·표·인용 표기·참고문헌은 건너뛰고, 섹션 제목은 알립니다. "
+        ui.label(t("번역 본문을 읽은 음성을 이 컴퓨터에 만듭니다 — 뷰어의 듣기에서 바로 듣고, 휴대폰에서 열 수 있는 "
+                   "논문은 Drive에도 올립니다(시간당 약 15MB). 그림·표·인용 표기·참고문헌은 건너뛰고, 섹션 제목은 알립니다. "
                    "캡션·수식은 아래에서 고릅니다.")).classes("text-xs text-gray-500")
         opts = {kind: t("무료 — Mac 목소리") if kind == "mac" else t("무료 — Windows 목소리")} if kind else {}
         if qs["supported"]:
@@ -402,13 +402,13 @@ async def ask(host, roots: list[Path], send: bool | None = None) -> dict | None:
         total()
         send_cb = None
         if send is None and off_web:   # 웹 리더에 없는 논문 — 보낼지는 고른다 (있는 논문은 저절로 올린다)
-            send_cb = ui.checkbox(t("웹 리더로도 보내기"), value=False).props("dense").classes("text-sm")
-            send_cb.tooltip(t("Google Drive를 거쳐 웹 리더({site})에서도 듣습니다 — 논문과 메모도 함께 보냅니다",
+            send_cb = ui.checkbox(t("휴대폰에도 받아 두기"), value=False).props("dense").classes("text-sm")
+            send_cb.tooltip(t("휴대폰({site})이 미리 내려받아 거기서도 듣습니다 — 논문과 메모도 함께 올립니다",
                               site=pages.DOMAIN))
             if not phone_service.configured():
                 send_cb.disable()
         elif on_web:
-            ui.label(t("웹 리더에 있는 논문이라 만든 뒤 웹 리더에도 올립니다.")).classes("text-xs text-gray-500")
+            ui.label(t("휴대폰에서 열 수 있는 논문이라 만든 뒤 휴대폰에도 올립니다.")).classes("text-xs text-gray-500")
         with ui.row().classes("justify-end w-full gap-2"):
             ui.button(t("취소"), on_click=dlg.close).props("flat")
             ui.button(t("만들기"), icon="headphones", on_click=go).props("unelevated no-caps color=primary")
@@ -452,7 +452,7 @@ def start(roots: list[Path], opts: dict, titles: dict[str, str] | None = None) -
                                          math=opts["math"], send=opts["send"])
             m = round(s["seconds"] / 60)
             if s["send_error"]:
-                job.message = t("음성 {m}분을 만들었지만 웹 리더에 올리지 못했습니다: {e}", m=m, e=s["send_error"])
+                job.message = t("음성 {m}분을 만들었지만 휴대폰에 올리지 못했습니다: {e}", m=m, e=s["send_error"])
             elif s["sent"]:
                 job.message = t("음성 {m}분 · {mb:.0f}MB를 올렸습니다", m=m, mb=s["bytes"] / 1e6)
             else:

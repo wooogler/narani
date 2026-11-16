@@ -40,7 +40,7 @@ def papers_in(ws: Path) -> list[Path]:
     return sorted(ws.glob("*/*.md4"))
 
 
-def test_new_papers_arrive_by_themselves_but_local_deletes_stay_deleted(env, tmp_path, monkeypatch):
+def test_new_papers_arrive_by_themselves_but_local_deletes_stay_deleted(env, tmp_path, monkeypatch):  # noqa: F811 — env는 test_libsync_reader의 fixture
     ws, store = env
     paper(ws, "p1")
     library_sync._set(enabled=True)                                # noqa: SLF001
@@ -66,7 +66,7 @@ def test_new_papers_arrive_by_themselves_but_local_deletes_stay_deleted(env, tmp
     assert len(papers_in(ws_b)) == 1 and library_sync.declined() == []
 
 
-def test_failed_import_waits_and_shows_without_slowing_the_worker(env, tmp_path, monkeypatch):
+def test_failed_import_waits_and_shows_without_slowing_the_worker(env, tmp_path, monkeypatch):  # noqa: F811 — env는 test_libsync_reader의 fixture
     ws, store = env
     paper(ws, "p1")
     library_sync._set(enabled=True)                                # noqa: SLF001
@@ -85,7 +85,7 @@ def test_failed_import_waits_and_shows_without_slowing_the_worker(env, tmp_path,
     assert len(calls) == 1                                         # 그 논문만 기다린다
 
 
-def test_phone_keep_choice_is_read_and_desktop_later_choice_wins(env):
+def test_phone_keep_choice_is_read_and_desktop_later_choice_wins(env):  # noqa: F811 — env는 test_libsync_reader의 fixture
     ws, store = env
     r1, r2 = paper(ws, "p1"), paper(ws, "p2")
     phone.push_library([r1, r2])                                   # 서재 논문 — 받아 두지 않음
@@ -102,7 +102,7 @@ def test_phone_keep_choice_is_read_and_desktop_later_choice_wins(env):
     assert {e["key"]: e["sent"] for e in sync.read_index(store)["papers"]}["p1"] is False
 
 
-def test_sharing_does_not_keep_the_paper_on_the_phone(env, monkeypatch):
+def test_sharing_does_not_keep_the_paper_on_the_phone(env, monkeypatch):  # noqa: F811 — env는 test_libsync_reader의 fixture
     ws, store = env
     root = paper(ws, "p1")
     monkeypatch.setattr(phone.gdrive, "open_store", lambda: store)

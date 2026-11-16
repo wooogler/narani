@@ -6719,14 +6719,14 @@ def _listen_audio_hooks(ctrl, tok: str, title: str) -> None:  # noqa: ANN001 —
     async def on_send(e) -> None:  # noqa: ANN001
         if not mine(e):
             return
-        s = await audio_dialog.drive_call(phone_service.send, [root], t("웹 리더로 보내는 중…"))
+        s = await audio_dialog.drive_call(phone_service.send, [root], t("휴대폰에 받아 두는 중…"))
         if s is None:
             return
-        msg = t("웹 리더로 보냈습니다")
+        msg = t("휴대폰에 받아 뒀습니다")
         if s.get("audio"):
             msg += t(" · 만든 음성도 올렸습니다")
         if s.get("merged"):
-            msg += t(" · 웹 리더에서 단 메모 {n}개를 합쳤습니다", n=s["merged"])
+            msg += t(" · 휴대폰에서 단 메모 {n}개를 합쳤습니다", n=s["merged"])
         ui.notify(msg, type="positive")
         push("refreshState()")
 
