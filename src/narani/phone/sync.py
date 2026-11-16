@@ -30,6 +30,43 @@ from narani.phone.store import Store
 from narani.phone.store import names as store_names
 
 INDEX = "index.json"
+# 휴대폰에서 고른 '받아 두기' — 휴대폰은 mobile/ 아래만 쓴다. {format, items: {논문 키: {on, at(ms)}}}.
+# 목록을 읽을 때 목록 줄의 sent_at(데스크톱이 마지막으로 정한 때, ms)보다 나중 것이면 sent를 그것으로 읽는다 —
+# 다음에 데스크톱이 목록을 쓰면 그대로 남는다. 옛 데스크톱은 이 파일을 모른다(휴대폰은 제 고른 것을 먼저 보인다).
+KEEP = "mobile/keep.json"
+
+
+def now_ms() -> float:
+    return round(time.time() * 1000)
+
+
+def read_keep(store: Store) -> dict[str, dict]:
+    raw = store.read(KEEP)
+    try:
+        data = json.loads(raw) if raw else {}
+    except ValueError:
+        return {}
+    items = data.get("items") if isinstance(data, dict) else None
+    out = {}
+    for k, v in (items or {}).items() if isinstance(items, dict) else ():
+        if isinstance(v, dict) and isinstance(v.get("on"), bool):
+            try:
+                out[k] = {"on": v["on"], "at": float(v.get("at") or 0)}
+            except (TypeError, ValueError):
+                continue
+    return out
+
+
+def apply_keep(index: dict, keep: dict[str, dict]) -> int:
+    """휴대폰에서 고른 받아 두기를 목록 줄에 — 데스크톱이 정한 때(sent_at)보다 나중 것만. 반환: 바꾼 줄 수."""
+    n = 0
+    for e in index.get("papers") or []:
+        k = keep.get(e.get("key")) if isinstance(e, dict) else None
+        if k and k["at"] > float(e.get("sent_at") or 0):
+            if e.get("sent") is not k["on"]:
+                n += 1
+            e["sent"], e["sent_at"] = k["on"], k["at"]
+    return n
 
 
 def audio_names(key: str) -> tuple[str, str]:
@@ -70,12 +107,14 @@ def _put_speech(store: Store, root: Path, digest: str, prev: dict | None, bundle
     return {"file": name, "sig": sig, "bytes": len(data)}
 
 
-def read_index(store: Store) -> dict:
+def read_index(store: Store, keep: dict[str, dict] | None = None) -> dict:
+    """목록 — 휴대폰에서 고른 받아 두기(KEEP)를 얹어서. keep을 주면 그것을(이미 읽어 둔 것 — 다시 읽지 않게)."""
     raw = store.read(INDEX)
     if raw:
         try:
             data = json.loads(raw)
             if isinstance(data, dict) and isinstance(data.get("papers"), list):
+                apply_keep(data, read_keep(store) if keep is None else keep)
                 return data
         except ValueError:
             pass
@@ -103,9 +142,10 @@ def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dic
     반환: {uploaded, skipped, removed, bytes, papers, merged(합친 폰 기록 수), notes(다시 올린 메모 파일 수), failed: [키]}.
     """
     roots = list(dict.fromkeys(Path(r) for r in roots))
-    prev_index = read_index(store)
-    old = {e.get("key"): e for e in prev_index["papers"] if isinstance(e, dict)}
     present = set(store_names(store, "")) if hasattr(store, "list") else None
+    keep = read_keep(store) if present is None or KEEP in present else {}
+    prev_index = read_index(store, keep)
+    old = {e.get("key"): e for e in prev_index["papers"] if isinstance(e, dict)}
     code = bmod._code_stamp()
     entries: list[dict] = []
     uploaded = skipped = sent = merged = notes_sent = 0
@@ -149,16 +189,17 @@ def push(roots: Iterable[Path], store: Store, *, prune: bool = False, extra: dic
         uploaded += 1
         sent += len(data)
     keys = {e["key"] for e in entries}
-    fresh = {e.get("key"): e for e in read_index(store)["papers"] if isinstance(e, dict)}
+    fresh = {e.get("key"): e for e in read_index(store, keep)["papers"] if isinstance(e, dict)}
     for e in entries:   # 그사이 바뀐 보낸 표시·음성은 다시 읽은 목록의 것으로 (이번에 직접 정한 sent는 그대로)
         f = fresh.get(e["key"])
         if f is None:
             continue
         if "sent" not in (extra or {}).get(e["key"], {}):
-            if "sent" in f:
-                e["sent"] = f["sent"]
-            else:
-                e.pop("sent", None)
+            for k in ("sent", "sent_at"):
+                if k in f:
+                    e[k] = f[k]
+                else:
+                    e.pop(k, None)
         if f.get("audio") and f.get("audio") != e.get("audio"):
             e["audio"] = f["audio"]
     removed = 0
@@ -197,12 +238,11 @@ def unsend(store: Store, keys: Iterable[str]) -> int:
     keys = set(keys)
     n = 0
     for e in index["papers"]:
-        if isinstance(e, dict) and e.get("key") in keys and e.get("sent") is not False:
-            e["sent"] = False
-            n += 1
-    if n:
-        index["updated"] = time.time()
-        store.write(INDEX, bmod.dumps(index))
+        if isinstance(e, dict) and e.get("key") in keys:
+            n += e.get("sent") is not False
+            e["sent"], e["sent_at"] = False, now_ms()
+    index["updated"] = time.time()
+    store.write(INDEX, bmod.dumps(index))
     return n
 
 
