@@ -87,7 +87,12 @@ def stored(rel: str, raw: bytes) -> bytes:
 
 
 def sig_of(rel: str, data: bytes) -> str:
-    """내용 견주기용 지문 — annotations는 저장 때마다 다시 적히는 updated를 뺀다."""
+    """내용 견주기용 지문 — JSON은 키 순서·들여쓰기와 무관하게(다시 쓰기만 해도 올리지 않게),
+    annotations는 저장 때마다 다시 적히는 updated를 뺀다."""
+    if rel.endswith(".json") and rel != ANNOS:
+        d = _json(data)
+        if d is not None:
+            return sha(json.dumps(d, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode("utf-8"))
     if rel == ANNOS:
         d = _json(data)
         items = d.get("items") if isinstance(d, dict) else d

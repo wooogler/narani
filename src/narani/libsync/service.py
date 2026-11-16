@@ -310,7 +310,8 @@ class _Worker(threading.Thread):
                 cands.add(pid)
             self.prev[pid] = fp
         g = _global()
-        if not (force or cands or g.get("pending_deletes") or time.time() - self.listed > LIST_EVERY):
+        if not (force or cands or g.get("pending_deletes") or lib.collections_dirty()
+                or time.time() - self.listed > LIST_EVERY):
             return
         _bump(running=True, phase="sync", done=0, total=0, label="", error="")
         try:

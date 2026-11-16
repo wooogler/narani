@@ -149,11 +149,17 @@ def test_upload_then_import_on_other_computer(two):
 
 def test_quiet_after_sync_and_after_viewing(two):
     a, b = two
-    make_paper(a.ws)
+    amd4 = make_paper(a.ws)
+    with a.on():
+        x = projects.create("X")
+    st = json.loads((amd4 / "status.json").read_text())       # 옛 파일처럼 소속이 앞에 — 받는 쪽이 다시 적으면 순서가 바뀐다
+    (amd4 / "status.json").write_text(json.dumps({"project": x["id"], "projects": [x["id"], "p-unknown-here"], **st}))
     a.sync()
     bmd4 = _import_all(b)[0]
-    a.sync(), b.sync(), a.sync(), b.sync()
     before = sorted(manifests(a.store))
+    assert b.sync()["up"] == 0                                   # 가져오자마자 다시 올리지 않는다
+    a.sync(), b.sync(), a.sync(), b.sync()
+    assert sorted(manifests(a.store)) == before
     # B에서 열어 보기만 — 열람 시각·패널·하이라이트 저장 시각·메모 탭 보던 자리는 컴퓨터마다 다른 값
     st = json.loads((bmd4 / "status.json").read_text())
     st.update(opened_at=time.time(), left_panel="notes", ko_display="side")

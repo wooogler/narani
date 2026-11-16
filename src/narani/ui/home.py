@@ -1598,6 +1598,8 @@ def build_home(state: dict) -> None:
     def head() -> None:
         s = view["scope"]
         n = sum(1 for r in live_rows() if not r["hidden"] and in_scope(r, s))
+        if s == DRIVE:   # Drive에만 있는 논문도 센다
+            n += len(data["drive"])
         with ui.row().classes("items-baseline gap-2 no-wrap w-full"):
             ui.label(scope_label()).classes("md4-htitle truncate min-w-0")
             ui.label(t("{n}편", n=n)).classes("md4-hcount shrink-0")
@@ -2376,7 +2378,7 @@ def build_home(state: dict) -> None:
             on_mobile = [p for p in paths if p.stem in data["mobile"]]
             with_audio = [p for p in on_mobile if (data["mobile"].get(p.stem) or {}).get("audio")]
             untranslated = [x for x in rows if not x["has_ko"]]
-            in_collection = scope not in (projects.ALL, projects.NONE, MOBILE)
+            in_collection = scope not in (projects.ALL, projects.NONE, MOBILE, DRIVE)
 
             def act(label: str, icon: str, fn, tip: str | None = None, main: bool = False):  # noqa: ANN001, ANN202
                 if main:
@@ -2486,7 +2488,7 @@ def build_home(state: dict) -> None:
         with ui.column().classes("md4-pv-body md4-scroll gap-2 w-full"):
             ui.label(scope_label()).classes("md4-pv-title")
             ui.label(t("{n}편 · 번역 {n_ko}편", n=len(rows), n_ko=n_ko)).classes("md4-pv-stat")
-            if s not in (projects.ALL, projects.NONE, MOBILE):
+            if s not in (projects.ALL, projects.NONE, MOBILE, DRIVE):
                 root = projects.folder_of(s)  # 하위 컬렉션은 상위 폴더를 물려받는다
                 with ui.row().classes("items-start gap-1 no-wrap w-full"):
                     ui.icon("folder" if root else "folder_off", size="15px").classes("text-grey-5 q-mt-xs")
@@ -2548,7 +2550,10 @@ def build_home(state: dict) -> None:
             if not ls["running"] and ls["last_ok"] != poll_state["ls_ok"]:
                 poll_state["ls_ok"] = ls["last_ok"]
                 last = ls.get("last") or {}
-                if last.get("down") or last.get("merged") or last.get("up") or view["scope"] == DRIVE:
+                coll = [(p["id"], p.get("name"), p.get("parent")) for p in projects.all_projects()]
+                if (last.get("down") or last.get("merged") or last.get("up") or view["scope"] == DRIVE
+                        or library_sync.info()["drive_only"] != len(data["drive"])
+                        or coll != [(p["id"], p.get("name"), p.get("parent")) for p in data["projs"]]):
                     refresh_views(rescan=True)
             elif view["scope"] == DRIVE:
                 head.refresh()

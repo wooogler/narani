@@ -378,14 +378,14 @@ class Library:
 
     def _after_receive(self, md4: Path, st: dict, man: dict, R: tuple, old_projects: list[str],
                        blobs: dict[str, bytes]) -> dict:
-        """받은 뒤 — 상태·바탕 고치기, 소속이 바뀌었으면 컬렉션 폴더 사본 맞추기."""
+        """받은 뒤 — 소속이 바뀌었으면 컬렉션 폴더 사본 맞추기, 상태·바탕 고치기."""
+        self._memberships(md4, old_projects)
         files, cache = pack.table(md4, st.get("files"))
         st.update(files=cache, ver=R[0], dev=R[1], sig=pack.signature(files), pending=False,
                   base_sigs={k: v["s"] for k, v in man["files"].items()},
                   fp=pack.fingerprint({k: (v["n"], v["t"]) for k, v in files.items()}))
         _copy_base(md4, "base", {rel: blobs[v["b"]] for rel, v in man["files"].items() if _is_base(rel)})
         write_state(md4, st)
-        self._memberships(md4, old_projects)
         return files
 
     def _memberships(self, md4: Path, old: list[str]) -> None:
@@ -705,6 +705,17 @@ class Library:
                 if f.name.split(".", 1)[0] in ids:
                     gl[f.name] = f.read_text(encoding="utf-8")
         return {"items": items, "glossaries": gl}
+
+    def collections_dirty(self) -> bool:
+        """컬렉션 목록이 마지막으로 맞춘 뒤 바뀌었는가 — 파일만 읽는다(뒤 일꾼이 원격 목록을 받을지 정할 때)."""
+        st = self.load_global().get("collections") or {}
+        base = st.get("base") or {"items": [], "deleted": []}
+        loc = self._local_collections()
+        gone = {it["id"] for it in base["items"]} - {it["id"] for it in loc["items"]}
+        loc["deleted"] = sorted(set(base.get("deleted") or []) | gone)
+        if not st:
+            return bool(loc["items"] or loc["glossaries"])
+        return self._csig(loc) != st.get("sig")
 
     @staticmethod
     def _csig(doc: dict) -> str:
