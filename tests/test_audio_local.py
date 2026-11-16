@@ -64,7 +64,7 @@ def test_make_without_drive_and_state(env):
     assert service.voices("ko")[0] == "Yuna" and service.on_mobile() == {}   # 고름은 기억, 웹 리더엔 없음
     st = service.audio_state(wd.root)
     assert st["local"]["voice"] == "mac:Yuna" and st["local"]["stale"] is False
-    assert st["web"] == {"configured": True, "connected": False, "on": False, "audio": None}
+    assert st["web"] == {"configured": True, "connected": False, "on": False, "library": False, "audio": None}
     # 뷰어 막대가 받는 것 — 만든 음성 + 상태
     info = listen.info(wd.root)
     assert info["audio"]["tl"]["voice"] == "mac:Yuna" and info["state"]["local"]["label"].startswith("Mac · Yuna")
@@ -90,7 +90,7 @@ def test_send_uploads_what_was_made_without_resynthesis(env):
     m4a, _tl = listen.local_audio(wd.root)
     assert store.read(e["audio"]["file"]) == m4a.read_bytes()
     assert json.loads(store.read(e["audio"]["tl"]))["sents"]
-    assert service.audio_state(wd.root)["web"] == {"configured": True, "connected": True, "on": True, "audio": "same"}
+    assert service.audio_state(wd.root)["web"] == {"configured": True, "connected": True, "on": True, "library": False, "audio": "same"}
     assert service.send([wd.root])["audio"] == 0                 # 같은 음성은 다시 올리지 않는다
     assert service.refresh()["audio"] == 0 and env["calls"]["n"] == n   # 옛 음성이 아니니 다시 만들지도 않는다
 

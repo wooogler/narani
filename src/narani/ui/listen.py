@@ -482,7 +482,7 @@ HTML = f"""
     <hr>
     <button data-a="make" class="mdl-mi" type="button">⦃음성 만들기…⦄</button>
     <button data-a="stop" class="mdl-mi" type="button" hidden>⦃만들기 멈추기⦄</button>
-    <button data-a="send" class="mdl-mi" type="button">⦃휴대폰에 받아 두기⦄</button>
+    <button data-a="send" class="mdl-mi" type="button">⦃휴대폰으로 보내기⦄</button>
   </div>
 </div>
 """
@@ -690,7 +690,7 @@ JS = r"""
           (w.audio === 'same' ? md4T('있음 · 이 음성') : (w.audio ? md4T('있음 · 다른 음성') : md4T('있음 · 음성 없음'))));
         line($('.mdl-st-web'), md4T('휴대폰'), wt);
       } else line($('.mdl-st-web'), '');
-      $('[data-a="send"]').hidden = !w.configured;
+      $('[data-a="send"]').hidden = !w.configured || !!w.library;
       more.classList.toggle('stale', !!(lo && lo.stale));
     }
     var run = !!j;

@@ -44,10 +44,12 @@ def _ko_label(roots: list[Path]) -> str:
     return t(_LABELS["ko"])
 
 
-async def open_dialog(roots: list[Path | str], before: Callable[[], Awaitable[None]] | None = None) -> None:
+async def open_dialog(roots: list[Path | str], before: Callable[[], Awaitable[None]] | None = None,
+                      to_library: Callable[[list[Path]], Awaitable[None]] | None = None) -> None:
     """체크박스 내보내기 대화상자를 연다. `before`는 묶기 직전에 기다릴 일(뷰어의 메모 되저장 등).
 
-    한 화면에 하나만 — 단추를 두 번 눌러 대화상자가 겹치지 않게."""
+    to_library를 주면 '받는 곳'에 '저장 위치에 저장'(컬렉션 폴더·공통 저장 위치 — §library.export_many)도 보인다.
+    저장 위치가 하나도 없으면 그 선택지는 꺼 두고 설정을 안내한다. 한 화면에 하나만 — 단추를 두 번 눌러 겹치지 않게."""
     from nicegui import run, ui
 
     from narani.ui import desktop
@@ -69,7 +71,12 @@ async def open_dialog(roots: list[Path | str], before: Callable[[], Awaitable[No
         raise
     total = len(roots)
     chosen = set(prefs())
-    state = {"busy": False}
+    state = {"busy": False, "dest": "zip"}
+    lib_ok = False
+    if to_library is not None:
+        from narani.ui import settings_dialog
+
+        lib_ok = settings_dialog.any_library_dirs()
 
     def effective() -> list[str]:
         return [k for k in export_bundle.ITEMS if k in chosen and have[k]]
@@ -83,6 +90,10 @@ async def open_dialog(roots: list[Path | str], before: Callable[[], Awaitable[No
         config.set_section_value("output", "export_target", e.value)
 
     async def go() -> None:
+        if state["dest"] == "library" and to_library is not None and not state["busy"]:
+            dlg.close()
+            await to_library(roots)
+            return
         items = effective()
         if not items or state["busy"]:
             return
@@ -111,8 +122,28 @@ async def open_dialog(roots: list[Path | str], before: Callable[[], Awaitable[No
             ui.label(t("내보내기")).classes("text-base font-semibold")
             if total > 1:
                 ui.label(t("{n}편", n=total)).classes("text-sm text-gray-500")
-        ui.label(t("묶을 것을 고르세요 — zip 하나로 받습니다.")).classes("text-xs text-gray-500")
-        with ui.column().classes("gap-0 w-full"):
+        if to_library is not None:
+            def pick_dest(e) -> None:  # noqa: ANN001
+                if e.value == "library" and not lib_ok:
+                    e.sender.value = "zip"
+                    return
+                state["dest"] = e.value
+                items_box.set_visibility(e.value == "zip")
+                footer.refresh()
+            dest = ui.radio({"zip": t("zip 하나로 받기"), "library": t("저장 위치에 저장")}, value="zip",
+                            on_change=pick_dest).props("dense inline").classes("text-sm")
+            if not lib_ok:   # 선택지는 보이되 꺼 둔다 — 흐리게, 눌리지 않게
+                dest.classes("md4-nolib")
+                ui.add_css(".md4-nolib > :nth-child(2) { opacity: .45; pointer-events: none; }")
+                ui.label(t("저장 위치가 없습니다 — ⚙ 설정 → 저장 위치에서 공통 폴더나 컬렉션 폴더를 정하면 쓸 수 있습니다.")) \
+                    .classes("text-xs text-gray-500")
+            else:
+                ui.label(t("저장 위치 — 컬렉션에 폴더가 있으면 그 폴더, 없으면 공통 저장 위치. 마크다운·PDF를 설정대로 "
+                           "저장하고, 같은 논문은 덮어씁니다.")).classes("text-xs text-gray-500")
+        items_box = ui.column().classes("gap-1 w-full")
+        with items_box:
+            ui.label(t("묶을 것을 고르세요 — zip 하나로 받습니다.")).classes("text-xs text-gray-500")
+        with items_box, ui.column().classes("gap-0 w-full"):
             for k in export_bundle.ITEMS:
                 n = have[k]
                 label = ko_label if k == "ko" else t(_LABELS[k])
@@ -136,6 +167,11 @@ async def open_dialog(roots: list[Path | str], before: Callable[[], Awaitable[No
 
         @ui.refreshable
         def footer() -> None:
+            if state["dest"] == "library":
+                with ui.row().classes("w-full justify-end gap-1"):
+                    ui.button(t("취소"), on_click=dlg.close).props("flat no-caps")
+                    ui.button(t("저장"), icon="drive_file_move", on_click=go).props("unelevated no-caps color=primary")
+                return
             items = effective()
             if total > 1 and items:
                 ui.label(t("논문마다 자기 폴더로 — 마크다운은 <이름>-en/ · <이름>-ko/, 나머지는 <이름>/")) \
