@@ -26,6 +26,8 @@ from narani.i18n import N_, t
 from narani.workdir import WorkDir
 
 CLIP = 260            # 문장이 이보다 길면 용어 주변만 보인다
+FIRST = 3             # 처음 펼칠 때 보이는 예문 수
+MORE = 10             # '더 보기' 한 번에 더 보이는 수
 _REF_HEADS = ("reference", "bibliograph", "참고 문헌", "참고문헌")
 
 _IMG_RE = re.compile(r"!\[[^\]]*\]\([^)]*\)")
@@ -257,8 +259,10 @@ UNALIGNED_NOTE = N_("번역과 원문의 섹션 수가 맞지 않아(재변환·
 
 
 def render(examples: list[Example], rows: int, *, goto=None, max_note: bool = True,  # noqa: ANN001
-           unaligned_note: bool = False) -> None:
-    """한 논문의 예문 목록을 지금 슬롯에 그린다. goto(row)를 주면 행 번호가 그 자리로 가는 단추가 된다."""
+           unaligned_note: bool = False, more=None) -> None:  # noqa: ANN001
+    """한 논문의 예문 목록을 지금 슬롯에 그린다. goto(row)를 주면 행 번호가 그 자리로 가는 단추가 된다.
+
+    more()를 주면 남은 쓰임이 있을 때 '더 보기' 단추를 단다 (부르는 쪽이 limit을 늘려 다시 그린다)."""
     from nicegui import ui
 
     if examples and unaligned_note:
@@ -280,7 +284,13 @@ def render(examples: list[Example], rows: int, *, goto=None, max_note: bool = Tr
                     ui.label(where).classes("md4-tex-meta")
                 if e.ko and not e.ko_exact:
                     ui.label(t("· 번역어가 안 보임 — 다른 말로 옮긴 문장")).classes("md4-tex-meta")
-    if max_note and rows > len(examples):
+    if more is not None and rows > len(examples):
+        left = rows - len(examples)
+        ui.button(t("더 보기 · {n}곳 더", n=min(left, MORE)) if left > MORE else t("나머지 {n}곳 보기", n=left),
+                  on_click=lambda _: more()) \
+            .props("flat dense no-caps size=sm color=primary").classes("q-mt-xs") \
+            .tooltip(t("이 논문에서 {rows}곳에 나옵니다 (여기엔 {n}곳).", rows=rows, n=len(examples)))
+    elif max_note and rows > len(examples):
         ui.label(t("이 논문에서 {rows}곳에 나옵니다 (여기엔 {n}곳).", rows=rows, n=len(examples))).classes("md4-tex-meta")
 
 

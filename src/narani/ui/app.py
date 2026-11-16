@@ -4632,37 +4632,55 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
             "el.classList.add('chat-cite-flash');setTimeout(function(){el.classList.remove('chat-cite-flash');},1400);});"
             "}, 250);")
 
-    def example_toggle(term: str, refresh) -> None:  # noqa: ANN001 — ui.refreshable
+    # 열고 닫기·더 보기는 그 행의 예문 칸만 다시 그린다 — 목록 전체(gloss_rows)를 다시 그리면 시트 스크롤이
+    # 맨 위로 튄다. 용어마다 몇 개까지 보였는지(ex_limit)도 기억해 다시 그려도 그만큼 보인다.
+    ex_limit: dict[str, int] = {}
+
+    def example_fill(get, slot) -> None:  # noqa: ANN001 — get() → (원어, 번역어, policy), slot: 예문 칸
         from narani.translate.glossary import term_key
 
+        slot.clear()
+        term, korean, policy = get()
         key = term_key(term)
+        if not term.strip() or key not in ex_open:
+            return
+        with slot, ui.column().classes("w-full gap-0").style("padding:0 0 4px 12px"):
+            try:
+                ex, rows = term_examples.find(ctrl.wd, term, korean, policy,
+                                              limit=ex_limit.get(key, term_examples.FIRST))
+            except (OSError, ValueError) as e:
+                ui.label(t("본문을 읽지 못했습니다: {e}", e=e)).classes("md4-tex-meta")
+                return
+
+            def more() -> None:
+                ex_limit[key] = ex_limit.get(key, term_examples.FIRST) + term_examples.MORE
+                example_fill(get, slot)
+            term_examples.render(ex, rows, goto=goto_example_row, more=more,
+                                 unaligned_note=term_examples.unaligned(ctrl.wd))
+
+    def example_toggle(get, ref: dict) -> None:  # noqa: ANN001
+        from narani.translate.glossary import term_key
+
+        key = term_key(get()[0])
         if not key:
             ui.notify(t("원어를 먼저 입력하세요."), type="warning")
             return
         ex_open.symmetric_difference_update({key})
-        refresh.refresh()
+        ref["btn"].props(f"color={'primary' if key in ex_open else 'grey-6'}")
+        example_fill(get, ref["slot"])
 
-    def example_button(term: str, refresh) -> None:  # noqa: ANN001
+    def example_button(get, ref: dict) -> None:  # noqa: ANN001
         from narani.translate.glossary import term_key
 
+        term = get()[0]
         on = bool(term.strip()) and term_key(term) in ex_open
-        ui.button(icon="format_quote", on_click=lambda _, tv=term: example_toggle(tv, refresh)) \
+        ref["btn"] = ui.button(icon="format_quote", on_click=lambda _: example_toggle(get, ref)) \
             .props(f"flat dense round size=sm color={'primary' if on else 'grey-6'}") \
             .tooltip(t("이 용어가 쓰인 문장 (원문·번역) — 어떻게 옮기는 게 자연스러운지 문맥으로 보기"))
 
-    def example_block(term: str, korean: str, policy: str) -> None:
-        from narani.translate.glossary import term_key
-
-        if not term.strip() or term_key(term) not in ex_open:
-            return
-        with ui.column().classes("w-full gap-0").style("padding:0 0 4px 12px"):
-            try:
-                ex, rows = term_examples.find(ctrl.wd, term, korean, policy)
-            except (OSError, ValueError) as e:
-                ui.label(t("본문을 읽지 못했습니다: {e}", e=e)).classes("md4-tex-meta")
-                return
-            term_examples.render(ex, rows, goto=goto_example_row,
-                                 unaligned_note=term_examples.unaligned(ctrl.wd))
+    def example_block(get, ref: dict) -> None:  # noqa: ANN001
+        ref["slot"] = ui.element("div").classes("w-full")
+        example_fill(get, ref["slot"])
 
     @ui.refreshable
     def gloss_rows() -> None:
@@ -4695,12 +4713,14 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                 ui.select(_tr(_POLICY), value=d["policy"]).bind_value(d, "policy") \
                     .on("update:model-value", lambda: gloss_autosave()) \
                     .props("dense borderless options-dense").classes("md4-gl-cell")
+                ex_ref: dict = {}
+                ex_get = (lambda d=d: (d["term"], d["korean"], d["policy"]))  # 편집 중인 값 그대로
                 with ui.row().classes("no-wrap gap-0 items-center"):
-                    example_button(d["term"], gloss_rows)
+                    example_button(ex_get, ex_ref)
                     ui.button(icon="delete_outline", on_click=lambda _, idx=i: (
                         gloss_entries.pop(idx), gloss_rows.refresh(), gloss_autosave())) \
                         .props("flat dense round size=sm color=grey-6").classes("md4-gl-del").tooltip(t("삭제"))
-            example_block(d["term"], d["korean"], d["policy"])
+            example_block(ex_get, ex_ref)
 
     def add_gloss_row() -> None:
         gloss_entries.append({"term": "", "korean": "", "policy": "translate"})
@@ -5018,8 +5038,10 @@ def build(ctrl: UIController, state: dict | None = None) -> None:
                             ui.label(f"{e.korean or t('(빈 칸)')} · {t(_POLICY.get(e.policy, e.policy))}") \
                                 .classes("text-sm text-gray-700 truncate min-w-0")
                             ui.space()
-                            example_button(e.term, coll_rows)
-                        example_block(e.term, e.korean, e.policy)
+                            ex_ref: dict = {}
+                            ex_get = (lambda e=e: (e.term, e.korean, e.policy))
+                            example_button(ex_get, ex_ref)
+                        example_block(ex_get, ex_ref)
 
         def on_glossary_refresh(e) -> None:  # noqa: ANN001 — GenericEventArguments
             """에이전트가 컬렉션 용어집을 썼다 — 이 논문의 주 컬렉션이면 다시 그린다.
