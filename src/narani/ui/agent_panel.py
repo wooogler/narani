@@ -788,7 +788,8 @@ JS = r"""
     var tries = 0;
     (function wait(){
       if (paper !== g.token) return;              // 기다리는 사이 다른 화면으로 갔다
-      if (!cellsOf(g.row).length && ++tries < 60) return setTimeout(wait, 150);
+      // 메모면 그 하이라이트가 칠해지면 된다 — 한쪽 언어만 보는 뷰어에는 행 칸(data-row)이 없다
+      if (!cellsOf(g.row).length && !(g.id && marksOf(g.id).length) && ++tries < 60) return setTimeout(wait, 150);
       // 읽던 자리 복원(scroll_memory)이 상자가 붙는 순간 돈다 — 그 뒤에 움직여야 덮이지 않는다
       setTimeout(function(){ if (g.id) gotoNote(g.id, g.row); else gotoRow(g.row); }, 350);
     })();
@@ -2290,7 +2291,13 @@ JS = r"""
       setTimeout(paintCtx, 400); setTimeout(paintCtx, 1500);
       if (panel.classList.contains('open') && !live) render();   // 칩의 '다른 논문' 표시를 다시
     },
-    context: ctxNow
+    context: ctxNow,
+    // 서재 검색(§ui/libsearch_ui.py)이 고른 문단·메모로 — 인용 칩과 같은 길(이 논문이면 그 자리로, 아니면 열고 이어서)
+    goto: function(tok, row, id, url){
+      if (tok && tok === paper && onReview()) return id ? gotoNote(id, row) : gotoRow(row);
+      return gotoElsewhere(tok, row, id || null, url, true);
+    },
+    openUrl: function(url){ nav(url, true); }
   };
   panel.querySelector('.ag-x').addEventListener('click', closePanel);
   newBtn.addEventListener('click', function(){ markCtx(); backTo = null; newSession(); });

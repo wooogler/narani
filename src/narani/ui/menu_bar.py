@@ -106,6 +106,7 @@ def menus() -> list[tuple[str, list[Item]]]:
             Item("selectAll:", N_("전체 선택"), "a", kind="sel"),
             SEP,
             Item("find", N_("찾기…"), "f"),
+            Item("lib_search", N_("서재 검색…"), "k"),
         ]),
         (VIEW, [
             Item("zoom_in", N_("확대"), "+", kind="zoom"),
@@ -210,10 +211,13 @@ window.md4Menu = function(cmd, attempt){
       var x = q('.md4-tab.on .md4-tab-x');
       if (x){ x.click(); return 'ok'; }
       return SA ? 'close-window' : na();
-    case 'find':
+    case 'find':                              // 홈에서는 서재 검색 창, 논문에서는 페이지 찾기
+      var home = location.pathname === '/' || location.pathname === '/home';
+      if (home && !SA && window.__md4LibSearch){ window.__md4LibSearch.open(); return 'ok'; }
       if (window.__md4Find){ window.__md4Find.open(); return 'ok'; }
-      var s = q('[data-md4menu="search"] input') || q('input[data-md4menu="search"]');
-      if (s){ s.focus(); s.select(); return 'ok'; }
+      return na();
+    case 'lib_search':                        // 편집기 안이면 ⌘K를 편집기('링크')로 돌려준다 (§ui/libsearch_ui.py)
+      if (!SA && window.__md4LibSearch) return window.__md4LibSearch.menu();
       return na();
     case 'agent':
       if (!SA && window.__md4Agent){ window.__md4Agent.toggle(); return 'ok'; }
@@ -248,6 +252,7 @@ _NA = {
     "split": N_("위아래 두 뷰어는 논문 본문을 읽을 때 쓸 수 있습니다."),
     "swap_lang": N_("원문/번역 전환은 논문을 볼 때 쓸 수 있습니다."),
     "find": N_("찾기는 논문 화면에서 쓸 수 있습니다."),
+    "lib_search": N_("서재 검색은 홈이나 논문 화면에서 쓸 수 있습니다."),
 }
 
 
