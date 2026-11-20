@@ -542,6 +542,7 @@ def build_home(state: dict) -> None:
         _relative_time, _review_url, agent_button, new_window_button, open_source_pdf, save_source,
         tab_bar, wd_token,
     )
+    from narani.ui import libsearch_ui
     from narani.ui.controller import UIController
     from narani.workdir import delete_workdir, recent_workdirs, set_hidden, set_pinned
 
@@ -2604,6 +2605,7 @@ def build_home(state: dict) -> None:
         # ---- 왼쪽: 프로젝트 사이드바 ----
         with ui.column().classes("md4-hside gap-0"):
             ui.element("div").classes("md4-colgrip").props('data-col="side"')  # 끌어서 폭 조절 · 더블클릭 = 기본 폭
+            libsearch_ui.side_button()  # 서재 검색(⌘K) — 본문·메모까지. 가운데 입력칸은 카드만 거르는 빠른 필터로 남는다
             with ui.column().classes("md4-hside-rows md4-scroll gap-0 w-full"):
                 sidebar_rows()
             with ui.column().classes("md4-hfoot gap-0 w-full"):
@@ -2630,9 +2632,6 @@ def build_home(state: dict) -> None:
 
                 ui.input(placeholder=t("제목·저자·venue 검색…")).on_value_change(on_search) \
                     .props("dense outlined clearable data-md4menu=search").classes("flex-grow")
-                # 서재 검색(⌘K) — 본문·메모까지 서재 전체에서. 위 입력칸은 카드만 거르는 빠른 필터로 남긴다
-                ui.button(icon="search", color=None).props(f'flat dense round aria-label="{t("서재 검색")}"') \
-                    .classes("md4-ls-btn").on("click", js_handler="() => window.__md4LibSearch && window.__md4LibSearch.open()")
                 ui.select({k: t(v) for k, v in _SORTS.items()}, value="recent", on_change=on_sort).props("dense outlined").classes("w-32")
                 phone_chip()
                 with ui.element("div").classes("md4-upwrap"):

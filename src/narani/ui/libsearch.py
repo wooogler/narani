@@ -23,9 +23,11 @@ from __future__ import annotations
 
 import math
 import re
+import sys
 import threading
 import time
 import unicodedata
+from array import array
 from collections import Counter
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -149,21 +151,40 @@ def snippet(text: str, qtoks: set[str], width: int = SNIPPET) -> dict:
 # --- 역색인 -------------------------------------------------------------
 
 
+_TF_BITS = 12
+_TF_MAX = (1 << _TF_BITS) - 1
+
+
+def _pack(doc: int, tf: int) -> int:
+    """(문서 번호, tf) → int 하나 — 서재 전체면 게시 항목이 수백만이라 튜플로 들면 수백 MB가 된다."""
+    return (doc << _TF_BITS) | min(tf, _TF_MAX)
+
+
+def _entries(v: int | array) -> tuple[int, ...] | array:
+    return (v,) if isinstance(v, int) else v
+
+
 @dataclass
 class _Postings:
-    """문서 묶음 하나(논문 한 편의 본문 행들, 또는 메모들)의 역색인 — 서재 전체 통계에 더하고 뺀다."""
+    """문서 묶음 하나(논문 한 편의 본문 행들, 또는 메모들)의 역색인 — 서재 전체 통계에 더하고 뺀다.
 
-    post: dict[str, list[tuple[int, int]]] = field(default_factory=dict)   # 토큰 → [(문서 번호, tf)]
-    length: list[int] = field(default_factory=list)
+    토큰 → 게시 항목. 한 행에만 나오는 토큰(절반쯤)은 int 하나, 여럿이면 array('I'). 토큰 문자열은 intern해
+    논문마다 같은 낱말을 따로 들지 않는다 (324편 실측: 튜플 목록 335MB → 이 모양 약 1/3).
+    """
+
+    post: dict[str, int | array] = field(default_factory=dict)
+    length: array = field(default_factory=lambda: array("I"))
 
     @classmethod
     def build(cls, texts: list[str]) -> _Postings:
         p = cls()
+        grow: dict[str, list[int]] = {}
         for i, text in enumerate(texts):
             toks = retrieval.tokenize(text)
             p.length.append(len(toks))
             for tok, f in Counter(toks).items():
-                p.post.setdefault(tok, []).append((i, f))
+                grow.setdefault(sys.intern(tok), []).append(_pack(i, f))
+        p.post = {t: (v[0] if len(v) == 1 else array("I", v)) for t, v in grow.items()}
         return p
 
 
@@ -178,8 +199,8 @@ class _Stats:
     def add(self, p: _Postings, sign: int = 1) -> None:
         self.n += sign * len(p.length)
         self.total += sign * sum(p.length)
-        for tok, lst in p.post.items():
-            self.df[tok] += sign * len(lst)
+        for tok, v in p.post.items():
+            self.df[tok] += sign * (1 if isinstance(v, int) else len(v))
             if self.df[tok] <= 0:
                 del self.df[tok]
 
@@ -204,11 +225,12 @@ def _score(groups: list[tuple[object, _Postings]], stats: _Stats, qtoks: list[st
         acc: dict[int, float] = {}
         cover: dict[int, int] = {}
         for t, qn in wanted.items():
-            lst = p.post.get(t)
-            if not lst or not idf[t]:
+            v = p.post.get(t)
+            if v is None or not idf[t]:
                 continue
             w = idf[t] * (1 + 0.15 * (qn - 1))
-            for i, f in lst:
+            for x in _entries(v):
+                i, f = x >> _TF_BITS, x & _TF_MAX
                 dl = p.length[i] or 1
                 acc[i] = acc.get(i, 0.0) + w * f * (K1 + 1) / (f + K1 * (1 - B + B * dl / avg))
                 cover[i] = cover.get(i, 0) + 1

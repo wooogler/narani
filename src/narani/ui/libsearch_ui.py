@@ -70,7 +70,14 @@ CSS = """
 #md4-ls .ls-foot { display: flex; gap: 14px; padding: 7px 14px; border-top: 1px solid #ececea; font-size: 11.5px; color: #9a968e; }
 #md4-ls kbd { font-family: inherit; font-size: 11px; border: 1px solid #dcdad5; border-bottom-width: 2px; border-radius: 4px;
   padding: 0 4px; margin-right: 3px; }
-.md4-ls-btn { color: #6b6862 !important; }
+/* 홈 왼쪽 칸 맨 위 — 노션의 '검색'처럼 줄 하나 */
+.md4-ls-side { display: flex; align-items: center; gap: 10px; width: calc(100% - 16px); margin: 8px 8px 0; padding: 6px 10px;
+  border: 1px solid #e3e1dc; border-radius: 8px; background: #fff; color: #8a867e; font-size: 13.5px; cursor: pointer;
+  text-align: left; font-family: inherit; }
+.md4-ls-side:hover { border-color: #c9c6bf; color: #37352f; }
+.md4-ls-side:focus-visible { outline: 2px solid #2383e2; outline-offset: 1px; }
+.md4-ls-side .md4-ls-lab { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md4-ls-side .md4-ls-kbd { font-family: inherit; font-size: 11px; color: #9a968e; border: 1px solid #e3e1dc; border-radius: 4px; padding: 0 4px; }
 @media (prefers-color-scheme: dark) {
   #md4-ls { background: rgba(0,0,0,.45); }
   #md4-ls .ls-box { background: #252525; color: #e6e6e6; border-color: rgba(255,255,255,.12); }
@@ -86,7 +93,9 @@ CSS = """
   #md4-ls .ls-note { color: #e6e6e6; }
   #md4-ls mark { background: #7a5c00; color: #fff; }
   #md4-ls kbd { border-color: #4a4a4a; }
-  .md4-ls-btn { color: #a8a8a8 !important; }
+  .md4-ls-side { background: #232323; border-color: #3a3a3a; color: #9a9a9a; }
+  .md4-ls-side:hover { border-color: #555; color: #e6e6e6; }
+  .md4-ls-side .md4-ls-kbd { border-color: #444; color: #8a8a8a; }
 }
 """
 
@@ -124,6 +133,7 @@ HTML = """
   function open(){
     if (!isOpen()){
       root.classList.add('on');
+      pvCache = {};                                                     // 열 때마다 새로 (그사이 메모·번역이 바뀌었을 수 있다)
       fetch('/libsearch/warm', {method: 'POST'}).catch(function(){});   // 색인을 미리 (바뀐 논문만)
     }
     input.focus(); input.select();
@@ -228,6 +238,11 @@ HTML = """
   }
   function drawPreview(a, d){
     prev.textContent = '';
+    if ((!d || d.kind === 'none') && a.kind === 'note'){       // 헤더뿐인 행의 메모 — 문단은 없어도 메모는 보인다
+      prev.appendChild(el('div', 'lp-pad'));
+      prev.appendChild(noteBox(a, a.quote, a.note));
+      return;
+    }
     if (!d || d.kind === 'none') return;
     if (d.kind === 'row'){
       var top = el('div', 'lp-top');               // 맞은 자리로 내려도 어느 논문·섹션인지 보이게
@@ -380,6 +395,28 @@ def page_html() -> str:
 
     code = HTML % {"debounce": DEBOUNCE_MS, "retry": RETRY_MS, "scope": SCOPE_EVENT}
     return i18n.html(code)
+
+
+def shortcut_label() -> str:
+    """단추에 보일 단축키 — 앱은 이 컴퓨터에서 돈다(서버 = 창의 OS)."""
+    import sys
+
+    return "⌘K" if sys.platform == "darwin" else "Ctrl+K"
+
+
+def side_button() -> None:
+    """홈 왼쪽 칸 맨 위의 '서재 검색' 줄 — 누르면 창을 연다 (진짜 <button>이라 Tab·Enter로도)."""
+    from nicegui import ui
+
+    from narani.i18n import t
+
+    keys = "Meta+K" if shortcut_label() == "⌘K" else "Control+K"
+    btn = ui.element("button").classes("md4-ls-side").props(f'type=button aria-keyshortcuts="{keys}"')
+    btn.on("click", js_handler="() => window.__md4LibSearch && window.__md4LibSearch.open()")
+    with btn:
+        ui.icon("search", size="18px")
+        ui.label(t("서재 검색")).classes("md4-ls-lab")
+        ui.label(shortcut_label()).classes("md4-ls-kbd")
 
 
 def install(state: dict | None = None) -> None:  # noqa: ARG001 — 셸 설치 훅들과 같은 꼴

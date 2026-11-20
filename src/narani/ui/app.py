@@ -7119,7 +7119,9 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
         # 서재 검색 색인을 미리 채운다 (뒤 스레드) — 켜자마자 도는 다른 일과 겹치지 않게 조금 뒤에
         import threading
 
-        threading.Timer(6.0, lib_index.kick).start()
+        warm = threading.Timer(6.0, lib_index.kick)
+        warm.daemon = True   # 끄는 길을 붙들지 않게
+        warm.start()
 
     @fastapi_app.on_startup
     def _mobile_refresh() -> None:
