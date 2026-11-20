@@ -7023,6 +7023,12 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
         fastapi_app, wd_for=lambda tv: state["wd_by_token"].get(tv),
         register_token=lambda w: (_register_wd(w), wd_token(w.root))[1],
         workspace=lambda: state["upload_dir"])
+    # 서재 검색 — /libsearch (서재 전체 색인, 에이전트 캐시와 별개). 결과 논문도 같은 등록부에 올린다
+    from narani.ui import libsearch, libsearch_ui
+
+    lib_index = libsearch.register_routes(
+        fastapi_app, workspace=lambda: state["upload_dir"],
+        register_token=lambda w: (_register_wd(w), wd_token(w.root))[1])
     formula_pop.register_routes(fastapi_app, _wd_for)
     figure_ko.register_routes(fastapi_app, _wd_for)  # 그림 속 글자 번역 — /figko/{token}/{name}
     listen.register_routes(fastapi_app, lambda tv: state["wd_by_token"].get(tv))  # 듣기 — /listen/{token}
@@ -7089,6 +7095,7 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
         split_view.install()  # 같은 논문을 위아래 두 뷰어로 (알약의 '같이 보기'·툴바 단추)
         listen.install()  # 듣기 — 본문 아래 재생 막대 (웹 리더와 같은 읽을 목록·말하기 엔진)
         menu_bar.install_page(state)  # macOS 메뉴 막대의 페이지 쪽 — 디스패처와 이벤트 하나 (화면마다가 아니라 셸에 한 번)
+        libsearch_ui.install(state)  # 서재 검색 창(⌘K·홈 돋보기·메뉴) — 홈·논문 탭 어디서나
         # w-full: 없으면 sub_pages 상자가 내용 폭으로 줄어(큰 화면에서 1275px) 변환·번역 탭 splitter가 좁아진다
         ui.sub_pages({"/": index_view, "/home": home_view, "/review": review_view}).classes("w-full")
         update_banner.install(state)  # 새 버전 알림 — 셸에 붙어 탭을 옮겨도 남는다
@@ -7106,6 +7113,13 @@ def run(wd: WorkDir | None = None, upload_dir: Path | None = None,
     @fastapi_app.on_startup
     def _check_update() -> None:
         update_banner.start_check(state)  # 켤 때마다 GitHub에 새 커밋이 있는지 (백그라운드)
+
+    @fastapi_app.on_startup
+    def _warm_library_search() -> None:
+        # 서재 검색 색인을 미리 채운다 (뒤 스레드) — 켜자마자 도는 다른 일과 겹치지 않게 조금 뒤에
+        import threading
+
+        threading.Timer(6.0, lib_index.kick).start()
 
     @fastapi_app.on_startup
     def _mobile_refresh() -> None:

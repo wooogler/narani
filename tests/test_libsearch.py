@@ -247,3 +247,81 @@ def test_route_warm(client):
     c, *_ = client
     r = c.post("/libsearch/warm").json()
     assert r["papers"] == 2 and "indexing" in r
+
+
+# --- 창·메뉴 ------------------------------------------------------------
+
+
+def test_menu_item_and_dispatch():
+    from narani.ui import menu_bar
+
+    by = {it.cmd: menu_bar.shortcut_label(it) for it in menu_bar.items()}
+    assert by["lib_search"] == "⌘K" and by["find"] == "⌘F"     # ⌘F는 그대로 페이지 찾기
+    assert "case 'lib_search':" in menu_bar.DISPATCH_JS and "__md4LibSearch.menu()" in menu_bar.DISPATCH_JS
+    assert menu_bar.na_message("lib_search").startswith("서재 검색은")
+
+
+def test_modal_html_is_formatted_and_escapes_nothing_from_papers():
+    from narani.ui import libsearch_ui
+
+    html = libsearch_ui.page_html()
+    assert "%(" not in html and "⦃" not in html
+    assert f"'{libsearch_ui.SCOPE_EVENT}'" in html and "window.__md4LibSearch" in html
+    assert "innerHTML" not in html                       # 논문 글은 textContent로만
+    assert "isComposing" in html                         # 한글 조합 중 Enter는 IME 몫
+    assert ".cm-editor" in html                          # 편집기의 ⌘K(링크)는 건드리지 않는다
+
+
+def test_pick_collection_sets_active_and_goes_home(tmp_path, monkeypatch):
+    from nicegui import ui
+
+    from narani.ui import agent_panel, libsearch_ui
+
+    monkeypatch.setattr(projects, "PROJECTS_PATH", tmp_path / "projects.json")
+    projects._save({"active": "", "projects": [{"id": "p1", "name": "A", "created_at": 0, "root": "", "parent": ""}]})
+    went: list = []
+    monkeypatch.setattr(ui.navigate, "to", lambda url: went.append(("nav", url)))
+    monkeypatch.setattr(agent_panel, "_nav", lambda url, refresh=False: went.append(("refresh", url, refresh)))
+    libsearch_ui.pick_collection({"id": "ghost", "home": True})
+    assert went == [] and projects.active() == ""
+    libsearch_ui.pick_collection({"id": "p1", "home": False})
+    assert projects.active() == "p1" and went == [("nav", "/home")]
+    libsearch_ui.pick_collection({"id": "p1", "home": True})
+    assert went[-1] == ("refresh", "/home", True)
+
+
+def test_snippet_centres_on_the_window_with_most_distinct_terms():
+    text = "trust " + "filler words here " * 40 + "we calibrate nothing but trust calibration matters " + "tail " * 60
+    s = libsearch.snippet(text, {"trust", "calibration"})
+    marked = {s["text"][a:b] for a, b in s["hits"]}
+    assert "calibration" in marked and "trust" in marked
+    assert s["text"].startswith("…")
+
+
+def test_low_coverage_bigram_noise_is_dropped(lib):
+    idx, a, _b, _ws = lib
+    write_notes(a, [item("n9", 3, "We interviewed 18 instructors", "인터페이스 설계 요청")])
+    _bump(a.annotations_json)
+    idx.refresh()
+    assert idx.search("참가자 인터뷰")["notes"] == []           # '인터' 하나만 겹친다
+    assert [n["id"] for n in idx.search("인터페이스 설계")["notes"]] == ["n9"]
+
+
+def test_route_preview_row_paper_collection(client):
+    c, reg, a, b = client
+    r = c.get("/libsearch", params={"q": "설문조사"}).json()
+    g = r["passages"][0]
+    pv = c.get("/libsearch/preview", params={"kind": "row", "token": g["token"], "row": g["rows"][0]["row"],
+                                             "q": "설문조사"}).json()
+    assert pv["kind"] == "row" and "drivers" in pv["en"]["text"] and pv["ko"]["hits"]   # 원문·번역을 둘 다
+    pp = c.get("/libsearch/preview", params={"kind": "paper", "token": g["token"], "q": "x"}).json()
+    assert pp["title"] == "Trust in Automation" and pp["collections"] == ["Trust papers"] and pp["rows"]
+    pc = c.get("/libsearch/preview", params={"kind": "collection", "id": "p1"}).json()
+    assert pc == {"kind": "collection", "path": "Trust papers", "count": 1, "titles": ["Trust in Automation"]}
+    # 내보낸 적 없는 token·모르는 컬렉션은 빈 미리보기
+    assert c.get("/libsearch/preview", params={"kind": "row", "token": "nope", "row": 0}).json() == {"kind": "none"}
+    assert c.get("/libsearch/preview", params={"kind": "collection", "id": "ghost"}).json() == {"kind": "none"}
+    # 메모가 걸린 문단의 미리보기는 그 메모도 싣는다
+    n = c.get("/libsearch", params={"q": "sample size"}).json()["notes"][0]
+    pn = c.get("/libsearch/preview", params={"kind": "row", "token": n["token"], "row": n["row"], "q": "sample"}).json()
+    assert [x["id"] for x in pn["notes"]] == ["n1"]

@@ -1661,5 +1661,17 @@
  "알 수 없는 논문 {n}편은 건너뜀": "Se omiten {n} artículos desconocidos",
  "초록 훑기": "Ojear resúmenes",
  "컬렉션 만들기": "Crear colección",
- "하위 컬렉션으로 나누기": "Dividir en subcolecciones"
+ "하위 컬렉션으로 나누기": "Dividir en subcolecciones",
+ "서재 검색": "Buscar en la biblioteca",
+ "제목·저자·컬렉션·본문·메모 검색…": "Buscar títulos, autores, colecciones, texto, notas…",
+ "옮기기": "Mover",
+ "논문 제목·저자·컬렉션 이름, 그리고 모든 논문의 본문(원문·번역)과 내 하이라이트·메모에서 찾습니다.": "Busca en títulos, autores y nombres de colecciones, además del texto completo (original y traducción) de todos los artículos y tus resaltados y notas.",
+ "논문": "Artículos",
+ "이 논문에서 {n}곳 더": "{n} más en este artículo",
+ "내 하이라이트·메모": "Mis resaltados y notas",
+ "찾은 것이 없습니다.": "Sin resultados.",
+ "색인 만드는 중…": "Indexando…",
+ "검색하지 못했습니다.": "No se pudo buscar.",
+ "서재 검색…": "Buscar en la biblioteca…",
+ "서재 검색은 홈이나 논문 화면에서 쓸 수 있습니다.": "La búsqueda en la biblioteca está disponible en el inicio o en un artículo."
 }

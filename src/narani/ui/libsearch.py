@@ -41,8 +41,10 @@ MAX_COLLECTIONS = 6     # 컬렉션 결과 수
 MAX_BODY_PAPERS = 8     # 본문 결과를 묶을 논문 수
 MAX_ROWS_PER_PAPER = 3  # 논문 하나에 보일 문단 수
 MAX_NOTES = 10          # 하이라이트·메모 결과 수
-SNIPPET = 220           # 문단 미리보기 길이(글자)
+SNIPPET = 220           # 목록의 문단 미리보기 길이(글자)
+PREVIEW = 2400          # 오른쪽 미리보기 칸의 문단 길이 상한 (섹션 통째인 행은 맞은 둘레만)
 K1, B = 1.5, 0.75
+MIN_COVER = 0.5         # 질문의 서로 다른 토큰 중 이만큼은 맞아야 결과에 든다
 
 
 # --- 텍스트 정리·강조 ---------------------------------------------------
@@ -69,30 +71,35 @@ def norm(text: str) -> str:
     return re.sub(r"\s+", "", unicodedata.normalize("NFKC", text or "").casefold())
 
 
-def hit_spans(text: str, qtoks: set[str]) -> list[list[int]]:
-    """평문에서 질문 토큰에 맞는 자리들 [[시작, 끝], …] — tokenize와 같은 규칙(단어 스테밍·바이그램)으로 찾는다."""
+def _raw_spans(text: str, qtoks: set[str]) -> list[tuple[int, int, str]]:
+    """평문에서 질문 토큰에 맞는 자리들 (시작, 끝, 토큰) — tokenize와 같은 규칙(단어 스테밍·바이그램)으로 찾는다."""
     if not text or not qtoks:
         return []
     low = text.lower()
     if len(low) != len(text):   # 소문자로 바꾸며 길이가 변하는 글자(드묾) — 자리가 어긋나니 원문 그대로
         low = text
-    spans: list[tuple[int, int]] = []
+    spans: list[tuple[int, int, str]] = []
     for m in retrieval._WORD_RE.finditer(low):
         w = m.group(0).rstrip(".-")
-        if w and retrieval._stem(w) in qtoks:
-            spans.append((m.start(), m.start() + len(w)))
+        tok = retrieval._stem(w) if w else ""
+        if tok in qtoks:
+            spans.append((m.start(), m.start() + len(w), tok))
     for m in retrieval._BIGRAM_RE.finditer(low):
         s, base = m.group(0), m.start()
         if len(s) == 1:
             if s in qtoks:
-                spans.append((base, base + 1))
+                spans.append((base, base + 1, s))
             continue
         for i in range(len(s) - 1):
             if s[i:i + 2] in qtoks:
-                spans.append((base + i, base + i + 2))
+                spans.append((base + i, base + i + 2, s[i:i + 2]))
     spans.sort()
+    return spans
+
+
+def _merge(spans: list[tuple[int, int, str]]) -> list[list[int]]:
     out: list[list[int]] = []
-    for a, b in spans:          # 겹치거나 붙은 자리는 하나로 ('설문'+'문조'+'조사' → '설문조사')
+    for a, b, _t in spans:      # 겹치거나 붙은 자리는 하나로 ('설문'+'문조'+'조사' → '설문조사')
         if out and a <= out[-1][1]:
             out[-1][1] = max(out[-1][1], b)
         else:
@@ -100,12 +107,29 @@ def hit_spans(text: str, qtoks: set[str]) -> list[list[int]]:
     return out
 
 
+def hit_spans(text: str, qtoks: set[str]) -> list[list[int]]:
+    """평문에서 질문 토큰에 맞는 자리들 [[시작, 끝], …] (붙은 자리는 하나로)."""
+    return _merge(_raw_spans(text, qtoks))
+
+
+def _best_start(spans: list[tuple[int, int, str]], width: int) -> int:
+    """질문의 서로 다른 낱말을 가장 많이 담는 창의 첫 맞은 자리 — 섹션 통째인 긴 행에서 '첫 낱말'에만 서지 않게."""
+    best, best_key = spans[0][0], (-1, -1)
+    for i, (a, _b, _t) in enumerate(spans):
+        inside = [t for x, _y, t in spans[i:] if x < a + width * 2 // 3]
+        key = (len(set(inside)), len(inside))
+        if key > best_key:
+            best, best_key = a, key
+    return best
+
+
 def snippet(text: str, qtoks: set[str], width: int = SNIPPET) -> dict:
-    """첫 맞은 자리 둘레를 width 글자쯤 잘라 {text, hits}. 맞은 데가 없으면 앞머리."""
-    spans = hit_spans(text, qtoks)
+    """맞은 자리 둘레를 width 글자쯤 잘라 {text, hits}. 맞은 데가 없으면 앞머리."""
+    raw = _raw_spans(text, qtoks)
+    spans = _merge(raw)
     if len(text) <= width:
         return {"text": text, "hits": spans}
-    first = spans[0][0] if spans else 0
+    first = _best_start(raw, width) if raw else 0
     start = max(0, first - width // 3)
     if start:
         sp = text.rfind(" ", 0, start)
@@ -191,6 +215,8 @@ def _score(groups: list[tuple[object, _Postings]], stats: _Stats, qtoks: list[st
         n_q = len(wanted)
         for i, s in acc.items():
             c = cover[i] / n_q
+            if c < MIN_COVER:       # 바이그램 하나만 겹친 것('인터뷰' ↔ '인터페이스') — 서재 전체에선 잡음이다
+                continue
             out.append((s * c * c, owner, i))
     out.sort(key=lambda x: -x[0])
     return out
@@ -453,6 +479,47 @@ class LibraryIndex:
                         "note": snippet(n.note, qset, 160) if n.note else None})
         return out
 
+    # ---- 미리보기 (창 오른쪽 칸) ----
+    def preview_row(self, root: str, row: int, q: str) -> dict | None:
+        """문단 하나 통째 — 원문·번역을 둘 다, 강조 자리와 함께 (긴 섹션 행은 맞은 둘레만)."""
+        qset = set(retrieval.tokenize(q or ""))
+        with self._lock:
+            e = self._entries.get(root)
+            r = next((x for x in e.rows if x.row == row), None) if e else None
+            if r is None:
+                return None
+            notes = [{"id": n.id, "color": n.color, "quote": n.quote, "note": n.note}
+                     for n in e.notes if n.row == row]
+            return {"kind": "row", "title": e.meta["title"], "heading": r.heading[:200],
+                    "en": snippet(r.en, qset, PREVIEW) if r.en else None,
+                    "ko": snippet(r.ko, qset, PREVIEW) if r.ko else None, "notes": notes[:6]}
+
+    def preview_paper(self, root: str, q: str, projs: list[dict] | None = None) -> dict | None:
+        """논문 — 서지·소속 컬렉션·앞머리(초록 자리) 두 문단."""
+        qset = set(retrieval.tokenize(q or ""))
+        names = {p["id"]: p.get("name") or "" for p in projs or []}
+        with self._lock:
+            e = self._entries.get(root)
+            if e is None:
+                return None
+            m = e.meta
+            head = [r for r in e.rows if len(r.en) > 200][:2] or e.rows[:2]
+            return {"kind": "paper", "title": m["title"], "title_tr": m["title_tr"], "authors": m["authors"][:12],
+                    "year": m["year"], "venue": m["venue"],
+                    "collections": [names[p] for p in m["pids"] if p in names],
+                    "rows": [{"heading": r.heading[:120], "en": snippet(r.en, qset, 700),
+                              "ko": snippet(r.ko, qset, 700) if r.ko else None} for r in head],
+                    "notes": len(e.notes)}
+
+    def papers_in(self, pid: str, projs: list[dict]) -> list[str]:
+        """컬렉션(하위 포함)의 논문 제목들 — 최근순."""
+        from narani import projects
+
+        ids = {pid, *projects.descendants(pid, projs)}
+        with self._lock:
+            got = [e.meta for e in self._entries.values() if ids & set(e.meta["pids"])]
+        return [m["title"] for m in sorted(got, key=lambda m: -m["mtime"])]
+
     def stats(self) -> dict:
         with self._lock:
             return {"papers": len(self._entries), "rows": self._body.n, "notes": self._notes.n,
@@ -523,9 +590,13 @@ def register_routes(fastapi_app, workspace: Callable[[], Path],  # noqa: ANN001
 
     idx = index or shared(workspace)
 
+    roots: dict[str, str] = {}   # 결과로 내보낸 token → 논문 경로 (미리보기가 token으로 묻는다)
+
     def link(root: str) -> dict:
         wd = WorkDir(Path(root))
-        return {"token": register_token(wd), "url": review_url(wd.root)}
+        tok = register_token(wd)
+        roots[tok] = root
+        return {"token": tok, "url": review_url(wd.root)}
 
     @fastapi_app.get("/libsearch")
     def _search(q: str = ""):  # noqa: ANN202
@@ -538,6 +609,21 @@ def register_routes(fastapi_app, workspace: Callable[[], Path],  # noqa: ANN001
         res["indexing"] = idx.busy()
         res["ms"] = round((time.perf_counter() - t0) * 1000, 1)
         return res
+
+    @fastapi_app.get("/libsearch/preview")
+    def _preview(kind: str = "", token: str = "", row: int = -1, id: str = "", q: str = ""):  # noqa: A002, ANN202
+        """창 오른쪽 칸 — 고른 결과 하나의 자세한 모습 (문단 전체·논문 서지·컬렉션의 논문들)."""
+        out = None
+        if kind == "row" and token in roots:
+            out = idx.preview_row(roots[token], row, q)
+        elif kind == "paper" and token in roots:
+            out = idx.preview_paper(roots[token], q, projects.all_projects())
+        elif kind == "collection" and projects.exists(id):
+            projs = projects.all_projects()
+            titles = idx.papers_in(id, projs)
+            out = {"kind": "collection", "path": projects.path_name(id, projs), "count": len(titles),
+                   "titles": titles[:15]}
+        return out or {"kind": "none"}
 
     @fastapi_app.post("/libsearch/warm")
     def _warm():  # noqa: ANN202 — 창을 열 때 (뒤에서 새로 고치기만 띄운다)

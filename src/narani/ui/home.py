@@ -2630,6 +2630,9 @@ def build_home(state: dict) -> None:
 
                 ui.input(placeholder=t("제목·저자·venue 검색…")).on_value_change(on_search) \
                     .props("dense outlined clearable data-md4menu=search").classes("flex-grow")
+                # 서재 검색(⌘K) — 본문·메모까지 서재 전체에서. 위 입력칸은 카드만 거르는 빠른 필터로 남긴다
+                ui.button(icon="search", color=None).props(f'flat dense round aria-label="{t("서재 검색")}"') \
+                    .classes("md4-ls-btn").on("click", js_handler="() => window.__md4LibSearch && window.__md4LibSearch.open()")
                 ui.select({k: t(v) for k, v in _SORTS.items()}, value="recent", on_change=on_sort).props("dense outlined").classes("w-32")
                 phone_chip()
                 with ui.element("div").classes("md4-upwrap"):
