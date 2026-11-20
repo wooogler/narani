@@ -482,7 +482,12 @@ async def list_papers(ctx: RunContext[Deps], query: str | None = None,
 
 
 async def list_projects(ctx: RunContext[Deps]) -> str:
-    """컬렉션(논문 묶음) 목록과 각 컬렉션의 논문 수를 돌려준다. 한 논문이 여러 컬렉션에 속할 수 있다."""
+    """컬렉션(논문 묶음) 목록을 트리 순서로 돌려준다 — 하위 컬렉션은 들여쓰고 '위 / 아래' 경로 이름으로.
+
+    편수는 '직접 N편'(그 컬렉션에 직접 넣은 논문)과, 하위 컬렉션이 있으면 '하위 포함 M편'(자기와 하위
+    컬렉션 논문의 고유 편수 — 홈에서 위 컬렉션을 고르면 보이는 수)을 나눠 적는다. 한 논문이 여러
+    컬렉션에 속할 수 있다.
+    """
     from narani import config, projects
     from narani.workdir import recent_workdirs
 
@@ -490,20 +495,33 @@ async def list_projects(ctx: RunContext[Deps]) -> str:
 
     def work() -> str:
         items = projects.all_projects()
-        counts: dict[str, int] = {}
-        loose = 0
         known = {p["id"] for p in items}
+        members: dict[str, set[str]] = {}
+        loose = 0
         for r in recent_workdirs(Path(ws), limit=100_000):
             ids = [i for i in r.get("projects") or [] if i in known]
             loose += not ids
             for i in ids:
-                counts[i] = counts.get(i, 0) + 1
+                members.setdefault(i, set()).add(str(r["root"]))
         if not items:
             return f"컬렉션이 없습니다 (논문 {loose}편은 모두 미분류)."
-        lines = [f"- id {p['id']}: {p['name']} — {counts.get(p['id'], 0)}편" for p in items]
-        return "컬렉션:\n" + "\n".join(lines) + f"\n- (미분류) — {loose}편"
+        lines = []
+        for p, depth in projects.tree(items):
+            pid = p["id"]
+            n = len(members.get(pid, ()))
+            subs = projects.descendants(pid, items)
+            count = f"직접 {n}편"
+            if subs:
+                union = set(members.get(pid, ()))
+                for s in subs:
+                    union |= members.get(s, set())
+                count += f" · 하위 포함 {len(union)}편 (하위 컬렉션 {len(subs)}개)"
+            name = projects.path_name(pid, items) if depth else p["name"]
+            lines.append(f"{'  ' * depth}- id {pid}: {name} — {count}")
+        return ("컬렉션 (트리 순서, 들여쓴 줄은 바로 위 컬렉션의 하위 컬렉션):\n" + "\n".join(lines)
+                + f"\n- (미분류) — {loose}편")
 
-    return _cap(await asyncio.to_thread(work))
+    return _cap(await asyncio.to_thread(work), LIST_MAX)
 
 
 async def get_bibtex(ctx: RunContext[Deps], token: str | None = None) -> str:
@@ -917,22 +935,42 @@ DESCRIBE: dict[str, Callable[[dict], str]] = {
 }
 
 
-def describe_call(name: str, args: dict, root: Path | str | None = None) -> str:
+def describe_call(name: str, args: dict, root: Path | str | None = None,
+                  papers: dict | None = None) -> str:
     """승인 카드에 보일 사람용 한 줄. 모르는 tool은 이름만.
 
     root는 그 호출이 쓸 논문의 작업 폴더(세션 `papers`에서 찾은 것) — 비용 tool은 그 논문을 읽어
-    섹션 제목·모델을 보인다. 없으면 인자만으로 짧게.
+    섹션 제목·모델을 보인다. 없으면 인자만으로 짧게. papers(세션의 token → 작업 폴더)는 여러 논문을
+    받는 tool(split_collection)이 편수를 셀 때 쓴다.
     """
-    from narani.ui.agent import jobtools
+    from narani.ui.agent import collection_tools, jobtools
 
     a = args if isinstance(args, dict) else {}
     try:
         if name in jobtools.DESCRIBE:
             return jobtools.DESCRIBE[name](a, Path(root) if root else None)
+        if name in collection_tools.DESCRIBE:
+            return collection_tools.DESCRIBE[name](a, papers)
         fn = DESCRIBE.get(name)
         return fn(a) if fn is not None else f"{name} 실행"
     except Exception:  # noqa: BLE001 — 깨진 인자여도 카드는 뜬다
         return f"{name} 실행"
+
+
+def detail_call(name: str, args: dict, papers: dict | None = None) -> str:
+    """승인 카드의 '자세히'에 인자 JSON 대신 보일 여러 줄 (없으면 "" — 카드는 인자를 보인다).
+
+    split_collection처럼 인자가 token 목록이라 JSON으로는 읽을 수 없는 tool만 쓴다.
+    """
+    from narani.ui.agent import collection_tools
+
+    fn = collection_tools.DETAIL.get(name)
+    if fn is None:
+        return ""
+    try:
+        return fn(args if isinstance(args, dict) else {}, papers)
+    except Exception:  # noqa: BLE001 — 펼침 목록 때문에 카드가 깨지면 안 된다
+        return ""
 
 
 WRITE_TOOLS = [write_note, add_highlight, set_project_membership, remember]
@@ -945,3 +983,8 @@ TOOLS = [search_paper, read_rows, outline, list_note_tabs, read_notes, read_high
 from narani.ui.agent import glossary_tools  # noqa: E402
 
 TOOLS = [*TOOLS, *glossary_tools.TOOLS]
+
+# 컬렉션 정리(하위 컬렉션 만들기·한꺼번에 나누기·초록 훑기) — 같은 이유로 맨 아래에서
+from narani.ui.agent import collection_tools  # noqa: E402
+
+TOOLS = [*TOOLS, *collection_tools.TOOLS]

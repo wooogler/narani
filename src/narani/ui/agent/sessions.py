@@ -94,23 +94,28 @@ class Session:
 
     @property
     def pending(self) -> dict | None:
-        """승인 대기 중인 tool 호출 — `{"calls": [{id, name, args, description}], "token"}` 또는 None.
+        """승인 대기 중인 tool 호출 — `{"calls": [{id, name, args, description, detail?}], "token"}` 또는 None.
 
         description은 승인 카드에 보일 사람용 한 줄(`tools.describe_call`), token은 `pending_token`.
         """
         req = getattr(self.conversation, "deferred_tool_requests", None)
         if req is None:
             return None
-        from narani.ui.agent.tools import describe_call
+        from narani.ui.agent.tools import describe_call, detail_call
 
         calls = []
         for p in [*req.approvals, *req.calls]:
             args = p.args_as_dict()
             # 그 호출이 쓸 논문 — token 인자, 없으면 승인을 요청한 때 화면의 논문 (재개 때와 같은 규칙)
             tok = str(args.get("token") or "").strip() or self.pending_token
-            calls.append({"id": p.tool_call_id, "name": p.tool_name, "args": args,
-                          "description": describe_call(p.tool_name, args,
-                                                       self.papers.get(tok) if tok else None)})
+            call = {"id": p.tool_call_id, "name": p.tool_name, "args": args,
+                    "description": describe_call(p.tool_name, args,
+                                                 self.papers.get(tok) if tok else None,
+                                                 papers=self.papers)}
+            detail = detail_call(p.tool_name, args, self.papers)
+            if detail:      # '자세히'에 인자 JSON 대신 보일 여러 줄 (split_collection의 컬렉션별 논문 제목)
+                call["detail"] = detail
+            calls.append(call)
         return {"calls": calls, "token": self.pending_token} if calls else None
 
     def meta(self) -> dict:
