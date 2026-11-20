@@ -347,8 +347,9 @@ def test_title_save_keeps_suggestions_saved_meanwhile(tmp_path):
 def test_panel_asks_fallback_and_shows_starter_chips():
     js = agent_panel.JS
     assert "if (suggestOn && !(L.done.suggestions || []).length) moreSuggest(at, L.done.turn_id);" in js
-    body = js[js.index("function moreSuggest(id, tid){"):][:600]
+    body = js[js.index("function moreSuggest(id, tid){"):js.index("function paintSugg(")]
     assert "'/suggest'" in body and "turns[i].id === tid" in body and ".catch(function(){})" in body
+    assert "render()" not in body and "paintSugg(slot)" in body   # 늦게 와도 목록을 다시 그리지 않는다
     empty = js[js.index("function emptyNode(){"):js.index("function moreSuggest(")]
     assert "if (!suggestOn)" in empty and "suggestNode(items)" in empty
     assert "md4T('이 컬렉션을 하위 컬렉션으로 나눠 줘')" in empty and "a.kind === 'collection'" in empty

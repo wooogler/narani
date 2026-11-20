@@ -1646,8 +1646,19 @@ JS = r"""
       .then(function(j){
         if (!j || !j.suggestions || !j.suggestions.length || !sess || sess.id !== id) return;
         for (var i = 0; i < turns.length; i++)
-          if (turns[i].id === tid){ turns[i].suggestions = j.suggestions; render(); return; }
+          if (turns[i].id === tid){ turns[i].suggestions = j.suggestions; break; }
+        // 다시 그리지 않고 칩 자리만 — 위로 올려 읽던 자리·펴 둔 '메모로' 카드·선택을 건드리지 않는다
+        var slot = list.querySelector('.ag-sugg-slot');
+        if (!slot || !suggestionsNow()) return;
+        var stick = nearBottom();
+        paintSugg(slot);
+        if (stick) list.scrollTop = list.scrollHeight;
       }).catch(function(){});
+  }
+  function paintSugg(slot){
+    slot.innerHTML = '';
+    var sg = suggestionsNow();
+    if (sg) slot.appendChild(suggestNode(sg));
   }
   function nearBottom(){ return list.scrollHeight - list.scrollTop - list.clientHeight < 80; }
   function renderHead(){
@@ -1673,8 +1684,8 @@ JS = r"""
     turns.forEach(function(t){ list.appendChild(turnNode(t)); list.appendChild(jobsAfter(t.id, used)); });
     // 턴을 못 찾은 작업(이 창이 붙인 임시 턴 id 등)은 끝에
     jobs.forEach(function(j){ if (!used[j.id]) list.appendChild(jobNode(j)); });
-    var sg = suggestionsNow();
-    if (sg) list.appendChild(suggestNode(sg));
+    var slot = document.createElement('div');   // 다음 입력 제안 자리 — 늦게 온 제안(moreSuggest)도 여기만 채운다
+    slot.className = 'ag-sugg-slot'; list.appendChild(slot); paintSugg(slot);
     if (live) list.appendChild(liveNode());
     else { liveText = null; liveTools = null; }
     if (pending) list.appendChild(approvalNode(pending, true));   // 진행 중 말풍선 아래에
