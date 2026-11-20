@@ -579,6 +579,14 @@ def agent_follow_screen() -> bool:
     return bool(load_config().get("ui", {}).get("agent_follow_screen", True))
 
 
+def agent_suggest_next() -> bool:
+    """에이전트 답 끝에 다음 입력 제안 칩을 띄우나 — [ui].agent_suggest_next, 기본 켜짐.
+
+    끄면 지시문에서도 빼 모델이 제안을 쓰지 않는다(답 글자 몇십 개 아낌).
+    """
+    return bool(load_config().get("ui", {}).get("agent_suggest_next", True))
+
+
 def set_default(field: str, value: str) -> None:
     """default_provider 등 최상위 설정 갱신."""
     cfg = load_config()

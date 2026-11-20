@@ -346,7 +346,8 @@ def register_routes(fastapi_app, wd_for: Callable[[str], WorkDir | None],  # noq
         ok, reason = readiness(make)
         provider, model = config.resolve_chat_choice()
         return {"provider": provider, "model": model, "models": model_options(),
-                "ready": ok, "reason": reason, "follow": config.agent_follow_screen()}
+                "ready": ok, "reason": reason, "follow": config.agent_follow_screen(),
+                "suggest": config.agent_suggest_next()}
 
     def _load_or_404(sid: str) -> sessions.Session:
         s = sessions.load(sid)
@@ -536,10 +537,12 @@ def register_routes(fastapi_app, wd_for: Callable[[str], WorkDir | None],  # noq
         return _models_payload()
 
     @fastapi_app.put("/agent/prefs")
-    def _put_prefs(body: dict):  # noqa: ANN202 — 창 설정(톱니): 화면을 따라 대화 바꾸기 ([ui] 전역)
+    def _put_prefs(body: dict):  # noqa: ANN202 — 창 설정(톱니): 화면을 따라 대화 바꾸기·다음 입력 제안 ([ui] 전역)
         if "follow" in (body or {}):
             config.set_section_value("ui", "agent_follow_screen", bool(body["follow"]))
-        return {"ok": True, "follow": config.agent_follow_screen()}
+        if "suggest" in (body or {}):
+            config.set_section_value("ui", "agent_suggest_next", bool(body["suggest"]))
+        return {"ok": True, "follow": config.agent_follow_screen(), "suggest": config.agent_suggest_next()}
 
     @fastapi_app.put("/agent/model")
     def _put_model(body: dict):  # noqa: ANN202 — 에이전트가 쓸 모델 고르기 ([chat] 설정 공유)
