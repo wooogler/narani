@@ -1636,5 +1636,20 @@
  "홈은 이미 다른 창에 떠 있습니다.": "Home is already open in another window.",
  "도는 작업은 탭을 닫아도 계속됩니다": "Running jobs keep going after you close the tab",
  "그림 설명 있음": "Has a description",
- "전송": "Send"
+ "전송": "Send",
+ "컬렉션 만들기 — {why}": "Create collection — {why}",
+ "컬렉션 '{name}'은 이미 있어 새로 만들지 않고 그대로 씀": "Collection '{name}' already exists — using it instead of creating a new one",
+ "'{parent}' 안에 하위 컬렉션 '{name}' 만들기": "Create subcollection '{name}' in '{parent}'",
+ "새 컬렉션 '{name}' 만들기": "Create collection '{name}'",
+ "하위 컬렉션으로 나누기 — {why}": "Split into subcollections — {why}",
+ "'{parent}' 안에 새 하위 컬렉션 {n}개 · 논문 {m}편 배치": "{n} new subcollections in '{parent}' · place {m} papers",
+ "'{parent}' 하위 컬렉션에 논문 {m}편 배치": "Place {m} papers in subcollections of '{parent}'",
+ "위 컬렉션에서 직접 소속 빼기": "Remove direct membership in the parent collection",
+ "{name} (새) — {n}편": "{name} (new) — {n} papers",
+ "{name} — {n}편": "{name} — {n} papers",
+ "이미 들어 있음": "already in it",
+ "알 수 없는 논문 {n}편은 건너뜀": "{n} unknown papers skipped",
+ "초록 훑기": "Skim abstracts",
+ "컬렉션 만들기": "Create collection",
+ "하위 컬렉션으로 나누기": "Split into subcollections"
 }

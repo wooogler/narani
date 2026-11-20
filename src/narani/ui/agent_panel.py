@@ -1215,10 +1215,13 @@ JS = r"""
     goto_row: md4T('행으로 이동'), open_paper: md4T('논문 열기'),
     write_note: md4T('메모 쓰기'), add_highlight: md4T('하이라이트 추가'),
     set_project_membership: md4T('컬렉션 소속 바꾸기'), remember: md4T('기억하기'),
+    skim_papers: md4T('초록 훑기'), create_collection: md4T('컬렉션 만들기'),
+    split_collection: md4T('하위 컬렉션으로 나누기'),
     retranslate_sections: md4T('섹션 재번역'), run_glossary: md4T('용어집 만들기')};
   // 승인 카드의 아이콘 — Material Icons 글꼴(NiceGUI가 싣는다)의 이름
   var TOOL_ICON = {write_note: 'edit_note', add_highlight: 'border_color',
     set_project_membership: 'bookmark_add', remember: 'psychology',
+    create_collection: 'create_new_folder', split_collection: 'account_tree',
     retranslate_sections: 'translate', run_glossary: 'menu_book'};
   function argsText(args){
     if (!args || typeof args !== 'object') return args ? String(args) : '';
@@ -1479,7 +1482,7 @@ JS = r"""
       row.appendChild(top);
       if (hasArgs){
         var pre = document.createElement('pre'); pre.className = 'ag-appr-args';
-        pre.textContent = apprArgs(c.args);
+        pre.textContent = c.detail || apprArgs(c.args);   // detail: 서버가 지은 사람용 목록 (컬렉션별 논문 제목)
         row.appendChild(pre);
       }
       box.appendChild(row);

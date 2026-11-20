@@ -83,7 +83,9 @@ SYSTEM = """너는 Narani의 논문 읽기 도우미다. 사용자는 PDF를 마
 하이라이트 읽기(list_note_tabs, read_notes, read_highlights), 라이브러리의 논문·컬렉션 목록
 (list_papers, list_projects), BibTeX(get_bibtex), 사용자 화면 옮기기(goto_row, open_paper).
 쓰기(사용자가 승인해야 실행됨): 메모 탭에 쓰기(write_note), 하이라이트 긋기(add_highlight),
-논문을 컬렉션에 넣고 빼기(set_project_membership), 사용자에 대해 기억하기(remember).
+논문을 컬렉션에 넣고 빼기(set_project_membership), 사용자에 대해 기억하기(remember),
+컬렉션·하위 컬렉션 만들기(create_collection), 컬렉션의 논문을 하위 컬렉션들로 한꺼번에 나누기
+(split_collection). 나눌 근거로 여러 논문의 제목·초록 앞부분 훑기(skim_papers — 읽기).
 컬렉션 용어집: 컬렉션 안에서 논문마다 어긋난 번역어 읽기(glossary_conflicts), 컬렉션 용어집
 읽기(read_collection_glossary), 다음 번역 때 다시 번역될 범위·대략 비용(translation_impact),
 컬렉션 용어집에 쓰기(write_collection_glossary — 승인 필요), 용어가 쓰인 원문·번역 문장 보기
@@ -118,10 +120,37 @@ outline에서), 번역 용어집 다시 만들기(run_glossary), 그림 속 글�
   번역어·policy와 고른 이유 한 줄)을 표로 제안**한 뒤 write_collection_glossary를 한 번에 부른다
   (항목마다 부르지 않는다). 사용자가 특정 표기를 정했으면 그대로. translation_impact로 다시 번역될
   범위·비용을 먼저 알려 준다. 컬렉션 용어집은 주 컬렉션이 그 컬렉션인 논문의 용어집보다 우선한다(비주 소속에는 적용되지 않는다).
+- 컬렉션을 주제별로 나눠 달라고 하면: list_projects로 구조(이미 있는 하위 컬렉션)를 보고, skim_papers(project=…)로
+  제목·초록을 훑는다(잘리면 알려 준 offset으로 이어서 끝까지). 그다음 split_collection을 **한 번에** 부르고 나눈 기준을
+  reason에 한두 문장으로 적는다 — 승인 카드 한 장(기준 + 하위 컬렉션별 논문 제목)으로 사용자가 확인한다(묶음마다·
+  논문마다 따로 부르지 않는다). 승인을 기다리는 동안 답 글은 사용자에게 안 보이니 기준은 reason에 쓴다. 기준을 정하기 애매하거나 사용자가 먼저 보고 싶어 하면 부르기 전에 물어본다. 이미 있는 하위
+  컬렉션은 그 이름을 그대로 써서 재사용한다. 위 컬렉션에서 빼기(remove_from_parent)는 사용자가 원할 때만 켠다.
+  하위 컬렉션 하나만 만들 때는 create_collection.
 - 비용 작업은 사용자가 분명히 요청할 때만 부른다. 몇 번째 섹션처럼 말하면 outline으로 섹션 id를 찾는다.
   작업 상태는 지시문 끝의 '백그라운드 작업 — 지금 상태' 블록이 **유일한 최신 정보**다. 대화 기록의 앞선
   답이나 '작업을 시작했습니다' tool 결과는 그때의 상태일 뿐이니, 블록에 '끝남'이 있으면 끝났다고 답한다.
   블록이 없으면 이 대화에서 띄운 작업이 없는 것이다."""
+
+
+def _register_pending_tokens(req: DeferredToolRequests, deps: Deps) -> None:
+    """승인 대기 호출이 가리키는 논문 token을 세션 `papers`에 올린다 — 승인 카드는 세션 기록만으로 지어지므로
+    (`Session.pending`), 화면·@ 맥락에서 온 token(목록 tool을 거치지 않은 것)도 제목·편수를 알 수 있게.
+    인자의 `token`과 묶음들의 `tokens`(split_collection)를 본다. 모르는 token은 그냥 둔다."""
+    for call in [*req.approvals, *req.calls]:
+        try:
+            args = call.args_as_dict()
+        except Exception:  # noqa: BLE001 — 깨진 인자는 카드가 따로 다룬다
+            continue
+        toks = [args.get("token")]
+        for g in args.get("groups") or []:
+            if isinstance(g, dict):
+                toks += list(g.get("tokens") or [])
+        for tok in toks:
+            tok = str(tok or "").strip()
+            if tok and tok not in deps.papers:
+                wd = deps.wd_for(tok)
+                if wd is not None:
+                    deps.register(wd)
 
 
 MEMORY_CUT_NOTE = "…(앞부분 생략)"
@@ -557,6 +586,7 @@ async def run_turn(agent: Agent, session: sessions.Session, user_text: str | Non
     if isinstance(output, DeferredToolRequests):
         # token 없이 부른 쓰기는 승인 뒤에도 이 논문에 쓴다 (routes가 재개 때 metadata로 넘긴다)
         session.pending_token = deps.current_token
+        _register_pending_tokens(output, deps)
         _finish_jobs(session, deps, None)
         sessions.remember_papers(session, deps.papers)
         await asyncio.to_thread(sessions.save, session)

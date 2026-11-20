@@ -1636,5 +1636,20 @@
  "홈은 이미 다른 창에 떠 있습니다.": "El inicio ya está abierto en otra ventana.",
  "도는 작업은 탭을 닫아도 계속됩니다": "Las tareas en curso siguen aunque cierres la pestaña",
  "그림 설명 있음": "Tiene descripción",
- "전송": "Enviar"
+ "전송": "Enviar",
+ "컬렉션 만들기 — {why}": "Crear colección — {why}",
+ "컬렉션 '{name}'은 이미 있어 새로 만들지 않고 그대로 씀": "La colección «{name}» ya existe: se usa en lugar de crear una nueva",
+ "'{parent}' 안에 하위 컬렉션 '{name}' 만들기": "Crear la subcolección «{name}» en «{parent}»",
+ "새 컬렉션 '{name}' 만들기": "Crear la colección «{name}»",
+ "하위 컬렉션으로 나누기 — {why}": "Dividir en subcolecciones — {why}",
+ "'{parent}' 안에 새 하위 컬렉션 {n}개 · 논문 {m}편 배치": "{n} subcolecciones nuevas en «{parent}» · ubicar {m} artículos",
+ "'{parent}' 하위 컬렉션에 논문 {m}편 배치": "Ubicar {m} artículos en subcolecciones de «{parent}»",
+ "위 컬렉션에서 직접 소속 빼기": "Quitar la pertenencia directa a la colección superior",
+ "{name} (새) — {n}편": "{name} (nueva) — {n} artículos",
+ "{name} — {n}편": "{name} — {n} artículos",
+ "이미 들어 있음": "ya está dentro",
+ "알 수 없는 논문 {n}편은 건너뜀": "Se omiten {n} artículos desconocidos",
+ "초록 훑기": "Ojear resúmenes",
+ "컬렉션 만들기": "Crear colección",
+ "하위 컬렉션으로 나누기": "Dividir en subcolecciones"
 }
