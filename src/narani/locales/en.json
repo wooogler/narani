@@ -1671,5 +1671,9 @@
  "색인 만드는 중…": "Indexing…",
  "검색하지 못했습니다.": "Search failed.",
  "서재 검색…": "Search Library…",
- "서재 검색은 홈이나 논문 화면에서 쓸 수 있습니다.": "Library search is available on the home screen or a paper."
+ "서재 검색은 홈이나 논문 화면에서 쓸 수 있습니다.": "Library search is available on the home screen or a paper.",
+ "다른 탭 모두 닫기": "Close other tabs",
+ "오른쪽 탭 모두 닫기": "Close tabs to the right",
+ "모든 탭 닫기": "Close all tabs",
+ "탭 정리": "Tidy tabs"
 }

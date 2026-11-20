@@ -1671,5 +1671,9 @@
  "색인 만드는 중…": "Indexando…",
  "검색하지 못했습니다.": "No se pudo buscar.",
  "서재 검색…": "Buscar en la biblioteca…",
- "서재 검색은 홈이나 논문 화면에서 쓸 수 있습니다.": "La búsqueda en la biblioteca está disponible en el inicio o en un artículo."
+ "서재 검색은 홈이나 논문 화면에서 쓸 수 있습니다.": "La búsqueda en la biblioteca está disponible en el inicio o en un artículo.",
+ "다른 탭 모두 닫기": "Cerrar las demás pestañas",
+ "오른쪽 탭 모두 닫기": "Cerrar pestañas a la derecha",
+ "모든 탭 닫기": "Cerrar todas las pestañas",
+ "탭 정리": "Ordenar pestañas"
 }

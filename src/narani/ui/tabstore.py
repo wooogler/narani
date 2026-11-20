@@ -134,3 +134,32 @@ def rename_tab(old: Path | str, new: Path | str) -> None:
         return
     tabs = [kn if t == ko else t for t in tabs]
     _write(list(dict.fromkeys(tabs)))
+
+
+# 여러 탭 한꺼번에 닫기 — 탭 줄의 정리 단추·탭 오른쪽 클릭·⌥⌘W(다른 탭 모두 닫기).
+# 홈 탭은 저장 목록에 없으니 늘 남는다. 고정(pin)은 탭이 아니라 홈 목록 표시라(위 설명) 여기서 볼 게 없다.
+CLOSE_MODES = ("others", "right", "all")
+
+
+def close_set(tabs: list[str], anchor: str | None, mode: str) -> list[str]:
+    """닫을 탭들 — tabs는 탭 줄에 보이는 순서, anchor는 기준 탭(오른쪽 클릭한 탭·보고 있는 탭).
+
+    others: anchor만 남기고 전부 · right: anchor 오른쪽 전부 · all: 전부.
+    anchor가 없거나 목록에 없으면 others·right는 아무것도 닫지 않는다(무엇을 남길지 모르면 닫지 않는다).
+    """
+    if mode == "all":
+        return list(tabs)
+    if mode not in CLOSE_MODES or anchor is None or anchor not in tabs:
+        return []
+    if mode == "others":
+        return [t for t in tabs if t != anchor]
+    return tabs[tabs.index(anchor) + 1:]
+
+
+def close_tabs(roots: list[Path | str]) -> None:
+    """탭 여럿을 한 번에 닫는다 — 읽고 쓰기 한 번(N번 고쳐 쓰며 깜빡이지 않게). 목록에 없는 것은 무시."""
+    ks = {_key(r) for r in roots}
+    tabs = _read()
+    keep = [t for t in tabs if t not in ks]
+    if keep != tabs:
+        _write(keep)
