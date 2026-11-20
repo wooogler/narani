@@ -52,7 +52,7 @@ from pydantic_ai.usage import RunUsage  # noqa: E402
 
 from narani import config  # noqa: E402
 from narani.llm.base import Usage, cost_usd  # noqa: E402
-from narani.ui.agent import jobtools, retrieval, sessions  # noqa: E402
+from narani.ui.agent import jobtools, retrieval, sessions, suggest  # noqa: E402
 from narani.ui.agent.cites import (  # noqa: E402
     note_tag,
     render_html,
@@ -193,7 +193,8 @@ async def _dynamic(ctx: RunContext[Deps]) -> str:
         if wd is not None:
             title = await asyncio.to_thread(paper_title, Path(wd.root))
             deps.ctx = sc = sc.model_copy(update={"paper": PaperRef(token=tok, title=title)})
-    return "\n\n".join(p for p in (memory_text(), to_prompt(sc), deps.job_notice) if p)
+    rule = suggest.RULE if config.agent_suggest_next() else ""
+    return "\n\n".join(p for p in (memory_text(), to_prompt(sc), deps.job_notice, rule) if p)
 
 
 def _job_line(rec: dict) -> str:
@@ -470,7 +471,8 @@ async def run_turn(agent: Agent, session: sessions.Session, user_text: str | Non
     """한 턴(또는 승인 뒤 재개)을 돌리며 SSE 이벤트 dict를 낸다. 끝나면 세션을 저장한다.
 
     이벤트: text{delta} · tool_call{id,name,args} · tool_result{id,summary} · ui_action{kind,…}
-    · approval_needed{calls} · done{turn_id,html,citations,usage,cost_usd,session_cost_usd,pending,jobs}
+    · approval_needed{calls} · done{turn_id,html,citations,text,suggestions,usage,cost_usd,
+    session_cost_usd,pending,jobs} (text·suggestions는 답이 끝났을 때만 — 제안 블록을 뗀 본문과 제안 칩)
     · error{message}. 오류가 나면 error 하나로 끝나고 done은 오지 않는다.
     """
     text = (user_text or "").strip() or None
@@ -508,6 +510,7 @@ async def run_turn(agent: Agent, session: sessions.Session, user_text: str | Non
     result = None
     after_tool = False
     streamed, shown, last_html = "", "", 0.0   # 흐르는 글 · 마지막으로 렌더해 보낸 글 · 그 시각
+    flt = suggest.StreamFilter()               # 답 끝 제안 블록(<<suggest>>)은 흐르는 동안 가린다
 
     def partial_html() -> dict | None:
         """흐르는 글을 끝난 뒤와 같은 렌더러로 그려 보낸다 — HTML_EVERY마다 한 번, 글이 늘었을 때만."""
@@ -526,16 +529,18 @@ async def run_turn(agent: Agent, session: sessions.Session, user_text: str | Non
             async for ev in events:
                 if isinstance(ev, PartStartEvent) and isinstance(ev.part, TextPart):
                     if ev.part.content:
-                        delta = ("\n\n" if after_tool else "") + ev.part.content
+                        delta = flt.new_part("\n\n" if after_tool else "")
+                        delta += flt.feed(ev.part.content)
+                        after_tool = False
+                        if delta:
+                            streamed += delta
+                            yield _event("text", {"delta": delta})
+                            if (h := partial_html()) is not None:
+                                yield h
+                elif isinstance(ev, PartDeltaEvent) and isinstance(ev.delta, TextPartDelta):
+                    if ev.delta.content_delta and (delta := flt.feed(ev.delta.content_delta)):
                         streamed += delta
                         yield _event("text", {"delta": delta})
-                        after_tool = False
-                        if (h := partial_html()) is not None:
-                            yield h
-                elif isinstance(ev, PartDeltaEvent) and isinstance(ev.delta, TextPartDelta):
-                    if ev.delta.content_delta:
-                        streamed += ev.delta.content_delta
-                        yield _event("text", {"delta": ev.delta.content_delta})
                         if (h := partial_html()) is not None:
                             yield h
                 elif isinstance(ev, FunctionToolCallEvent):
@@ -552,6 +557,9 @@ async def run_turn(agent: Agent, session: sessions.Session, user_text: str | Non
                     yield a
         for a in _drain(deps):
             yield a
+        if rest := flt.flush():                # 붙잡아 둔 꼬리(표식이 아니었던 것)
+            streamed += rest
+            yield _event("text", {"delta": rest})
         if result is None:
             raise RuntimeError("에이전트가 결과 없이 끝났습니다.")
     except Exception as e:  # noqa: BLE001 — SSE 도중이라 예외 대신 error 이벤트로 알린다
@@ -597,19 +605,26 @@ async def run_turn(agent: Agent, session: sessions.Session, user_text: str | Non
                               "jobs": session.jobs})
         return
 
-    clean, refs = resolve_citations(str(output or ""), deps.cited_rows, deps.cited_notes,
+    # 제안 블록은 설정과 상관없이 늘 떼어 낸다 (기록에 남은 형식을 모델이 흉내 낼 수 있다)
+    body, suggestions = suggest.split(str(output or ""))
+    if not config.agent_suggest_next():
+        suggestions = []
+    clean, refs = resolve_citations(body, deps.cited_rows, deps.cited_notes,
                                     current=deps.current_token)
     html = render_html(clean, refs, deps.note_refs, current=deps.current_token)
     citations = await asyncio.to_thread(_citations, refs, deps)
     turn = {"id": sessions.turn_id(), "ts": time.time(), "role": "assistant", "text": clean,
             "html": html, "citations": citations, "usage": turn_usage,
             "cost_usd": round(cost, 6), "model": label}
+    if suggestions:
+        turn["suggestions"] = suggestions   # 창이 마지막 답 아래 칩으로 (다시 열어도 그대로)
     session.turns.append(turn)
     session.pending_token = None
     _finish_jobs(session, deps, turn["id"])
     sessions.remember_papers(session, deps.papers)
     await asyncio.to_thread(sessions.save, session)
     yield _event("done", {"turn_id": turn["id"], "html": html, "citations": citations,
+                          "text": clean, "suggestions": suggestions,
                           "usage": turn_usage, "cost_usd": turn["cost_usd"],
                           "session_cost_usd": session.usage["cost_usd"], "pending": False,
                           "jobs": session.jobs})

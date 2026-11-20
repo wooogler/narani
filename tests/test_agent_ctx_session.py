@@ -115,7 +115,8 @@ def test_follow_setting_defaults_on_and_saves_to_ui(monkeypatch):
     c = TestClient(app)
     assert config.agent_follow_screen() is True                    # 기본 켜짐
     assert c.get("/agent/models").json()["follow"] is True
-    assert c.put("/agent/prefs", json={"follow": False}).json() == {"ok": True, "follow": False}
+    assert c.put("/agent/prefs", json={"follow": False}).json() == {"ok": True, "follow": False,
+                                                                     "suggest": True}
     assert config.load_config()["ui"]["agent_follow_screen"] is False
     assert c.get("/agent/models").json()["follow"] is False
 

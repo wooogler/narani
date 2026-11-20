@@ -215,6 +215,12 @@ body.ag-standalone .ag-list, body.ag-standalone .ag-foot {
   color: #6b6862; border-radius: 999px; padding: 1px 9px; font-size: 11px; cursor: pointer; }
 .ag-memo-b:hover { border-color: #2f6fd0; color: #2f6fd0; }
 .ag-memo-b .material-icons { font-size: 13px; }
+/* 다음 입력 제안 — 마지막 답 아래 칩. 누르면 입력창에만 들어간다(보내지 않는다) */
+.ag-sugg { display: flex; flex-wrap: wrap; gap: 6px; margin: 2px 0 10px; }
+.ag-sugg-b { border: 1px solid #d6e3f5; background: #f5f9fe; color: #2c5d9e; border-radius: 12px; padding: 3px 10px;
+  font-size: 12px; line-height: 1.45; text-align: left; cursor: pointer; font-family: inherit; max-width: 100%;
+  overflow-wrap: anywhere; }
+.ag-sugg-b:hover { border-color: #2f6fd0; background: #eaf2fd; }
 .ag-memo { margin-top: 6px; border: 1px solid #e4e1da; border-radius: 10px; background: #fbfaf7; padding: 8px 10px; font-size: 12px; }
 .ag-memo .pre { max-height: 140px; overflow-y: auto; white-space: pre-wrap; color: #6b6862; border-left: 3px solid #e4e1da;
   padding-left: 8px; margin-bottom: 6px; }
@@ -435,6 +441,8 @@ a.chat-cite-note:hover { background: #f7cf60; }
   .ag-mi-hint { border-top-color: #333; }
   .ag-input.off { color: #7d7d7d; }
   .ag-pill { background: #23364d; color: #9cc6f5; }
+  .ag-sugg-b { background: #1e2733; border-color: #2f4560; color: #8fbcf0; }
+  .ag-sugg-b:hover { background: #24303d; border-color: #5a96e6; }
   .ag-turn.ag-user + .ag-turn.ag-user, .ag-turn.ag-bot + .ag-turn.ag-user { border-color: #2c2c2c; }
   .ag-appr, .ag-cap { background: #2b2618; border-color: #6b5a24; }
   .ag-appr.done { background: #242424; border-color: #3a3a3a; color: #a0a0a0; }
@@ -486,6 +494,8 @@ HTML = """
       <select class="ag-setm-model" aria-label="⦃에이전트가 쓸 모델⦄"></select>
       <label class="ag-setm-ck"><input type="checkbox" class="ag-follow"> ⦃화면을 따라 대화 바꾸기⦄</label>
       <div class="ag-setm-s ag-setm-h">⦃다른 논문·컬렉션으로 옮기면 그것을 두고 나눈 대화로 바꿉니다. 끄면 창을 열 때만 맞춥니다.⦄</div>
+      <label class="ag-setm-ck"><input type="checkbox" class="ag-suggest"> ⦃다음 입력 제안⦄</label>
+      <div class="ag-setm-s ag-setm-h">⦃답 아래에 이어서 보낼 만한 말을 띄웁니다. 누르면 입력창에만 들어갑니다.⦄</div>
     </div>
   </div>
   <div class="ag-back"><button type="button" class="ag-back-b"></button></div>
@@ -521,6 +531,7 @@ JS = r"""
   var gearBtn = panel.querySelector('.ag-gear'), setm = panel.querySelector('.ag-setm');
   var setModel = panel.querySelector('.ag-setm-model');
   var followCk = panel.querySelector('.ag-follow');
+  var suggestCk = panel.querySelector('.ag-suggest');
   var backBar = panel.querySelector('.ag-back'), backBtn = panel.querySelector('.ag-back-b');
   var selBar = panel.querySelector('.ag-sel');
   var selT = panel.querySelector('.ag-sel-t');
@@ -558,6 +569,7 @@ JS = r"""
   // 맥락 세션 안내 — {kind:'opened'|'fresh'|'hint', what:'paper'|'collection', to, toTitle, prev, prevTitle}
   var ctxNote = null;
   var follow = true;          // 화면을 따라 대화 바꾸기 ([ui].agent_follow_screen — /agent/models가 실어 준다)
+  var suggestOn = true;       // 다음 입력 제안 칩 ([ui].agent_suggest_next — 같은 곳에서)
   var backTo = null;          // 자동으로 바꾼 직후 돌아갈 세션 {id, title} — 한 단계만
   var drafts = {};            // 세션 id → 입력창에 쓰던 글(노드) — 세션이 바뀌어도 초안을 잃지 않게
   var PH_IDLE = input.getAttribute('data-ph');
@@ -790,6 +802,7 @@ JS = r"""
     modelInfo = {ready: !!j.ready, reason: j.reason || '', provider: j.provider || '',
                  model: j.model || ''};
     if (typeof j.follow === 'boolean'){ follow = j.follow; followCk.checked = follow; }
+    if (typeof j.suggest === 'boolean'){ suggestOn = j.suggest; suggestCk.checked = suggestOn; }
   }
   function loadModels(){
     return api('GET', '/agent/models').then(function(j){ takeModels(j); render(); })
@@ -1089,6 +1102,11 @@ JS = r"""
   followCk.addEventListener('change', function(){
     follow = followCk.checked;
     api('PUT', '/agent/prefs', {follow: follow}).then(function(j){ follow = !!j.follow; followCk.checked = follow; })
+      .catch(function(e){ errMsg = md4T('설정을 저장하지 못했습니다: {e}', {e: e.message}); render(); });
+  });
+  suggestCk.addEventListener('change', function(){
+    suggestOn = suggestCk.checked; render();
+    api('PUT', '/agent/prefs', {suggest: suggestOn}).then(function(j){ suggestOn = !!j.suggest; suggestCk.checked = suggestOn; render(); })
       .catch(function(e){ errMsg = md4T('설정을 저장하지 못했습니다: {e}', {e: e.message}); render(); });
   });
   function closeSet(){ setm.classList.remove('open'); gearBtn.classList.remove('on'); }
@@ -1560,6 +1578,41 @@ JS = r"""
     frag.appendChild(w);
     return frag;
   }
+  // 다음 입력 제안 — 마지막 답의 제안만, 아무 일도 진행 중이 아닐 때(흐르는 중·승인 대기·오류면 숨긴다).
+  // 상태에서 매번 끌어내므로 새로 보내거나 세션을 바꾸면 저절로 사라진다.
+  function suggestionsNow(){
+    if (!suggestOn || live || busy || pending || errMsg || capRetry || !modelInfo.ready) return null;
+    var t = turns[turns.length - 1];
+    return t && t.role === 'assistant' && !t.error && t.suggestions && t.suggestions.length ? t.suggestions : null;
+  }
+  function suggestNode(items){
+    var box = document.createElement('div');
+    box.className = 'ag-sugg'; box.setAttribute('role', 'group'); box.setAttribute('aria-label', md4T('다음 입력 제안'));
+    items.forEach(function(s){
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'ag-sugg-b'; b.textContent = s;
+      b.title = md4T('입력창에 넣기 — 보내지는 않습니다');
+      b.addEventListener('click', function(){ fillInput(s); });
+      box.appendChild(b);
+    });
+    return box;
+  }
+  // 칩 → 입력창. 보내지 않는다. 비어 있으면 넣고, 쓰던 글이 있으면 그 글을 바꾼다 — @ 알약(붙인 맥락)은
+  // 두고 마지막 알약 뒤의 글만. execCommand로 넣어 ⌘Z로 쓰던 글을 되돌릴 수 있다.
+  function fillInput(s){
+    if (!input.isContentEditable) return;
+    input.focus();
+    var pills = input.querySelectorAll('.ag-pill'), last = pills.length ? pills[pills.length - 1] : null;
+    var r = document.createRange(), sel = window.getSelection();
+    if (last) r.setStartAfter(last); else r.setStart(input, 0);
+    r.setEnd(input, input.childNodes.length);
+    sel.removeAllRanges(); sel.addRange(r);
+    var text = (last ? ' ' : '') + s;
+    if (!document.execCommand('insertText', false, text)){
+      r.deleteContents(); input.appendChild(document.createTextNode(text));
+    }
+    caretEnd(); atClose();
+  }
   function nearBottom(){ return list.scrollHeight - list.scrollTop - list.clientHeight < 80; }
   function renderHead(){
     if (sess && !sess.title)                  // 첫 질문이 제목이 된다 — 목록에서 받아 온다
@@ -1594,6 +1647,8 @@ JS = r"""
     turns.forEach(function(t){ list.appendChild(turnNode(t)); list.appendChild(jobsAfter(t.id, used)); });
     // 턴을 못 찾은 작업(이 창이 붙인 임시 턴 id 등)은 끝에
     jobs.forEach(function(j){ if (!used[j.id]) list.appendChild(jobNode(j)); });
+    var sg = suggestionsNow();
+    if (sg) list.appendChild(suggestNode(sg));
     if (live) list.appendChild(liveNode());
     else { liveText = null; liveTools = null; }
     if (pending) list.appendChild(approvalNode(pending, true));   // 진행 중 말풍선 아래에
@@ -1802,8 +1857,10 @@ JS = r"""
                                mentions: L.mentions || []});
           toolsByTurn[L.done.turn_id] = L.tools;
           if (toolOpen.live) toolOpen[L.done.turn_id] = true;   // 흐르는 동안 펼쳐 뒀으면 그대로
-          turns.push({id: L.done.turn_id, role: 'assistant', text: L.text, html: L.done.html,
-                      citations: L.done.citations || [], model: modelLabel()});
+          turns.push({id: L.done.turn_id, role: 'assistant',
+                      text: L.done.text != null ? L.done.text : L.text, html: L.done.html,
+                      citations: L.done.citations || [], suggestions: L.done.suggestions || [],
+                      model: modelLabel()});
           if (sess){ sess.usage = sess.usage || {}; sess.usage.cost_usd = L.done.session_cost_usd; }
           if (L.done.jobs) setJobs(L.done.jobs);   // 이 턴이 띄운 작업 — 미완료면 폴링이 시작된다
           live = null;
