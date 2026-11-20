@@ -30,6 +30,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 from narani import config
 
@@ -280,6 +281,18 @@ def rename(sid: str, title: str) -> Session | None:
             return None
         s.title = (title or "").strip()[:200]
         return save(s)
+
+
+def update(sid: str, fn: Callable[[Session], bool]) -> Session | None:
+    """새로 읽은 세션에 `fn`을 적용하고, 바꿨다고(True) 하면 저장한다 — 오래 걸리는 일(LLM 호출) 뒤에
+    옛 사본을 통째로 저장해 그사이 다른 저장(제목·새 턴)을 덮지 않도록."""
+    with _lock:
+        s = load(sid)
+        if s is None:
+            return None
+        if fn(s):
+            save(s)
+        return s
 
 
 def delete(sid: str) -> bool:

@@ -221,6 +221,7 @@ body.ag-standalone .ag-list, body.ag-standalone .ag-foot {
   font-size: 12px; line-height: 1.45; text-align: left; cursor: pointer; font-family: inherit; max-width: 100%;
   overflow-wrap: anywhere; }
 .ag-sugg-b:hover { border-color: #2f6fd0; background: #eaf2fd; }
+.ag-empty .ag-sugg { justify-content: center; margin: 8px 0; }
 .ag-memo { margin-top: 6px; border: 1px solid #e4e1da; border-radius: 10px; background: #fbfaf7; padding: 8px 10px; font-size: 12px; }
 .ag-memo .pre { max-height: 140px; overflow-y: auto; white-space: pre-wrap; color: #6b6862; border-left: 3px solid #e4e1da;
   padding-left: 8px; margin-bottom: 6px; }
@@ -1613,6 +1614,41 @@ JS = r"""
     }
     caretEnd(); atClose();
   }
+  // 빈 세션 — 할 수 있는 일 한 줄 + 시작 칩(화면에 맞춘 고정 문구, 누르면 입력창에만). 제안을 끄면 예문 글로.
+  function emptyNode(){
+    var em = document.createElement('div');
+    em.className = 'ag-empty';
+    var onPaper = !!(paper && (onReview() || SA)), a = onPaper ? null : autoCtx();
+    var intro = onPaper ? md4T('열린 논문과 라이브러리의 다른 논문을 읽고 답합니다.')
+                        : md4T('라이브러리의 논문을 찾아 읽고 답합니다.');
+    var hint = md4T('답 속 숫자 칩을 누르면 근거 문단(노란 칩은 메모)으로 이동합니다.');
+    if (!suggestOn){
+      em.textContent = intro + '\n' + (onPaper
+        ? md4T('예: “이 논문의 방법 섹션 핵심은?”, “선택한 문장 쉽게 풀어 줘”, “3번째 섹션으로 가 줘”')
+        : md4T('예: “이 라이브러리에 논문 몇 편 있어?”, “튜터링 관련 논문 열어 줘”')) + '\n' + hint;
+      return em;
+    }
+    var items = onPaper
+      ? [md4T('이 논문 설명해 줘'), md4T('방법 섹션 요약해 줘'), md4T('이 연구의 한계는 뭐야?')]
+      : (a && a.kind === 'collection'
+        ? [md4T('이 컬렉션을 하위 컬렉션으로 나눠 줘'), md4T('이 컬렉션 논문들의 공통 주제는?'),
+           md4T('라이브러리에 논문 몇 편 있어?')]
+        : [md4T('라이브러리에 논문 몇 편 있어?'), md4T('라이브러리 논문들을 주제별로 정리해 줘')]);
+    var top = document.createElement('div'); top.textContent = intro;
+    var bot = document.createElement('div'); bot.textContent = hint;
+    em.appendChild(top); em.appendChild(suggestNode(items)); em.appendChild(bot);
+    return em;
+  }
+  // 답에 제안 블록이 빠졌으면(tool을 여러 번 부른 긴 턴에서 모델이 잊는다) 서버가 싼 모델로 따로 짓는다.
+  // 실패·키 없음·그사이 새 질문이면 칩 없이 넘어간다.
+  function moreSuggest(id, tid){
+    api('POST', '/agent/sessions/' + encodeURIComponent(id) + '/suggest', {turn_id: tid, context: ctxNow()})
+      .then(function(j){
+        if (!j || !j.suggestions || !j.suggestions.length || !sess || sess.id !== id) return;
+        for (var i = 0; i < turns.length; i++)
+          if (turns[i].id === tid){ turns[i].suggestions = j.suggestions; render(); return; }
+      }).catch(function(){});
+  }
   function nearBottom(){ return list.scrollHeight - list.scrollTop - list.clientHeight < 80; }
   function renderHead(){
     if (sess && !sess.title)                  // 첫 질문이 제목이 된다 — 목록에서 받아 온다
@@ -1632,17 +1668,7 @@ JS = r"""
         + ' ' + md4T('홈 → 설정에서 키를 넣으세요.');
       list.appendChild(note);
     }
-    if (!turns.length && !live && modelInfo.ready){
-      var em = document.createElement('div');
-      em.className = 'ag-empty';
-      em.textContent = (paper && (onReview() || SA)
-        ? md4T('열린 논문과 라이브러리의 다른 논문을 읽고 답합니다.') + '\n'
-          + md4T('예: “이 논문의 방법 섹션 핵심은?”, “선택한 문장 쉽게 풀어 줘”, “3번째 섹션으로 가 줘”')
-        : md4T('라이브러리의 논문을 찾아 읽고 답합니다.') + '\n'
-          + md4T('예: “이 라이브러리에 논문 몇 편 있어?”, “튜터링 관련 논문 열어 줘”'))
-        + '\n' + md4T('답 속 숫자 칩을 누르면 근거 문단(노란 칩은 메모)으로 이동합니다.');
-      list.appendChild(em);
-    }
+    if (!turns.length && !live && modelInfo.ready) list.appendChild(emptyNode());
     var used = {};
     turns.forEach(function(t){ list.appendChild(turnNode(t)); list.appendChild(jobsAfter(t.id, used)); });
     // 턴을 못 찾은 작업(이 창이 붙인 임시 턴 id 등)은 끝에
@@ -1865,6 +1891,7 @@ JS = r"""
           if (L.done.jobs) setJobs(L.done.jobs);   // 이 턴이 띄운 작업 — 미완료면 폴링이 시작된다
           live = null;
           render();
+          if (suggestOn && !(L.done.suggestions || []).length) moreSuggest(at, L.done.turn_id);
           var nUser = turns.filter(function(x){ return x.role === 'user'; }).length;
           // 첫 질문이 끝났으면 제목을 지어 달라고 한다(질문·답을 보고 짧게) — 그동안은 질문 앞머리가 제목
           if (L.q && nUser === 1) autoTitle(at);
@@ -2029,6 +2056,8 @@ JS = r"""
     return out;
   }
   function paintCtx(){
+    var em = list.querySelector('.ag-empty');   // 빈 세션의 시작 칩 — 컬렉션을 골랐는지에 따라 다르다
+    if (em) em.replaceWith(emptyNode());
     ctxBar.innerHTML = '';
     var a = autoCtx(), showA = a && atKeyOf(a) !== autoOff;
     ctxBar.classList.toggle('on', !!showA);
