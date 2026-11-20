@@ -211,10 +211,10 @@ window.md4Menu = function(cmd, attempt){
       var x = q('.md4-tab.on .md4-tab-x');
       if (x){ x.click(); return 'ok'; }
       return SA ? 'close-window' : na();
-    case 'find':
+    case 'find':                              // 홈에서는 서재 검색 창, 논문에서는 페이지 찾기
+      var home = location.pathname === '/' || location.pathname === '/home';
+      if (home && !SA && window.__md4LibSearch){ window.__md4LibSearch.open(); return 'ok'; }
       if (window.__md4Find){ window.__md4Find.open(); return 'ok'; }
-      var s = q('[data-md4menu="search"] input') || q('input[data-md4menu="search"]');
-      if (s){ s.focus(); s.select(); return 'ok'; }
       return na();
     case 'lib_search':                        // 편집기 안이면 ⌘K를 편집기('링크')로 돌려준다 (§ui/libsearch_ui.py)
       if (!SA && window.__md4LibSearch) return window.__md4LibSearch.menu();

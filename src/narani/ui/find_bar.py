@@ -226,6 +226,13 @@ HTML = """
     var mod = ev.metaKey || ev.ctrlKey;
     if (mod && (ev.key === 'f' || ev.key === 'F' || ev.key === 'g' || ev.key === 'G')){
       if (zoomOpen()) return;
+      // 홈에는 읽을 본문이 없다 — ⌘F는 서재 검색 창으로 (§ui/libsearch_ui.py). 논문 화면은 그대로 페이지 찾기
+      var p = location.pathname;
+      if ((p === '/' || p === '/home') && window.__md4LibSearch && (ev.key === 'f' || ev.key === 'F')){
+        ev.preventDefault(); ev.stopPropagation();
+        window.__md4LibSearch.open();
+        return;
+      }
       ev.preventDefault(); ev.stopPropagation();
       open();
       if (ev.key === 'g' || ev.key === 'G') step(ev.shiftKey ? -1 : 1);

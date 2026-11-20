@@ -464,12 +464,6 @@ def _bib_line(r: dict) -> str:
     return " · ".join(parts)
 
 
-def _haystack(r: dict) -> str:
-    return " ".join([
-        r["title"], " ".join(r.get("authors") or []), r.get("venue") or "", str(r.get("year") or ""),
-    ]).lower()
-
-
 def _stored_pids(r: dict) -> list[str]:
     """recent_workdirs 행에 적힌 소속 목록 — 새 키 `projects`, 없으면 옛 키 `project` 하나."""
     raw = r.get("projects")
@@ -579,7 +573,7 @@ def build_home(state: dict) -> None:
     backend_ready = bool(available_backends())
     # 고른 범위(scope)는 목록 필터 + 새로 올릴 논문의 소속 — 앱을 다시 켜도 같은 묶음을 보게 기억한다.
     # phone: '휴대폰에 받아 둔 것'만 (필터 — 범위와 겹쳐 쓴다), gone: 알림 줄의 '보기'(다른 컴퓨터에서 지운 논문만)
-    view = {"q": "", "sort": "recent", "show_hidden": False, "scope": projects.active(), "phone": _phone_filter(),
+    view = {"sort": "recent", "show_hidden": False, "scope": projects.active(), "phone": _phone_filter(),
             "gone": False}
     selected: set[str] = set()  # 체크박스로 고른 워크디렉토리 root (문자열) — 일괄 동작용
     # 한 번 클릭으로 고른 논문(미리보기) — 홈 인스턴스에만 둔다. seq는 미리보기를 그릴 때마다 올라
@@ -1263,7 +1257,7 @@ def build_home(state: dict) -> None:
         sync_preview()
 
     def selectable_roots() -> list[str]:
-        """'전체 선택'이 고를 논문 — 지금 범위·검색어로 목록에 보이는 카드(숨긴 논문은 보기를 켜도 뺀다)."""
+        """'전체 선택'이 고를 논문 — 지금 범위(휴대폰·지운 논문 보기 포함)로 목록에 보이는 카드(숨긴 논문은 보기를 켜도 뺀다)."""
         return [str(r["root"]) for r in visible_rows() if not r["hidden"]]
 
     def toggle_select_all() -> None:
@@ -1870,7 +1864,7 @@ def build_home(state: dict) -> None:
             settings_dialog.open_project_dialog(state, None, saved)
 
     def visible_rows() -> list[dict]:
-        """지금 범위·검색·숨김 보기로 걸러 정렬한 목록 (고정한 논문이 맨 앞)."""
+        """지금 범위·숨김 보기로 걸러 정렬한 목록 (고정한 논문이 맨 앞). 찾기는 서재 검색 창(⌘K)이 맡는다."""
         items = [r for r in live_rows() if in_scope(r, view["scope"])]
         if view["phone"]:
             items = [r for r in items if r["name"] in data["mobile"]]
@@ -1878,9 +1872,6 @@ def build_home(state: dict) -> None:
             items = [r for r in items if (data["sync"].get(str(r["root"])) or {}).get("deleted")]
         if not view["show_hidden"]:
             items = [r for r in items if not r["hidden"]]
-        q = (view["q"] or "").strip().lower()
-        if q:
-            items = [r for r in items if q in _haystack(r)]  # 제목·저자·venue·연도 검색
         srt = view["sort"]
         if srt == "name":
             items.sort(key=lambda r: r["title"].lower())
@@ -1941,10 +1932,7 @@ def build_home(state: dict) -> None:
         if not items:
             # 비어 있는 이유를 갈라 준다 — 프로젝트를 골라 비었을 때 '작업 폴더를 바꾸라'고
             # 안내하면 엉뚱한 곳을 만지게 된다(방금 만든 프로젝트는 당연히 비어 있다).
-            s, q = view["scope"], (view["q"] or "").strip()
-            if q:
-                ui.label(t("검색 결과가 없습니다.")).classes("text-sm text-gray-400 q-mt-md")
-                return
+            s = view["scope"]
             with ui.column().classes("md4-empty w-full gap-1"):
                 if view["phone"]:   # 휴대폰 필터 — 올리기 안내 대신 받아 두는 길만
                     ui.icon("smartphone", size="44px").classes("text-grey-5")
@@ -2621,18 +2609,12 @@ def build_home(state: dict) -> None:
             with ui.column().classes("md4-hhead gap-1 w-full"):
                 head()
             with ui.row().classes("md4-htools items-center gap-2 w-full no-wrap"):
-                def on_search(e) -> None:  # noqa: ANN001
-                    view["q"] = e.value or ""
-                    recent_list.refresh()
-                    head.refresh()  # '전체 선택'은 검색으로 걸러진 카드만 고른다
-
                 def on_sort(e) -> None:  # noqa: ANN001
                     view["sort"] = e.value
                     recent_list.refresh()
 
-                ui.input(placeholder=t("제목·저자·venue 검색…")).on_value_change(on_search) \
-                    .props("dense outlined clearable data-md4menu=search").classes("flex-grow")
                 ui.select({k: t(v) for k, v in _SORTS.items()}, value="recent", on_change=on_sort).props("dense outlined").classes("w-32")
+                ui.space()  # 찾기는 왼쪽 칸 맨 위 '서재 검색'(⌘K·⌘F) — 동작 단추들은 오른쪽에
                 phone_chip()
                 with ui.element("div").classes("md4-upwrap"):
                     ui.button(t("올리기"), icon="upload_file").props("unelevated dense no-caps color=primary") \

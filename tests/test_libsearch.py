@@ -325,3 +325,19 @@ def test_route_preview_row_paper_collection(client):
     n = c.get("/libsearch", params={"q": "sample size"}).json()["notes"][0]
     pn = c.get("/libsearch/preview", params={"kind": "row", "token": n["token"], "row": n["row"], "q": "sample"}).json()
     assert [x["id"] for x in pn["notes"]] == ["n1"]
+
+
+def test_home_filter_input_is_gone_and_find_opens_search_on_home():
+    import inspect
+
+    from narani.ui import find_bar, home, menu_bar
+
+    src = inspect.getsource(home)
+    assert "data-md4menu=search" not in src and 'view["q"]' not in src and "_haystack" not in src
+    assert "libsearch_ui.side_button()" in src
+    # 메뉴 '찾기'(⌘F): 홈이면 서재 검색 창, 논문이면 페이지 찾기
+    case = menu_bar.DISPATCH_JS.split("case 'find':")[1].split("case '")[0]
+    assert case.index("__md4LibSearch.open()") < case.index("__md4Find.open()")
+    assert "'/home'" in case
+    # 브라우저(메뉴 없음)의 ⌘F keydown도 같다 — ⌘G는 그대로 페이지 찾기
+    assert "window.__md4LibSearch.open()" in find_bar.HTML
