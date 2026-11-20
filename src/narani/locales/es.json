@@ -1661,5 +1661,9 @@
  "알 수 없는 논문 {n}편은 건너뜀": "Se omiten {n} artículos desconocidos",
  "초록 훑기": "Ojear resúmenes",
  "컬렉션 만들기": "Crear colección",
- "하위 컬렉션으로 나누기": "Dividir en subcolecciones"
+ "하위 컬렉션으로 나누기": "Dividir en subcolecciones",
+ "다른 탭 모두 닫기": "Cerrar las demás pestañas",
+ "오른쪽 탭 모두 닫기": "Cerrar pestañas a la derecha",
+ "모든 탭 닫기": "Cerrar todas las pestañas",
+ "탭 정리": "Ordenar pestañas"
 }

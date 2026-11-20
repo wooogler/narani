@@ -2724,21 +2724,27 @@ def tab_bar(state: dict, here: Path | None, here_title: str | Callable[[], str] 
 
     here_key = str(Path(here).resolve()) if here is not None else None
 
-    @ui.refreshable
-    def bar() -> None:
-        busy = {j.root for j in jobs.running()}
+    def shown_tabs() -> list[str]:
         tabs = [str(p) for p in tabstore.load()]
         if here_key is not None and here_key not in tabs:  # 다른 창이 막 닫은 탭 등 — 보는 논문은 늘 보인다
             tabs.append(here_key)
+        return tabs
+
+    @ui.refreshable
+    def bar() -> None:
+        busy = {j.root for j in jobs.running()}
+        tabs = shown_tabs()
         with ui.row().classes("items-end gap-0 no-wrap md4-tabstrip"):
             _home_chip(active=here_key is None)
-            for tv in tabs:
+            for i, tv in enumerate(tabs):
                 _chip((here_title() if callable(here_title) else here_title) if tv == here_key
                       else paper_title(Path(tv)), Path(tv),
-                      active=tv == here_key, busy=tv in busy)
+                      active=tv == here_key, busy=tv in busy, n=len(tabs), last=i == len(tabs) - 1)
         ui.button(icon="add", color=None, on_click=open_picker) \
             .props("flat dense round size=sm text-color=white").classes("md4-tabadd") \
             .tooltip(t("논문 열기 — 변환된 논문을 골라 새 탭으로"))
+        if len(tabs) >= 2:
+            _cleanup_btn(here_key in tabs and here_key != tabs[-1])
         with ui.row().classes("items-center gap-0 no-wrap md4-tabtools"):
             jobs_menu()
             if tools is not None:
@@ -2752,7 +2758,8 @@ def tab_bar(state: dict, here: Path | None, here_title: str | Callable[[], str] 
         if not active:
             tab.on("click", lambda: ui.navigate.to("/home"))
 
-    def _chip(title: str, root: Path, active: bool = False, busy: bool = False) -> None:
+    def _chip(title: str, root: Path, active: bool = False, busy: bool = False,
+              n: int = 1, last: bool = True) -> None:
         """논문 탭 하나 — 요소를 직접 짓는다.
 
         Quasar chip으로 그리면 알약 모양·배지 느낌이 나서 '탭'으로 읽히지 않는다. 위쪽만 둥근
@@ -2771,6 +2778,14 @@ def tab_bar(state: dict, here: Path | None, here_title: str | Callable[[], str] 
             x.on("click.stop", lambda _, r=root, a=active: close_tab(r, a))
             if busy:  # 닫아도 도는 작업은 계속된다 — 그때만 알린다(×가 탭을 닫는다는 건 누구나 안다)
                 x.tooltip(t("도는 작업은 탭을 닫아도 계속됩니다"))
+            with ui.context_menu().props("auto-close"):  # 오른쪽 클릭 — 이 탭을 기준으로
+                k = str(root)
+                ui.menu_item(t("닫기"), on_click=lambda _, r=root, a=active: close_tab(r, a))
+                ui.menu_item(t("다른 탭 모두 닫기"), on_click=lambda _, k=k: close_many(k, "others")) \
+                    .props("disable" if n < 2 else "")
+                ui.menu_item(t("오른쪽 탭 모두 닫기"), on_click=lambda _, k=k: close_many(k, "right")) \
+                    .props("disable" if last else "")
+                ui.menu_item(t("모든 탭 닫기"), on_click=lambda _, k=k: close_many(k, "all"))
         tip = title  # 잘린 제목을 다 보여 주는 용도 — '누르면 이동' 같은 뻔한 안내는 붙이지 않는다
         if busy:
             tip += "\n" + t("백그라운드 작업 진행 중")
@@ -2785,6 +2800,35 @@ def tab_bar(state: dict, here: Path | None, here_title: str | Callable[[], str] 
             return
         # 보고 있던 탭을 닫으면 이웃 탭으로, 남은 탭이 없으면 홈으로 (작업은 서버에서 계속 돈다)
         ui.navigate.to(_review_url(nxt) if nxt is not None else "/home")
+
+    def _cleanup_btn(has_right: bool) -> None:
+        """탭 정리 — 논문 탭이 둘 이상일 때만. 기준은 보고 있는 탭이라 홈에선 '모든 탭 닫기'만 있다."""
+        b = ui.button(icon="clear_all", color=None) \
+            .props(f'flat dense round size=sm text-color=white aria-label="{t("탭 정리")}"').classes("md4-tabadd")
+        with b, ui.menu().props("auto-close"):
+            if here_key is not None:
+                ui.menu_item(t("다른 탭 모두 닫기"), on_click=lambda: close_many(here_key, "others"))
+                ui.menu_item(t("오른쪽 탭 모두 닫기"), on_click=lambda: close_many(here_key, "right")) \
+                    .props("" if has_right else "disable")
+            ui.menu_item(t("모든 탭 닫기"), on_click=lambda: close_many(here_key, "all"))
+        if here_key is not None:  # ⌥⌘W(메뉴 막대 '다른 탭 모두 닫기')가 누르는 자리 — 보이지 않는다
+            ui.element("span").classes("md4-tab-others hidden") \
+                .on("click", lambda: close_many(here_key, "others"))
+
+    def close_many(anchor: str | None, mode: str) -> None:
+        """여러 탭 한꺼번에 — ×와 같은 규칙: 저장 목록만 고치고, 보고 있던 탭이 닫히면 기준 탭(없으면 홈)으로.
+        보이지 않는 탭엔 열린 화면이 없고(창 하나에 화면 하나) 보는 탭의 편집은 늘 서버로 흘러가 있어
+        물어볼 것이 없다. 도는 작업은 서버에서 계속된다. 목록은 한 번만 고쳐 쓴다."""
+        gone = tabstore.close_set(shown_tabs(), anchor, mode)
+        if not gone:
+            return
+        tabstore.close_tabs(gone)
+        if here_key is not None and here_key in gone:
+            ui.navigate.to(_review_url(Path(anchor)) if anchor and anchor not in gone else "/home")
+            return
+        bar.refresh()
+        if {j.root for j in jobs.running()} & set(gone):
+            ui.notify(t("도는 작업은 탭을 닫아도 계속됩니다"), type="info", timeout=2200)
 
     def open_picker() -> None:
         """'+' — 변환된 논문 목록에서 골라 바로 연다 (홈을 거치지 않고 새 탭으로)."""

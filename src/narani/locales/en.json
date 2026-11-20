@@ -1661,5 +1661,9 @@
  "알 수 없는 논문 {n}편은 건너뜀": "{n} unknown papers skipped",
  "초록 훑기": "Skim abstracts",
  "컬렉션 만들기": "Create collection",
- "하위 컬렉션으로 나누기": "Split into subcollections"
+ "하위 컬렉션으로 나누기": "Split into subcollections",
+ "다른 탭 모두 닫기": "Close other tabs",
+ "오른쪽 탭 모두 닫기": "Close tabs to the right",
+ "모든 탭 닫기": "Close all tabs",
+ "탭 정리": "Tidy tabs"
 }

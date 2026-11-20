@@ -89,6 +89,7 @@ def menus() -> list[tuple[str, list[Item]]]:
             Item("add_pdf", N_("PDF 추가…"), "o"),
             Item("new_window", N_("새 창"), "n"),
             Item("close_tab", N_("탭 닫기"), "w"),
+            Item("close_other_tabs", N_("다른 탭 모두 닫기"), "w", "cmd+alt"),
             SEP,
             Item("export", N_("내보내기…")),
             Item("reveal", N_("Finder에서 보기")),
@@ -210,6 +211,10 @@ window.md4Menu = function(cmd, attempt){
       var x = q('.md4-tab.on .md4-tab-x');
       if (x){ x.click(); return 'ok'; }
       return SA ? 'close-window' : na();
+    case 'close_other_tabs':                  // 탭 줄이 그려 둔 숨은 자리 — 다른 논문 탭이 있을 때만 있다
+      var o = q('.md4-tab-others');
+      if (o){ o.click(); return 'ok'; }
+      return na();
     case 'find':
       if (window.__md4Find){ window.__md4Find.open(); return 'ok'; }
       var s = q('[data-md4menu="search"] input') || q('input[data-md4menu="search"]');
