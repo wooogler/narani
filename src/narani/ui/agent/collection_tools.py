@@ -34,8 +34,9 @@ from narani.workdir import WorkDir
 SPLIT_GROUPS_MAX = 30     # split_collection 한 번에 받는 묶음 수
 SPLIT_PAPERS_MAX = 500    # 한 번에 배치하는 논문 수
 SKIM_DEFAULT_CHARS = 280  # skim_papers 초록 앞부분 기본 길이
-SKIM_CHARS_MAX = 800
+SKIM_CHARS_MAX = 500     # 80편이 넘는 컬렉션도 몇 번 만에 다 훑게 (run당 요청 상한 12)
 DETAIL_TITLE = 90         # 승인 카드 펼침 목록의 논문 제목 상한
+REASON_MAX = 400          # 승인 카드에 보일 나눈 기준(reason) 상한
 
 
 class Group(BaseModel):
@@ -150,9 +151,18 @@ def plan_split(parent: str, groups: list, remove_from_parent: bool, projs: list[
         if not label:
             return "이름이 빈 묶음이 있습니다 — 묶음마다 하위 컬렉션 이름을 넣으세요."
         hit = by_id.get(name) or _child_named(par["id"], label, projs)
-        if hit is None and "/" in name:            # 'A / B' 경로로 기존 컬렉션을 가리킨 경우
+        if hit is None and "/" in name:
+            # 'A / B' 경로 — 기존 컬렉션이면 그것, 위 컬렉션 경로로 시작하면 그 뒤 이름을 위 컬렉션 아래에서
             got = find_collection(name, projs)
             hit = got if isinstance(got, dict) else None
+            head = tools._norm_path(projects.path_name(par["id"], projs)) + " / "
+            rest = tools._norm_path(name)
+            if hit is None and rest.startswith(head) and "/" not in rest[len(head):]:
+                label = projects.clean_name(name.split("/")[-1])
+                hit = _child_named(par["id"], label, projs)
+            elif hit is None:
+                return (f"'{name}'은 위 컬렉션 '{projects.path_name(par['id'], projs)}' 아래의 이름이 아닙니다 — "
+                        "하위 컬렉션 이름에는 '/'를 쓰지 말고, 기존 컬렉션이면 id를 넣으세요.")
         if hit is not None and hit["id"] == par["id"]:
             return f"'{name}'은 위 컬렉션 자신입니다 — 하위 컬렉션 이름을 넣으세요."
         k = hit["id"] if hit else f"new:{_key(label)}"
@@ -208,7 +218,7 @@ async def skim_papers(ctx: RunContext[Deps], project: str | None = None,
         project: 컬렉션 id·이름·'위 / 아래' 경로. tokens와 둘 중 하나.
         tokens: 논문 token 목록 (list_papers에서).
         offset: 몇 번째 논문부터 (0부터, 이어 읽을 때).
-        chars: 논문마다 초록을 몇 자까지 (기본 280, 최대 800).
+        chars: 논문마다 초록을 몇 자까지 (기본 280, 최대 500). 논문이 많으면 기본값으로 — 한 번에 더 많이 보인다.
     """
     from narani import config, preview, projects
     from narani.workdir import recent_workdirs
@@ -321,7 +331,7 @@ async def create_collection(ctx: RunContext[Deps], name: str, parent: str | None
 
 
 async def split_collection(ctx: RunContext[Deps], parent: str, groups: list[Group],
-                           remove_from_parent: bool = False) -> str:
+                           reason: str = "", remove_from_parent: bool = False) -> str:
     """컬렉션의 논문을 하위 컬렉션들로 **한꺼번에** 나눈다 — 하위 컬렉션 만들기 + 논문 배치를 한 번에.
     **사용자가 승인해야 실행된다** (승인 카드 한 장).
 
@@ -333,6 +343,8 @@ async def split_collection(ctx: RunContext[Deps], parent: str, groups: list[Grou
     Args:
         parent: 나눌 위 컬렉션 id·이름·'위 / 아래' 경로.
         groups: [{name, tokens}] 묶음들.
+        reason: 무엇을 기준으로 나눴는지 한두 문장 (사용자의 말로). 승인 카드 목록 맨 위에 보인다 —
+            승인을 기다리는 동안 답 글은 화면에 안 보이므로 기준은 여기에 적는다.
         remove_from_parent: True면 배치한 논문을 위 컬렉션의 직접 소속에서 뺀다(그 자리를 하위
             컬렉션이 이어받는다). 기본 False — 하위에 넣어도 위 컬렉션 목록에 '↳'로 함께 보이므로 보통
             뺄 필요가 없다. 사용자가 원할 때만 켠다. 빼면 위 컬렉션이 주 컬렉션이던 논문은 하위
@@ -455,6 +467,9 @@ def _detail_split(args: dict, papers: dict | None = None) -> str:
     if isinstance(plan, str):
         return ""
     lines: list[str] = []
+    why = " ".join(str(args.get("reason") or "").split())
+    if why:
+        lines += [tools._short(why, REASON_MAX), ""]
     for tgt in plan.targets:
         head = (t("{name} (새) — {n}편", name=tgt.name, n=len(tgt.tokens)) if tgt.new
                 else t("{name} — {n}편", name=tgt.name, n=len(tgt.tokens)))

@@ -398,7 +398,8 @@ async def list_papers(ctx: RunContext[Deps], query: str | None = None,
 
     Args:
         query: 제목·저자·학회에 들어 있는 글자로 거르기 (대소문자 무시). 생략하면 전부.
-        project: 컬렉션 id 또는 이름으로 거르기. 생략하면 전부.
+        project: 컬렉션 id·이름·'위 / 아래' 경로로 거르기 (그 컬렉션에 **직접** 든 논문만 — 하위 컬렉션까지
+            보려면 skim_papers). 생략하면 전부.
         limit: 최대 개수 (기본 100, 최대 300). 결과 글자 상한에 걸리면 그보다 적게 보인다.
     """
     from narani import config, projects
@@ -411,13 +412,16 @@ async def list_papers(ctx: RunContext[Deps], query: str | None = None,
     pj = (project or "").strip().lower()
 
     def work() -> tuple[int, list[dict], dict[str, str]]:
-        names = {p["id"]: p["name"] for p in projects.all_projects()}
+        items = projects.all_projects()
+        names = {p["id"]: p["name"] for p in items}
+        paths = {p["id"]: _norm_path(projects.path_name(p["id"], items)) for p in items}
+        want = _norm_path(pj)
         # 상한 없이 다 센다 — 앞 몇백 편에서 자르면 '전체 편수'가 틀린다
         rows = recent_workdirs(Path(ws), limit=100_000)
         out = []
         for r in rows:
             ids = [i for i in r.get("projects") or [] if i in names]
-            if pj and not any(i.lower() == pj or names[i].lower() == pj for i in ids):
+            if pj and not any(i.lower() == pj or names[i].lower() == pj or paths[i] == want for i in ids):
                 continue
             hay = " ".join([str(r.get("title") or ""), " ".join(r.get("authors") or []),
                             str(r.get("venue") or "")]).lower()
@@ -805,13 +809,19 @@ async def add_highlight(ctx: RunContext[Deps], row: int, side: str, quote: str, 
             f"\"{_clip(plain[s:e], 120)}\"")
 
 
+def _norm_path(text: str) -> str:
+    """'A / B' 경로 이름 비교용 — 칸마다 공백 정리·소문자."""
+    return " / ".join(" ".join(x.split()).lower() for x in str(text or "").split("/"))
+
+
 def _find_project(key: str) -> dict | None:
-    """컬렉션 id 또는 이름(대소문자 무시) → 컬렉션."""
+    """컬렉션 id, 'A / B' 경로 이름(list_projects가 하위 컬렉션을 이렇게 보인다), 또는 이름(대소문자 무시) → 컬렉션."""
     from narani import projects
 
     k = (key or "").strip()
     items = projects.all_projects()
     return (next((p for p in items if p["id"] == k), None)
+            or next((p for p in items if _norm_path(projects.path_name(p["id"], items)) == _norm_path(k)), None)
             or next((p for p in items if p["name"].lower() == k.lower()), None))
 
 

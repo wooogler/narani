@@ -292,3 +292,96 @@ def test_split_collection_through_approval_card(tmp_path):
     assert set(names) == {"UIST2026", "Alpha", "Beta"}
     assert sorted(len(library.projects_of(wd)) for wd in wds) == [2, 2, 2]
     assert client.get(f"/agent/sessions/{sid}").json()["pending"] is None
+
+
+def test_path_names_work_everywhere(tmp_path):
+    from narani.ui.agent.tools import list_papers, set_project_membership
+
+    wds, reg, toks = _lib(tmp_path, 2)
+    ctx = _ctx(reg, tmp_path)
+    uist = projects.create("UIST2026")["id"]
+    must = projects.create("Must-read", parent=uist)["id"]
+    other = projects.create("Other")["id"]
+    projects.create("Must-read", parent=other)
+    workdir.set_projects(wds[0].root, [must])
+    # list_projects가 보이는 'A / B'로 list_papers·set_project_membership이 찾는다
+    assert "Paper 0" in run(list_papers(ctx, project="uist2026 / must-read"))
+    assert "넣었습니다" in run(set_project_membership(ctx, toks[1], "UIST2026 / Must-read"))
+    assert library.projects_of(wds[1]) == [must]
+    # 위 컬렉션 경로로 시작하는 새 이름은 그 뒤 이름만, 다른 곳 경로는 거절(그 이름 그대로 만들지 않는다)
+    msg = run(split_collection(ctx, uist, [{"name": "UIST2026 / New Topic", "tokens": [toks[0]]}],
+                               reason="by topic"))
+    assert "새 하위 컬렉션 1개(New Topic)" in msg
+    assert "아래의 이름이 아닙니다" in run(split_collection(ctx, uist, [{"name": "Zzz / Q", "tokens": [toks[0]]}]))
+    assert not any("/" in p["name"] for p in projects.all_projects())
+    # 기존 하위 컬렉션을 경로로 가리켜도 된다
+    assert "배치 0건, 이미 들어 있어 건너뜀 1건" in run(split_collection(
+        ctx, uist, [{"name": "UIST2026 / Must-read", "tokens": [toks[0]]}]))
+
+
+def test_reason_heads_the_card_detail(tmp_path):
+    wds, _reg, toks = _lib(tmp_path, 1)
+    uist = projects.create("UIST2026")["id"]
+    args = {"parent": uist, "reason": "  Grouped by   method.  ",
+            "groups": [{"name": "A", "tokens": toks}]}
+    lines = detail_call("split_collection", args, {toks[0]: wds[0].root}).splitlines()
+    assert lines[:3] == ["Grouped by method.", "", "A (새) — 1편"]
+
+
+def test_split_keeps_copies_in_inherited_folder(tmp_path):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    vault = tmp_path / "vault"
+    wds = [make_wd(ws, f"p{i}", en=_en(f"Paper {i}"), title=f"Paper {i}") for i in range(2)]
+    reg = Registry(*wds)
+    toks = list(reg.by_token)
+    ctx = _ctx(reg, ws)
+    uist = projects.create("UIST2026", root=str(vault))["id"]
+    for wd in wds:
+        library.set_memberships(wd, [uist])          # 폴더 사본이 생긴다
+    before = sorted(p.relative_to(vault) for p in vault.rglob("*") if p.is_file())
+    assert any(str(p).startswith("p0") for p in before)
+    msg = run(split_collection(ctx, uist, [{"name": "Sub", "tokens": toks}], remove_from_parent=True))
+    assert "논문 2편의 소속을 바꿈" in msg
+    sub = next(p["id"] for p in projects.all_projects() if p["name"] == "Sub")
+    assert [library.projects_of(wd) for wd in wds] == [[sub], [sub]]
+    after = sorted(p.relative_to(vault) for p in vault.rglob("*") if p.is_file())
+    assert after == before                            # 하위가 위 폴더를 물려받아 사본은 그대로
+
+
+def test_skim_pages_for_a_large_collection(tmp_path):
+    wds = [make_wd(tmp_path, f"p{i:02d}", en=_en(f"A fairly long paper title number {i} about tutoring"),
+                   title=f"A fairly long paper title number {i} about tutoring") for i in range(80)]
+    reg = Registry(*wds)
+    ctx = _ctx(reg, tmp_path)
+    uist = projects.create("UIST2026")["id"]
+    for wd in wds:
+        workdir.set_projects(wd.root, [uist])
+    for chars, most in ((None, 4), (5000, 7)):          # 기본 길이면 4번, 최대(500자로 줄임)여도 7번 안에
+        off, calls = 0, 0
+        while True:
+            calls += 1
+            out = run(skim_papers(ctx, project=uist, offset=off, **({"chars": chars} if chars else {})))
+            if "offset=" not in out:
+                break
+            off = int(out.split("offset=")[1].split("로")[0])
+        assert calls <= most, (chars, calls)
+
+
+def test_card_knows_tokens_from_the_screen(tmp_path):
+    """list_papers를 거치지 않은 token(화면·@ 맥락)도 카드가 제목·편수를 안다 — run_turn이 세션 papers에 올린다."""
+    wds = [make_wd(tmp_path, f"p{i}", en=_en(f"Paper {i}"), title=f"Paper {i}") for i in range(2)]
+    uist = projects.create("UIST2026")["id"]
+    reg = Registry(*wds)                                 # 앱 등록부에는 있다 (화면에 열었던 논문)
+    toks = list(reg.by_token)
+    app = FastAPI()
+    routes.register_routes(app, reg.wd_for, reg.register, workspace=lambda: tmp_path,
+                           build_agent=lambda: make_agent(scripted_model([[("split_collection", {
+                               "parent": uist, "groups": [{"name": "A", "tokens": toks}]})], "끝."])))
+    client = TestClient(app)
+    sid = client.post("/agent/sessions").json()["id"]
+    events = _sse(client.post(f"/agent/sessions/{sid}/turns",
+                              json={"message": "나눠 줘", "context": {"screen": "home"}}).text)
+    call = events[-2][1]["calls"][0]
+    assert call["description"] == "'UIST2026' 안에 새 하위 컬렉션 1개 · 논문 2편 배치"
+    assert "알 수 없는" not in call["detail"] and "  · Paper 0" in call["detail"]
