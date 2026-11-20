@@ -528,15 +528,14 @@ async def run_turn(agent: Agent, session: sessions.Session, user_text: str | Non
                 deferred_tool_results=deferred_tool_results) as events:
             async for ev in events:
                 if isinstance(ev, PartStartEvent) and isinstance(ev.part, TextPart):
-                    if ev.part.content:
-                        delta = flt.new_part("\n\n" if after_tool else "")
-                        delta += flt.feed(ev.part.content)
-                        after_tool = False
-                        if delta:
-                            streamed += delta
-                            yield _event("text", {"delta": delta})
-                            if (h := partial_html()) is not None:
-                                yield h
+                    # 빈 채로 시작한 부분도 필터를 새로 — 앞 부분의 표식이 이 답을 삼키지 않게 (구분은 글이 올 때 함께)
+                    delta = flt.new_part("\n\n" if after_tool else "") + flt.feed(ev.part.content or "")
+                    after_tool = False
+                    if delta:
+                        streamed += delta
+                        yield _event("text", {"delta": delta})
+                        if (h := partial_html()) is not None:
+                            yield h
                 elif isinstance(ev, PartDeltaEvent) and isinstance(ev.delta, TextPartDelta):
                     if ev.delta.content_delta and (delta := flt.feed(ev.delta.content_delta)):
                         streamed += delta

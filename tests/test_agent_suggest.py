@@ -195,3 +195,37 @@ def test_suggest_setting_route_saves_to_ui():
     assert c.put("/agent/prefs", json={"suggest": False}).json()["suggest"] is False
     assert config.load_config()["ui"]["agent_suggest_next"] is False
     assert c.get("/agent/models").json()["suggest"] is False
+
+
+def test_marker_before_a_tool_call_does_not_swallow_the_final_answer(tmp_path):
+    """앞 텍스트 부분(tool 호출 전)에 표식이 섞여도 tool 뒤의 최종 답은 흐른다."""
+    from pydantic_ai.messages import ModelResponse, TextPart, ToolCallPart
+    from pydantic_ai.models.function import DeltaToolCall, FunctionModel
+
+    def n_resp(messages):
+        return sum(1 for m in messages if isinstance(m, ModelResponse))
+
+    async def stream(messages, info):  # noqa: ANN001, ANN202
+        if n_resp(messages) == 0:
+            yield "찾아볼게요\n<<suggest>>\n앞"
+            yield {0: DeltaToolCall(name="outline", json_args="{}", tool_call_id="c0")}
+            return
+        yield ""
+        yield "최종 답"
+
+    def plain(messages, info):  # noqa: ANN001, ANN202
+        return ModelResponse(parts=[TextPart("최종 답")]) if n_resp(messages) else \
+            ModelResponse(parts=[ToolCallPart("outline", {}, tool_call_id="c0")])
+
+    reg = Registry(make_wd(tmp_path))
+    tok = next(iter(reg.by_token))
+    agent = make_agent(FunctionModel(plain, stream_function=stream, model_name="scripted"))
+    deps = Deps(wd_for=reg.wd_for, current_token=tok, register_token=reg.register,
+                ctx=ScreenContext.model_validate({"screen": "review", "paper": {"token": tok}}))
+
+    async def go():
+        return [ev async for ev in run_turn(agent, sessions.create(), "목차", deps)]
+
+    events = asyncio.run(go())
+    streamed = "".join(e["data"]["delta"] for e in events if e["event"] == "text")
+    assert "최종 답" in streamed and "<<" not in streamed and "\n앞" not in streamed
