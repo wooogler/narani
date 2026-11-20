@@ -586,6 +586,16 @@ def _match_collections(projs: list[dict], entries: list[_Entry], terms: list[str
     return out[:MAX_COLLECTIONS]
 
 
+def colls_of(wd: WorkDir, projs: list[dict] | None = None) -> list[dict]:
+    """논문의 지금 소속 — 파일에서 바로 읽는다(색인의 소속은 목록을 다시 훑을 때까지 늦다). [{id, name, path}]"""
+    from narani import library, projects
+
+    projs = projs if projs is not None else projects.all_projects()
+    names = {p["id"]: p.get("name") or "" for p in projs}
+    return [{"id": pid, "name": names[pid], "path": projects.path_name(pid, projs)}
+            for pid in library.projects_of(wd) if pid in names]
+
+
 _SHARED: dict = {}
 _shared_lock = threading.Lock()
 
@@ -639,7 +649,10 @@ def register_routes(fastapi_app, workspace: Callable[[], Path],  # noqa: ANN001
         if kind == "row" and token in roots:
             out = idx.preview_row(roots[token], row, q)
         elif kind == "paper" and token in roots:
-            out = idx.preview_paper(roots[token], q, projects.all_projects())
+            projs = projects.all_projects()
+            out = idx.preview_paper(roots[token], q, projs)
+            if out is not None:   # 소속은 칩에서 넣고 뺄 수 있게 id까지, 파일에서 바로
+                out["collections"] = colls_of(WorkDir(Path(roots[token])), projs)
         elif kind == "collection" and projects.exists(id):
             projs = projects.all_projects()
             titles = idx.papers_in(id, projs)

@@ -315,7 +315,8 @@ def test_route_preview_row_paper_collection(client):
                                              "q": "설문조사"}).json()
     assert pv["kind"] == "row" and "drivers" in pv["en"]["text"] and pv["ko"]["hits"]   # 원문·번역을 둘 다
     pp = c.get("/libsearch/preview", params={"kind": "paper", "token": g["token"], "q": "x"}).json()
-    assert pp["title"] == "Trust in Automation" and pp["collections"] == ["Trust papers"] and pp["rows"]
+    assert pp["title"] == "Trust in Automation" and pp["rows"]
+    assert pp["collections"] == [{"id": "p1", "name": "Trust papers", "path": "Trust papers"}]   # 칩 ×로 뺄 수 있게 id까지
     pc = c.get("/libsearch/preview", params={"kind": "collection", "id": "p1"}).json()
     assert pc == {"kind": "collection", "path": "Trust papers", "count": 1, "titles": ["Trust in Automation"]}
     # 내보낸 적 없는 token·모르는 컬렉션은 빈 미리보기
@@ -341,3 +342,78 @@ def test_home_filter_input_is_gone_and_find_opens_search_on_home():
     assert "'/home'" in case
     # 브라우저(메뉴 없음)의 ⌘F keydown도 같다 — ⌘G는 그대로 페이지 찾기
     assert "window.__md4LibSearch.open()" in find_bar.HTML
+
+
+
+# --- 홈에서 보기 · 컬렉션에 넣기 -----------------------------------------
+
+
+class _Client:
+    elements: dict = {}
+
+
+def test_colls_of_reads_membership_fresh(client):
+    _c, _reg, a, b = client
+    assert libsearch.colls_of(b) == [{"id": "p1", "name": "Trust papers", "path": "Trust papers"}]
+    assert libsearch.colls_of(a) == []
+
+
+def test_reveal_on_home_calls_home_and_elsewhere_goes_home(lib, tmp_path, monkeypatch):
+    from nicegui import ui
+
+    from narani.ui import libsearch_ui
+
+    _idx, a, _b, _ws = lib
+    monkeypatch.setattr(projects, "PROJECTS_PATH", tmp_path / "projects.json")
+    projects._save({"active": "p9", "projects": [{"id": "p9", "name": "X", "created_at": 0, "root": "", "parent": ""}]})
+    state = {"wd_by_token": {"tok": a}}
+    c = _Client()
+    seen: list = []
+    went: list = []
+    monkeypatch.setattr(ui.navigate, "to", lambda url: went.append(url))
+    libsearch_ui.register_home(c, reveal=lambda root: seen.append(root), refresh=lambda: None)
+
+    monkeypatch.setattr(libsearch_ui, "on_home", lambda cl: True)
+    libsearch_ui.reveal(c, state, {"token": "tok"})
+    assert seen == [str(a.root)] and went == []                     # 홈이면 그 자리에서
+
+    monkeypatch.setattr(libsearch_ui, "on_home", lambda cl: False)
+    libsearch_ui.reveal(c, state, {"token": "tok"})
+    assert went == ["/home"] and projects.active() == projects.ALL   # 다른 탭이면 '모든 논문' 홈으로
+    assert libsearch_ui.take_reveal(c) == str(a.root) and libsearch_ui.take_reveal(c) is None   # 홈이 한 번 가져간다
+
+    libsearch_ui.reveal(c, state, {"token": "unknown"})
+    assert went == ["/home"]                                         # 모르는 token은 아무것도 안 한다
+
+
+def test_chip_remove_uses_same_membership_path(client, monkeypatch):
+    import asyncio
+
+    from narani import library
+    from narani.ui import libsearch_ui, meta_card
+
+    _c, _reg, _a, b = client
+    calls: list = []
+    pushed: list = []
+
+    async def fake_set(wd, pids, valid):  # noqa: ANN001, ANN202
+        calls.append((wd.root, list(pids)))
+        return 0
+
+    monkeypatch.setattr(meta_card, "set_members", fake_set)
+    monkeypatch.setattr(libsearch_ui, "_push_colls", lambda tok, wd: pushed.append(tok))
+    state = {"wd_by_token": {"tok": b}}
+    asyncio.run(libsearch_ui.members(_Client(), state, {}, {"token": "tok", "remove": "p1"}))
+    assert calls == [(b.root, [])] and pushed == ["tok"]
+    asyncio.run(libsearch_ui.members(_Client(), state, {}, {"token": "tok", "remove": "not-a-member"}))
+    assert len(calls) == 1 and pushed == ["tok", "tok"]                 # 소속이 아니면 쓰지 않고 칩만 다시
+    assert library.projects_of(b) == ["p1"]                             # (가짜 set_members라 파일은 그대로)
+
+
+def test_modal_wires_reveal_and_members():
+    from narani.ui import libsearch_ui
+
+    html = libsearch_ui.page_html()
+    for ev in (libsearch_ui.REVEAL_EVENT, libsearch_ui.MEMBERS_EVENT, libsearch_ui.CLOSED_EVENT):
+        assert f"'{ev}'" in html
+    assert "ev.altKey" in html and "setColls" in html and ".md4-ls-anchor" in html

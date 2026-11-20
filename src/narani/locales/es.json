@@ -1675,5 +1675,9 @@
  "다른 탭 모두 닫기": "Cerrar las demás pestañas",
  "오른쪽 탭 모두 닫기": "Cerrar pestañas a la derecha",
  "모든 탭 닫기": "Cerrar todas las pestañas",
- "탭 정리": "Ordenar pestañas"
+ "탭 정리": "Ordenar pestañas",
+ "홈 목록에서 그 논문을 찾지 못했습니다.": "No se encontró ese artículo en la lista de Inicio.",
+ "홈에서 보기": "Mostrar en Inicio",
+ "{name}에서 빼기": "Quitar de {name}",
+ "컬렉션에 넣기…": "Añadir a colección…"
 }
