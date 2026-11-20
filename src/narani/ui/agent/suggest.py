@@ -8,6 +8,9 @@
 
 표식은 모델 기록(session.conversation)에는 남는다 — 모델이 형식을 이어 가는 데 도움이 되고, 설정을 끈 뒤에도
 흉내 낼 수 있으니 떼어 내기는 설정과 상관없이 늘 한다. 설정은 지시문과 제안 내보내기만 막는다.
+
+모델이 블록을 빼먹으면(tool을 여러 번 부른 긴 턴에서 실제로 그랬다) 창이 답을 받은 뒤 `generate`로 한 번 더
+묻는다 — 제목 짓기와 같은 싼 모델, 질문·다듬은 답·화면만 넘긴다(routes `/agent/sessions/{sid}/suggest`).
 """
 
 from __future__ import annotations
@@ -131,15 +134,10 @@ def _strip_body(body: str) -> str:
     return "\n".join(lines).rstrip()
 
 
-def split(text: str) -> tuple[str, list[str]]:
-    """최종 답 → (본문, 제안 목록). 표식이 없으면 (원문 그대로, [])."""
-    text = text or ""
-    m = MARK_RE.search(text)
-    if not m:
-        return text, []
-    body = _strip_body(text[:m.start()])
+def parse_items(text: str) -> list[str]:
+    """제안 줄들 → 다듬은 제안 목록 (번호·기호·따옴표·@·펜스·표식 줄·중복·긴 줄을 걷고 최대 3개)."""
     out: list[str] = []
-    for line in text[m.end():].split("\n"):
+    for line in (text or "").split("\n"):
         raw = line.strip()
         if not raw or _FENCE.match(raw) or _CLOSE_RE.match(raw) or MARK_RE.fullmatch(raw):
             continue
@@ -149,4 +147,39 @@ def split(text: str) -> tuple[str, list[str]]:
         out.append(item)
         if len(out) >= MAX_ITEMS:
             break
-    return body, out
+    return out
+
+
+def split(text: str) -> tuple[str, list[str]]:
+    """최종 답 → (본문, 제안 목록). 표식이 없으면 (원문 그대로, [])."""
+    text = text or ""
+    m = MARK_RE.search(text)
+    if not m:
+        return text, []
+    return _strip_body(text[:m.start()]), parse_items(text[m.end():])
+
+
+# --- 블록이 빠졌을 때: 따로 한 번 묻기 ----------------------------------------
+
+FALLBACK_SYSTEM = (
+    "A researcher is chatting with an assistant inside a paper-reading app. Given their last question, the "
+    "assistant's answer and what is on screen, write 2-3 short messages the researcher might send next. "
+    "Write them in the researcher's own voice, as requests or questions to the assistant (e.g. \"Summarize the "
+    "method section too\", \"Split them by method instead\"), never as the assistant offering something. "
+    "Use the same language as the question. Each one short (about 8 words, or 40 characters in "
+    "Korean/Japanese/Chinese), concrete to this conversation and screen: carry out what the answer proposed, "
+    "change its scope or criteria, or dig deeper. No greetings or thanks. Reply with one message per line, "
+    "nothing else: no numbering, quotes, '@' or explanations.")
+FALLBACK_INPUT_MAX = 1500    # 답은 앞부분만 (질문은 600자)
+FALLBACK_MAX_TOKENS = 1024   # 추론 모델은 예산을 생각에 먼저 쓴다 — 제목 짓기(TITLE_MAX_TOKENS)와 같은 이유
+
+
+def generate(llm, question: str, answer: str, screen: str = "") -> list[str]:  # noqa: ANN001 — llm.base.Provider
+    """질문·답·화면 → 제안 목록. 실패(키 없음·네트워크·엉뚱한 답)는 호출한 쪽이 조용히 넘긴다."""
+    user = (f"Question:\n{(question or '').strip()[:600]}\n\n"
+            f"Answer (start):\n{(answer or '').strip()[:FALLBACK_INPUT_MAX]}")
+    if screen:
+        user += f"\n\nOn screen: {screen}"
+    raw = llm.complete(FALLBACK_SYSTEM, user, max_tokens=FALLBACK_MAX_TOKENS) or ""
+    m = MARK_RE.search(raw)                       # 싼 모델이 표식까지 흉내 내도 받는다
+    return parse_items(raw[m.end():] if m else raw)

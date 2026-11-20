@@ -229,3 +229,129 @@ def test_marker_before_a_tool_call_does_not_swallow_the_final_answer(tmp_path):
     events = asyncio.run(go())
     streamed = "".join(e["data"]["delta"] for e in events if e["event"] == "text")
     assert "최종 답" in streamed and "<<" not in streamed and "\n앞" not in streamed
+
+
+# --- 블록이 빠졌을 때: 따로 짓기 ------------------------------------------------
+
+
+def test_parse_items_and_generate_tolerate_marker_and_numbering():
+    from narani.llm.base import FakeProvider
+
+    assert suggest.parse_items("1. 하나\n- \"둘\"\n하나\n") == ["하나", "둘"]
+    seen = {}
+
+    def fn(system, user):
+        seen["system"], seen["user"] = system, user
+        return "<<suggest>>\n1) Summarize the results too\n- @Compare with paper B\n"
+
+    got = suggest.generate(FakeProvider(fn), "What is the method?", "x" * 5000, 'paper "Wink"')
+    assert got == ["Summarize the results too", "Compare with paper B"]
+    assert "same language as the question" in seen["system"]
+    assert 'On screen: paper "Wink"' in seen["user"] and "x" * 1501 not in seen["user"]
+
+
+def _route_client(tmp_path, provider_fn=None, *, boom=False):
+    import fastapi
+    from fastapi.testclient import TestClient
+
+    from narani.llm.base import FakeProvider
+    from narani.ui.agent.routes import register_routes
+
+    calls: list = []
+
+    def make():
+        if boom:
+            raise RuntimeError("키 없음")
+        calls.append(1)
+        return FakeProvider(provider_fn or (lambda a, b: "방법 섹션도 요약해 줘\n한계도 알려 줘"))
+
+    reg = Registry(make_wd(tmp_path))
+    app = fastapi.FastAPI()
+    register_routes(app, wd_for=reg.wd_for, register_token=reg.register, build_title_provider=make)
+    return TestClient(app), calls
+
+
+def _answered(text=BODY, **extra) -> sessions.Session:
+    s = sessions.create()
+    s.turns += [{"id": "u1", "role": "user", "text": "요약해 줘"},
+                {"id": "a1", "role": "assistant", "text": text, "html": "", "citations": [], **extra}]
+    return sessions.save(s)
+
+
+def test_fallback_route_fills_missing_suggestions(tmp_path):
+    c, calls = _route_client(tmp_path)
+    s = _answered()
+    r = c.post(f"/agent/sessions/{s.id}/suggest",
+               json={"turn_id": "a1", "context": {"screen": "home", "project": {"name": "튜터링"}}})
+    assert r.json()["suggestions"] == ["방법 섹션도 요약해 줘", "한계도 알려 줘"]
+    assert sessions.load(s.id).turns[-1]["suggestions"] == r.json()["suggestions"]
+    # 이미 있으면 다시 묻지 않는다
+    assert c.post(f"/agent/sessions/{s.id}/suggest", json={"turn_id": "a1"}).json()["suggestions"] == []
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("case", ["error", "empty", "stale", "pending", "off", "boom", "junk"])
+def test_fallback_route_skips_and_fails_silently(tmp_path, monkeypatch, case):
+    c, calls = _route_client(tmp_path, (lambda a, b: "   \n```\n") if case == "junk" else None,
+                             boom=case == "boom")
+    s = _answered(**({"error": "실패"} if case == "error" else {}), text="" if case == "empty" else BODY)
+    if case == "pending":
+        monkeypatch.setattr(sessions.Session, "pending", property(lambda self: {"calls": [{"id": "c1"}]}))
+    if case == "off":
+        config.set_section_value("ui", "agent_suggest_next", False)
+    turn = "older" if case == "stale" else "a1"
+    r = c.post(f"/agent/sessions/{s.id}/suggest", json={"turn_id": turn, "context": {"bogus": 1}})
+    assert r.status_code == 200 and r.json() == {"suggestions": []}
+    assert "suggestions" not in sessions.load(s.id).turns[-1]
+    if case in ("error", "empty", "stale", "pending", "off"):
+        assert calls == []           # 돈 드는 호출 자체를 안 한다
+
+
+def test_fallback_does_not_overwrite_a_newer_save(tmp_path):
+    """LLM을 기다리는 사이 다른 저장(새 턴)이 있으면 옛 사본으로 덮지 않고, 제안도 붙이지 않는다."""
+    s = _answered()
+
+    def slow(system, user):
+        fresh = sessions.load(s.id)
+        fresh.turns.append({"id": "u2", "role": "user", "text": "다음 질문"})
+        sessions.save(fresh)
+        return "하나\n둘"
+
+    c, _ = _route_client(tmp_path, slow)
+    assert c.post(f"/agent/sessions/{s.id}/suggest", json={"turn_id": "a1"}).json()["suggestions"] == []
+    turns = sessions.load(s.id).turns
+    assert turns[-1]["id"] == "u2" and "suggestions" not in turns[-2]
+
+
+def test_title_save_keeps_suggestions_saved_meanwhile(tmp_path):
+    """첫 턴 뒤 제목 짓기와 제안 짓기가 함께 돈다 — 늦게 끝난 쪽이 다른 쪽 저장을 지우지 않는다."""
+    s = sessions.create()
+    s.title = sessions.default_title("요약해 줘")
+    sessions.save(s)
+    s.turns += [{"id": "u1", "role": "user", "text": "요약해 줘"},
+                {"id": "a1", "role": "assistant", "text": BODY, "html": "", "citations": []}]
+    sessions.save(s)
+
+    def titler(system, user):
+        fresh = sessions.load(s.id)
+        fresh.turns[-1]["suggestions"] = ["하나"]
+        sessions.save(fresh)
+        return "논문 요약"
+
+    c, _ = _route_client(tmp_path, titler)
+    assert c.post(f"/agent/sessions/{s.id}/title").json()["title"] == "논문 요약"
+    saved = sessions.load(s.id)
+    assert saved.title == "논문 요약" and saved.turns[-1]["suggestions"] == ["하나"]
+
+
+def test_panel_asks_fallback_and_shows_starter_chips():
+    js = agent_panel.JS
+    assert "if (suggestOn && !(L.done.suggestions || []).length) moreSuggest(at, L.done.turn_id);" in js
+    body = js[js.index("function moreSuggest(id, tid){"):js.index("function paintSugg(")]
+    assert "'/suggest'" in body and "turns[i].id === tid" in body and ".catch(function(){})" in body
+    assert "render()" not in body and "paintSugg(slot)" in body   # 늦게 와도 목록을 다시 그리지 않는다
+    empty = js[js.index("function emptyNode(){"):js.index("function moreSuggest(")]
+    assert "if (!suggestOn)" in empty and "suggestNode(items)" in empty
+    assert "md4T('이 컬렉션을 하위 컬렉션으로 나눠 줘')" in empty and "a.kind === 'collection'" in empty
+    assert "답 속 숫자 칩을 누르면" in empty                 # 인용 칩 안내는 그대로
+    assert "em.replaceWith(emptyNode())" in js               # 컬렉션을 바꾸면 시작 칩도

@@ -39,7 +39,7 @@ from pathlib import Path
 
 from narani import config
 from narani.i18n import t
-from narani.ui.agent import sessions
+from narani.ui.agent import sessions, suggest
 from narani.ui.agent.agent import default_agent, run_turn
 from narani.ui.agent.context import ScreenContext
 from narani.ui.agent.tools import Deps
@@ -265,6 +265,50 @@ def suggest_title(s: sessions.Session, make: Callable[[], object] = title_provid
     return title
 
 
+def _suggest_target(s: sessions.Session, turn_id: str) -> tuple[str, str] | None:
+    """제안을 따로 지을 턴인가 → (그 앞 질문, 답 본문). 마지막 턴이 그 답이고, 오류·빈 답·승인 대기가 아니며,
+    제안이 아직 없을 때만."""
+    if s.pending is not None or not s.turns:
+        return None
+    last = s.turns[-1]
+    if (last.get("id") != turn_id or last.get("role") != "assistant" or last.get("error")
+            or not (last.get("text") or "").strip() or last.get("suggestions")):
+        return None
+    q = next((t.get("text") or "" for t in reversed(s.turns[:-1]) if t.get("role") == "user"), "")
+    return q, last["text"]
+
+
+def _screen_label(ctx: ScreenContext, wd_for: Callable[[str], WorkDir | None]) -> str:
+    """제안 짓기에 넘길 화면 한 줄 — 열린 논문 제목, 아니면 보고 있는 컬렉션."""
+    p = ctx.paper
+    if p and (p.title or "").strip():
+        return f"paper \"{p.title.strip()[:160]}\""
+    if p and p.token and (wd := wd_for(p.token)) is not None:     # 단독 창은 제목 없이 token만 온다
+        try:
+            from narani.workdir import paper_title
+            if title := (paper_title(Path(wd.root)) or "").strip():
+                return f"paper \"{title[:160]}\""
+        except Exception:  # noqa: BLE001
+            pass
+    if ctx.project and (ctx.project.name or "").strip():
+        return f"collection \"{ctx.project.name.strip()[:80]}\" in the library"
+    return "the paper library (home)"
+
+
+def suggest_next(s: sessions.Session, turn_id: str, screen: str,
+                 make: Callable[[], object] = title_provider) -> tuple[list[str], float]:
+    """답에 제안 블록이 빠졌을 때 싼 모델로 따로 지은 제안 (제안, 든 비용). 못 지으면 ([], 0)."""
+    target = _suggest_target(s, turn_id)
+    if target is None or not config.agent_suggest_next():
+        return [], 0.0
+    try:
+        llm = make()
+        items = suggest.generate(llm, target[0], target[1], screen)
+    except Exception:  # noqa: BLE001 — 키 없음·네트워크·시간 초과 — 칩 없이 넘어간다
+        return [], 0.0
+    return items, float(getattr(llm, "cost", lambda: 0.0)())
+
+
 def readiness(make: Callable[[], object] | None = None) -> tuple[bool, str]:
     """에이전트를 만들 수 있는지 (준비됐나?, 안내 메시지). 네트워크는 건드리지 않는다."""
     try:
@@ -432,11 +476,46 @@ def register_routes(fastapi_app, wd_for: Callable[[str], WorkDir | None],  # noq
     @fastapi_app.post("/agent/sessions/{sid}/title")
     def _auto_title(sid: str):  # noqa: ANN202 — 첫 질문·답으로 제목 짓기 (창이 첫 턴 뒤에 부른다)
         s = _load_or_404(sid)
+        before = float(s.usage.get("cost_usd") or 0.0)
         title = suggest_title(s, build_title_provider or title_provider)
-        if title:
-            s.title = title
-            sessions.save(s)
+        if not title:
+            return s.meta()
+        spent = float(s.usage.get("cost_usd") or 0.0) - before
+
+        def put(fresh: sessions.Session) -> bool:     # 그사이 다른 저장(제안·새 턴)을 덮지 않게 새로 읽어 고친다
+            fresh.title = title
+            fresh.usage["cost_usd"] = round(float(fresh.usage.get("cost_usd") or 0.0) + spent, 6)
+            return True
+
+        s = sessions.update(sid, put) or s
         return s.meta()
+
+    @fastapi_app.post("/agent/sessions/{sid}/suggest")
+    def _suggest(sid: str, body: dict):  # noqa: ANN202 — 답에 제안 블록이 없을 때 창이 부른다 (실패는 빈 목록)
+        s = _load_or_404(sid)
+        body = body or {}
+        turn = str(body.get("turn_id") or "")
+        try:
+            ctx = ScreenContext.model_validate(body.get("context") or {})
+        except ValidationError:
+            ctx = ScreenContext()
+        items, spent = suggest_next(s, turn, _screen_label(ctx, wd_for),
+                                    build_title_provider or title_provider)
+        if not items:
+            return {"suggestions": []}
+
+        def put(fresh: sessions.Session) -> bool:
+            # 그사이 새 질문이 시작됐거나 턴이 바뀌었으면 버린다 (비용만 남긴다)
+            ok = (_suggest_target(fresh, turn) is not None
+                  and time.time() - _BUSY.get(sid, 0.0) >= BUSY_TTL)
+            if ok:
+                fresh.turns[-1]["suggestions"] = items
+            fresh.usage["cost_usd"] = round(float(fresh.usage.get("cost_usd") or 0.0) + spent, 6)
+            return True
+
+        fresh = sessions.update(sid, put)
+        saved = fresh is not None and fresh.turns and fresh.turns[-1].get("suggestions") == items
+        return {"suggestions": items if saved else []}
 
     @fastapi_app.delete("/agent/sessions/{sid}")
     def _delete(sid: str):  # noqa: ANN202 — 세션 지우기
