@@ -21,6 +21,12 @@ from __future__ import annotations
 SCOPE_EVENT = "md4-libsearch-scope"   # JS → 서버: 컬렉션을 골랐다 {id, home}
 DEBOUNCE_MS = 140
 RETRY_MS = 700                        # 색인을 채우는 중이면 이만큼 뒤 같은 질문을 다시
+REVEAL_EVENT = "md4-libsearch-reveal"    # JS → 서버: '홈에서 보기' {token, home}
+MEMBERS_EVENT = "md4-libsearch-members"  # JS → 서버: '컬렉션에 넣기…' 메뉴 열기 {token} · 칩 × {token, remove}
+CLOSED_EVENT = "md4-libsearch-closed"    # JS → 서버: 창을 닫았다, 그사이 소속을 바꿨다 — 홈이면 편수·태그를 맞춘다
+_HOME = "_md4_ls_home"                   # 클라이언트에 붙이는 지금 홈의 함수들 (홈이 그릴 때마다 통째로 갈아 끼운다)
+_PENDING = "_md4_ls_reveal"              # 홈으로 옮겨 가서 보일 논문 (홈이 그릴 때 가져간다)
+
 
 CSS = """
 #md4-ls { position: fixed; inset: 0; z-index: 10060; display: none; align-items: flex-start; justify-content: center;
@@ -48,6 +54,15 @@ CSS = """
 #md4-ls .lp-note { display: flex; gap: 8px; margin: 10px 0; padding: 8px 10px; border-radius: 8px; background: rgba(0,0,0,.035); font-size: 13px; }
 #md4-ls .lp-chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 8px 0; }
 #md4-ls .lp-chip { font-size: 11.5px; padding: 1px 8px; border-radius: 10px; background: rgba(35,131,226,.1); color: #2383e2; }
+#md4-ls .lp-acts { display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 0 2px; }
+#md4-ls .lp-btn { font: inherit; font-size: 12.5px; padding: 3px 10px; border-radius: 6px; border: 1px solid #dcdad5;
+  background: transparent; color: inherit; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+#md4-ls .lp-btn:hover { border-color: #2383e2; color: #2383e2; }
+#md4-ls .lp-btn .material-icons { font-size: 16px; }
+#md4-ls .lp-link { font-size: 12px; color: #2383e2; cursor: pointer; background: none; border: 0; padding: 0; font-family: inherit; }
+#md4-ls .lp-chip { display: inline-flex; align-items: center; gap: 2px; }
+#md4-ls .lp-chip button { border: 0; background: none; color: inherit; cursor: pointer; padding: 0 0 0 2px; font-size: 13px; line-height: 1; opacity: .6; }
+#md4-ls .lp-chip button:hover { opacity: 1; }
 #md4-ls .lp-li { font-size: 13px; padding: 3px 0; border-bottom: 1px solid #f0efed; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 @media (max-width: 760px) { #md4-ls .ls-prev { display: none; } #md4-ls .ls-list { flex: 1 1 auto; border-right: 0; } }
 #md4-ls .ls-sec { font-size: 11.5px; font-weight: 600; color: #9a968e; padding: 10px 16px 4px; letter-spacing: .02em; }
@@ -85,6 +100,8 @@ CSS = """
   #md4-ls .lp-sub { color: #a8a8a8; }
   #md4-ls .lp-note { background: rgba(255,255,255,.06); }
   #md4-ls .lp-li, #md4-ls .lp-top { border-color: #333; }
+  #md4-ls .lp-btn { border-color: #4a4a4a; }
+  #md4-ls .lp-link { color: #7bb7ff; }
   #md4-ls .lp-top { background: #252525; }
   #md4-ls .lp-chip { background: rgba(90,150,230,.2); color: #7bb7ff; }
   #md4-ls .ls-item.on { background: rgba(90,150,230,.22); }
@@ -113,7 +130,7 @@ HTML = """
       <div class="ls-prev" aria-live="polite"></div>
     </div>
     <div class="ls-foot"><span><kbd>↑</kbd><kbd>↓</kbd>⦃옮기기⦄</span><span><kbd>Enter</kbd>⦃열기⦄</span>
-      <span><kbd>Esc</kbd>⦃닫기⦄</span></div>
+      <span><kbd>⌥</kbd><kbd>Enter</kbd>⦃홈에서 보기⦄</span><span><kbd>Esc</kbd>⦃닫기⦄</span></div>
   </div>
 </div>
 <script>
@@ -126,6 +143,7 @@ HTML = """
   var prev = root.querySelector('.ls-prev'), pvTimer = null, pvSeq = 0, pvCache = {};
   var MAC = /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent || '');
   var DEBOUNCE = %(debounce)d, RETRY = %(retry)d, SCOPE = '%(scope)s';
+  var REVEAL = '%(reveal)s', MEMBERS = '%(members)s', CLOSED = '%(closed)s', dirty = false;
   var items = [], cur = -1, seq = 0, timer = null, retry = null, lastQ = null;
   var COLORS = {yellow: '#f5c518', green: '#4caf50', blue: '#42a5f5', pink: '#f06292', purple: '#ab47bc'};
 
@@ -143,6 +161,7 @@ HTML = """
     if (!isOpen()) return;
     root.classList.remove('on');
     clearTimeout(timer); clearTimeout(retry); clearTimeout(pvTimer); seq++; pvSeq++;
+    if (dirty && window.emitEvent){ dirty = false; emitEvent(CLOSED, {}); }   // 소속을 바꿨다 — 홈 편수·태그를 맞추게
   }
   function inEditor(el){ return !!(el && el.closest && el.closest('.cm-editor, .ProseMirror')); }
   // 메뉴 막대의 ⌘K — 메뉴가 키를 먼저 먹는다. 편집기 안이면 같은 키를 편집기로 돌려 '링크'가 그대로 돈다.
@@ -156,7 +175,8 @@ HTML = """
     if (isOpen()) close(); else open();
     return 'ok';
   }
-  window.__md4LibSearch = {open: open, close: close, menu: menu, isOpen: isOpen};
+  window.__md4LibSearch = {open: open, close: close, menu: menu, isOpen: isOpen,
+                           setColls: function(t, c){ setColls(t, c); }};
 
   function el(tag, cls, text){
     var e = document.createElement(tag);
@@ -236,6 +256,50 @@ HTML = """
     b.appendChild(t);
     return b;
   }
+  function actBtn(icon, label, fn){
+    var b = el('button', 'lp-btn');
+    b.type = 'button';
+    b.appendChild(el('i', 'material-icons', icon));
+    b.appendChild(document.createTextNode(label));
+    b.addEventListener('click', function(){ fn(b); });
+    return b;
+  }
+  function collChips(token, colls){            // 지금 소속 — ×로 빼기 (홈 카드 체크 메뉴와 같은 길)
+    var cs = el('div', 'lp-chips lp-colls');
+    if (!colls.length) cs.appendChild(el('span', 'lp-sub', md4T('미분류')));
+    colls.forEach(function(c){
+      var chip = el('span', 'lp-chip', c.path);
+      var x = el('button', null, '×');
+      x.type = 'button';
+      x.setAttribute('aria-label', md4T('{name}에서 빼기', {name: c.name}));
+      x.title = x.getAttribute('aria-label');
+      x.addEventListener('click', function(){ if (window.emitEvent) emitEvent(MEMBERS, {token: token, remove: c.id}); });
+      chip.appendChild(x);
+      cs.appendChild(chip);
+    });
+    return cs;
+  }
+  function addColl(token, btn){                // 셸의 닻을 단추 밑으로 옮기고 서버가 체크 메뉴를 거기 연다
+    var an = document.querySelector('.md4-ls-anchor'), r = btn.getBoundingClientRect();
+    if (an){ an.style.left = r.left + 'px'; an.style.top = r.bottom + 'px'; }
+    if (window.emitEvent) emitEvent(MEMBERS, {token: token});
+  }
+  function revealIn(a){                        // 홈에서 보기 — 모든 논문으로 펴고 그 카드를 골라 깜빡인다
+    if (!a || !a.token) return;
+    close();
+    if (window.emitEvent) emitEvent(REVEAL, {token: a.token, home: onHome()});
+  }
+  function setColls(token, colls){             // 서버가 소속을 바꾼 뒤 — 캐시와 지금 칩을 고친다
+    dirty = true;
+    Object.keys(pvCache).forEach(function(k){
+      if (k.indexOf('paper|' + token + '|') === 0) pvCache[k].collections = colls;
+    });
+    var it = items[cur];
+    if (isOpen() && it && it.act.kind === 'paper' && it.act.token === token){
+      var old = prev.querySelector('.lp-colls');
+      if (old) old.parentNode.replaceChild(collChips(token, colls), old);
+    }
+  }
   function drawPreview(a, d){
     prev.textContent = '';
     if ((!d || d.kind === 'none') && a.kind === 'note'){       // 헤더뿐인 행의 메모 — 문단은 없어도 메모는 보인다
@@ -246,7 +310,12 @@ HTML = """
     if (!d || d.kind === 'none') return;
     if (d.kind === 'row'){
       var top = el('div', 'lp-top');               // 맞은 자리로 내려도 어느 논문·섹션인지 보이게
-      top.appendChild(el('div', 'lp-paper', d.title));
+      var pl = el('div', 'lp-paper', d.title + ' · ');
+      var go = el('button', 'lp-link', md4T('홈에서 보기'));
+      go.type = 'button';
+      go.addEventListener('click', function(){ revealIn(a); });
+      pl.appendChild(go);
+      top.appendChild(pl);
       if (d.heading) top.appendChild(el('div', 'lp-head', d.heading));
       prev.appendChild(top);
       if (a.kind === 'note') prev.appendChild(noteBox(a, a.quote, a.note));
@@ -263,11 +332,11 @@ HTML = """
       if (d.title_tr) prev.appendChild(el('div', 'lp-sub', d.title_tr));
       var sub = [(d.authors || []).join(', '), [d.year, d.venue].filter(Boolean).join(' · ')].filter(Boolean);
       sub.forEach(function(s){ prev.appendChild(el('div', 'lp-sub', s)); });
-      if ((d.collections || []).length){
-        var cs = el('div', 'lp-chips');
-        d.collections.forEach(function(c){ cs.appendChild(el('span', 'lp-chip', c)); });
-        prev.appendChild(cs);
-      }
+      prev.appendChild(collChips(a.token, d.collections || []));
+      var acts = el('div', 'lp-acts');
+      acts.appendChild(actBtn('create_new_folder', md4T('컬렉션에 넣기…'), function(b){ addColl(a.token, b); }));
+      acts.appendChild(actBtn('home', md4T('홈에서 보기'), function(){ revealIn(a); }));
+      prev.appendChild(acts);
       if (d.notes) prev.appendChild(el('div', 'lp-sub', md4T('하이라이트·메모 {n}개', {n: d.notes})));
       (d.rows || []).forEach(function(r){
         lab(r.heading || md4T('원문'));
@@ -371,9 +440,11 @@ HTML = """
     if (ev.isComposing || ev.keyCode === 229) return;     // 한글 조합 중의 Enter·화살표는 IME 몫
     if (ev.key === 'ArrowDown'){ ev.preventDefault(); setCur(cur + 1, true); }
     else if (ev.key === 'ArrowUp'){ ev.preventDefault(); setCur(cur - 1, true); }
+    else if (ev.key === 'Enter' && ev.altKey){ ev.preventDefault(); if (cur >= 0) revealIn(items[cur].act); }
     else if (ev.key === 'Enter'){ ev.preventDefault(); if (cur >= 0) choose(cur); }
   });
-  root.addEventListener('mousedown', function(ev){ if (!box.contains(ev.target)) close(); });
+  function popupOpen(){ return !!document.querySelector('.q-menu, .q-dialog'); }
+  root.addEventListener('mousedown', function(ev){ if (!box.contains(ev.target) && !popupOpen()) close(); });
   document.addEventListener('keydown', function(ev){
     var mod = MAC ? ev.metaKey : ev.ctrlKey;
     if (mod && !ev.shiftKey && !ev.altKey && (ev.key === 'k' || ev.key === 'K')){
@@ -382,7 +453,7 @@ HTML = """
       if (isOpen()) close(); else open();
       return;
     }
-    if (ev.key === 'Escape' && isOpen()){ ev.preventDefault(); ev.stopPropagation(); close(); }
+    if (ev.key === 'Escape' && isOpen() && !popupOpen()){ ev.preventDefault(); ev.stopPropagation(); close(); }   // 메뉴가 떠 있으면 Esc는 메뉴 몫
   }, true);
 })();
 </script>
@@ -393,7 +464,8 @@ def page_html() -> str:
     """창 마크업+스크립트 (화면 언어 문구를 채워서)."""
     from narani import i18n
 
-    code = HTML % {"debounce": DEBOUNCE_MS, "retry": RETRY_MS, "scope": SCOPE_EVENT}
+    code = HTML % {"debounce": DEBOUNCE_MS, "retry": RETRY_MS, "scope": SCOPE_EVENT,
+                   "reveal": REVEAL_EVENT, "members": MEMBERS_EVENT, "closed": CLOSED_EVENT}
     return i18n.html(code)
 
 
@@ -419,15 +491,152 @@ def side_button() -> None:
         ui.label(shortcut_label()).classes("md4-ls-kbd")
 
 
-def install(state: dict | None = None) -> None:  # noqa: ARG001 — 셸 설치 훅들과 같은 꼴
-    """셸이 한 번 부른다 — 창 CSS·마크업·스크립트와 컬렉션 고르기 이벤트."""
-    from nicegui import ui
+FLASH_CSS = """
+@keyframes md4LsFlash { 0%, 40% { box-shadow: 0 0 0 3px rgba(35,131,226,.55); } 100% { box-shadow: 0 0 0 3px rgba(35,131,226,0); } }
+.md4-pcard.md4-ls-flash { animation: md4LsFlash 1.6s ease-out; }
+.md4-ls-anchor { display: block !important; position: fixed; width: 1px; height: 1px; left: 0; top: 0; pointer-events: none; }  /* 셸의 빈 칸 숨기기에 걸리지 않게 — 숨으면 메뉴가 (0,0)에 뜬다 */
+.q-menu.md4-ls-menu { z-index: 10070 !important; }   /* 서재 검색 창(10060) 위에 */
+"""
+
+
+def install(state: dict | None = None) -> None:
+    """셸이 한 번 부른다 — 창 CSS·마크업·스크립트와 서버 이벤트(컬렉션 고르기·홈에서 보기·컬렉션에 넣기)."""
+    from nicegui import context, ui
 
     from narani.ui import spa
 
-    spa.add_css(CSS)
+    state = state if state is not None else {}
+    spa.add_css(CSS + FLASH_CSS)
     spa.add_body_html(page_html())
+    client = context.client
+    # '컬렉션에 넣기…' — 홈 카드·뷰어 서지 칸과 같은 체크 메뉴(meta_card.open_member_menu)를 창의 단추 자리에 연다.
+    # 메뉴는 NiceGUI 요소라 창(맨 HTML) 안에 둘 수 없어, 셸에 보이지 않는 닻을 두고 JS가 단추 자리로 옮긴다.
+    ui_parts = {"anchor": ui.element("div").classes("md4-ls-anchor"),
+                "menu": ui.menu().props("no-parent-event auto-close=false").classes("md4-ls-menu"),
+                "host": ui.element("div").style("display:none")}
     ui.on(SCOPE_EVENT, lambda e: pick_collection(e.args or {}))
+    ui.on(REVEAL_EVENT, lambda e: reveal(client, state, e.args or {}))
+    ui.on(MEMBERS_EVENT, lambda e: members(client, state, ui_parts, e.args or {}))
+    ui.on(CLOSED_EVENT, lambda e: _refresh_home(client))
+
+
+def _wd_of(state: dict, token: str):  # noqa: ANN202 — WorkDir | None
+    return (state.get("wd_by_token") or {}).get(str(token or ""))
+
+
+def on_home(client) -> bool:  # noqa: ANN001 — nicegui Client
+    """이 창의 본문이 지금 홈인지 (셸의 sub_pages가 그린 주소로)."""
+    from nicegui.elements.sub_pages import SubPages
+
+    return any(getattr(el, "_rendered_path", None) in ("/", "/home")
+               for el in list(client.elements.values()) if isinstance(el, SubPages))
+
+
+def register_home(client, **fns) -> None:  # noqa: ANN001, ANN003 — reveal(root), refresh()
+    """홈이 그릴 때 부른다 — 이 창의 '홈에서 보기'·갱신 함수를 통째로 갈아 끼운다(쌓이지 않게)."""
+    setattr(client, _HOME, fns)
+
+
+def take_reveal(client) -> str | None:  # noqa: ANN001
+    """홈으로 옮겨 오며 남긴 '보일 논문' — 한 번 가져가면 지운다."""
+    root = getattr(client, _PENDING, None)
+    setattr(client, _PENDING, None)
+    return root
+
+
+def _refresh_home(client) -> None:  # noqa: ANN001
+    fn = (getattr(client, _HOME, None) or {}).get("refresh")
+    if fn is not None and on_home(client):
+        fn()
+
+
+def reveal(client, state: dict, args: dict) -> None:  # noqa: ANN001
+    """'홈에서 보기' — 홈이 떠 있으면 그 자리에서, 아니면 홈으로 옮겨 가서 그 카드를 보이고 고른다."""
+    from nicegui import ui
+
+    from narani import projects
+
+    wd = _wd_of(state, args.get("token"))
+    if wd is None:
+        return
+    root = str(wd.root)
+    fn = (getattr(client, _HOME, None) or {}).get("reveal")
+    if fn is not None and on_home(client):
+        fn(root)
+        return
+    setattr(client, _PENDING, root)
+    projects.set_active(projects.ALL)   # 홈이 '모든 논문'으로 열리게 (홈은 범위를 여기서 읽는다)
+    ui.navigate.to("/home")
+
+
+def flash_card(root: str) -> None:
+    """홈 목록의 그 카드로 내려 깜빡인다 — 목록이 다시 그려지는 동안은 잠깐 기다린다."""
+    import json
+
+    from nicegui import ui
+
+    ui.run_javascript("""(function(root){ var n = 0; (function go(){
+      var el = Array.prototype.find.call(document.querySelectorAll('.md4-pcard'),
+                                         function(e){ return e.getAttribute('data-md4-root') === root; });
+      if (!el){ if (++n < 40) setTimeout(go, 100); return; }
+      el.scrollIntoView({block: 'center'});
+      el.classList.remove('md4-ls-flash'); void el.offsetWidth; el.classList.add('md4-ls-flash');
+      setTimeout(function(){ el.classList.remove('md4-ls-flash'); }, 1700);
+      try { el.focus({preventScroll: true}); } catch (e) {}
+    })(); })(%s);""" % json.dumps(root))
+
+
+def _push_colls(token: str, wd) -> None:  # noqa: ANN001 — WorkDir
+    """바뀐 소속을 창의 미리보기 칩에 — 창이 닫혔으면 다음에 열 때 새로 받는다."""
+    import json
+
+    from nicegui import ui
+
+    from narani.ui import libsearch
+
+    ui.run_javascript("window.__md4LibSearch && window.__md4LibSearch.setColls(%s, %s);"
+                      % (json.dumps(token), json.dumps(libsearch.colls_of(wd), ensure_ascii=False)))
+
+
+async def members(client, state: dict, parts: dict, args: dict) -> None:  # noqa: ANN001
+    """미리보기의 '컬렉션에 넣기…'(체크 메뉴) · 칩 ×(빼기) — 홈 카드와 같은 길(meta_card.set_members)로 고친다."""
+    from narani import library
+    from narani.ui import meta_card, settings_dialog
+
+    token = str(args.get("token") or "")
+    wd = _wd_of(state, token)
+    if wd is None:
+        return
+    coll = meta_card.collections()
+    gone = str(args.get("remove") or "")
+    if gone:
+        cur = library.projects_of(wd)
+        if gone in cur:
+            await meta_card.set_members(wd, [p for p in cur if p != gone], coll["names"])
+        _push_colls(token, wd)
+        return
+
+    async def flip(pid: str) -> bool:
+        cur = library.projects_of(wd)
+        now_in = pid not in cur
+        await meta_card.set_members(wd, cur + [pid] if now_in else [p for p in cur if p != pid], coll["names"])
+        _push_colls(token, wd)
+        return pid in library.projects_of(wd)
+
+    def new_coll() -> None:
+        from nicegui import ui
+
+        parts["menu"].close()
+        ui.run_javascript("window.__md4LibSearch && window.__md4LibSearch.close();")   # 대화상자가 창 뒤에 깔리지 않게
+
+        async def saved(proj: dict, _created: bool) -> None:
+            await meta_card.set_members(wd, library.projects_of(wd) + [proj["id"]], meta_card.collections()["names"])
+            _refresh_home(client)
+
+        with parts["host"]:
+            settings_dialog.open_project_dialog(state, None, saved)
+
+    meta_card.open_member_menu(parts["menu"], parts["anchor"], coll, lambda: library.projects_of(wd), flip, new_coll)
 
 
 def pick_collection(args: dict) -> None:

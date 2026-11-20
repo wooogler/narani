@@ -2670,6 +2670,31 @@ def build_home(state: dict) -> None:
 
     menu_bar.register(export=menu_export, reveal=menu_reveal, new_window=menu_new_window)
 
+    # ===== 서재 검색 창의 '홈에서 보기' (§ui/libsearch_ui.py) — 모든 논문으로 펴고 그 카드를 골라 보인다 =====
+    def reveal_paper(root: str) -> None:
+        r = data["by_root"].get(root)
+        if r is None:          # 방금 변환을 마쳤거나 다른 컴퓨터에서 받은 논문 — 한 번 다시 훑는다
+            scan()
+            r = data["by_root"].get(root)
+        if r is None:
+            ui.notify(t("홈 목록에서 그 논문을 찾지 못했습니다."), type="warning")
+            return
+        view.update(scope=projects.ALL, phone=False, gone=False)
+        projects.set_active(projects.ALL)
+        if r["hidden"]:
+            view["show_hidden"] = True   # 숨긴 논문이면 숨긴 논문도 보이게
+        pick.update(root=root, bulk=False)   # 한 번 클릭과 같은 고르기 — 미리보기에 그 논문(소속 태그·체크 메뉴)
+        pv["open"] = True
+        refresh_views()
+        libsearch_ui.flash_card(root)
+
+    client = ui.context.client
+    libsearch_ui.register_home(client, reveal=reveal_paper, refresh=lambda: refresh_views(rescan=True))
+    pending = libsearch_ui.take_reveal(client)
+    if pending:   # 다른 탭에서 '홈에서 보기'로 왔다 — 홈을 다 그린 뒤에
+        with host:
+            ui.timer(0.05, lambda: reveal_paper(pending), once=True)
+
     ui.timer(0.6, poll)
     if setup_wizard.needs_setup():
         open_wizard(first=True)

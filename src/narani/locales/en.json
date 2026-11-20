@@ -1675,5 +1675,9 @@
  "다른 탭 모두 닫기": "Close other tabs",
  "오른쪽 탭 모두 닫기": "Close tabs to the right",
  "모든 탭 닫기": "Close all tabs",
- "탭 정리": "Tidy tabs"
+ "탭 정리": "Tidy tabs",
+ "홈 목록에서 그 논문을 찾지 못했습니다.": "Couldn't find that paper in the Home list.",
+ "홈에서 보기": "Show in Home",
+ "{name}에서 빼기": "Remove from {name}",
+ "컬렉션에 넣기…": "Add to collection…"
 }
